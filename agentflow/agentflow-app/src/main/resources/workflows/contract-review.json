@@ -1,0 +1,68 @@
+{
+  "format": "quad.workflow",
+  "schemaVersion": 2,
+  "mainWorkflow": {
+    "id": "contract-review",
+    "name": "Contract Review",
+    "version": "1.0.0",
+    "status": "draft",
+    "initialTask": "Review the contract, flag risky clauses and recommend a decision.",
+    "nodes": [
+      {
+        "id": "review",
+        "type": "agent",
+        "title": "Review contract",
+        "requiresHumanApproval": true,
+        "agent": { "ref": "ex-contract-reviewer" }
+      },
+      {
+        "id": "advise",
+        "type": "agent",
+        "title": "Business recommendation",
+        "dependsOn": ["review"],
+        "agent": { "ref": "ex-contract-advisor" }
+      },
+      {
+        "id": "end",
+        "type": "end",
+        "title": "Done",
+        "dependsOn": ["advise"]
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": "ex-contract-reviewer",
+      "name": "Contract Reviewer",
+      "version": "1.0.0",
+      "category": "legal",
+      "model": "deepseek-v4.1-flash",
+      "temperature": 0.1,
+      "maxTokens": 2048,
+      "topP": 1.0,
+      "tools": [],
+      "guardrailsInput": ["prompt-injection"],
+      "guardrailsOutput": [],
+      "hooks": ["pii-anonymizer"],
+      "jsonOutput": true,
+      "active": true,
+      "systemPrompt": "You are a contract reviewer. Identify risky clauses and return JSON {riskLevel, flaggedClauses, recommendation}."
+    },
+    {
+      "id": "ex-contract-advisor",
+      "name": "Contract Advisor",
+      "version": "1.0.0",
+      "category": "legal",
+      "model": "deepseek-v4.1-flash",
+      "temperature": 0.2,
+      "maxTokens": 1024,
+      "topP": 1.0,
+      "tools": [],
+      "guardrailsInput": [],
+      "guardrailsOutput": [],
+      "hooks": [],
+      "active": true,
+      "systemPrompt": "Given the contract review, write a short recommendation (max 80 words) for the business owner."
+    }
+  ]
+}

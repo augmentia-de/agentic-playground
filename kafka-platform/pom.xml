@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.0.8</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.agentplatform</groupId>
+    <artifactId>agent-platform</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>agent-platform</name>
+    <description>Event-driven AI agent platform per SPEC2.md - deterministic core (no Spring AI bundled; LLM agents live in a separate project)</description>
+
+    <modules>
+        <module>agent-common</module>
+        <module>agent-orchestrator</module>
+        <module>agent-worker</module>
+        <module>quad-workflow-worker</module>
+    </modules>
+
+    <properties>
+        <java.version>21</java.version>
+    </properties>
+
+    <!--
+        There used to be an `e2e` profile here that included the `e2e-tests` module.
+        The directory does not exist — `mvn -P e2e test` failed with "Child module does
+        not exist", and README.md/TODO.md referenced the invocation.
+
+        Since the outsourcing, the end-to-end tests live in a separate project:
+        ../integration-tests (groupId de.augmentia.it, artifactId integration-tests), with
+        its own `e2e` profile. That is also where the reason for the split lies: the two
+        Spring Boot applications deliver repackage fat jars (classes under BOOT-INF/),
+        therefore unusable as a library, and a classifier would
+        break the '*SNAPSHOT.jar' globs of the Dockerfiles.
+
+        Invocation (from the integration-tests directory):
+            mvn -o test              # L0, without network
+            mvn -o test -Pintegration
+            mvn -o test -Pe2e
+    -->
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

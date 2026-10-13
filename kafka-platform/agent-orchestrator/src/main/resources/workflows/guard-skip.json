@@ -1,0 +1,32 @@
+{
+  "name": "guard-skip",
+  "version": 1,
+  "dag_structure": {
+    "nodes": [
+      {
+        "stepId": "prepare",
+        "nodeType": "STEP",
+        "agentType": "planner",
+        "dependsOn": []
+      },
+      {
+        "stepId": "optional_lint",
+        "nodeType": "STEP",
+        "agentType": "linter",
+        "dependsOn": ["prepare"],
+        "guardCondition": "context['prepare'].runLint == true"
+      },
+      {
+        "stepId": "package_output",
+        "nodeType": "STEP",
+        "agentType": "coder",
+        "dependsOn": ["optional_lint"]
+      },
+      {
+        "stepId": "end",
+        "nodeType": "END",
+        "dependsOn": ["package_output"]
+      }
+    ]
+  }
+}

@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: agent-worker
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      properties:
+        isolation.level: read_committed
+    listener:
+      ack-mode: record
+      concurrency: 1
+
+app:
+  worker:
+    group-id: ${WORKER_GROUP_ID:agent-worker-group}
+    # The legacy worker does NOT listen on agent.tasks.* any more — the QUAD worker has
+    # taken over the execution (canonical TaskEvent/ResultEvent contract).
+    # Dedicated legacy prefix so that there is no parallel consumption with the QUAD worker.
+    task-topic-pattern: ${WORKER_TASK_TOPIC_PATTERN:legacy\.agent\.tasks\..*}

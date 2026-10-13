@@ -1,0 +1,157 @@
+# Spring stack with TWO worker instances.
+#
+# Same shape as docker-compose.minimal.yml (application containers only,
+# Kafka/Postgres/Redis expected to exist), but:
+#
+#   1. Two quad-workflow-worker instances instead of one.
+#   2. Both workers read their agent definitions from the database
+#      (WORKER_QUAD_AGENT_SOURCE=db).
+#
+# Why (2) is not optional: worker.quad.agent-source defaults to yaml, and the
+# database is then never consulted. Every agent imported through
+# POST /api/v1/unified/agents/convert fails with
+#
+#   Unknown agent type: <id>. Available types: coder, fixer, linter, ...
+#
+# so a deployment that is meant to run workflows imported from quad does not
+# work without it. docker-compose.minimal.yml still omits the datasource on
+# purpose — it is the smaller file for running only the seeded agent types.
+#
+# ── Two workers, one consumer group ────────────────────────────────────────
+# Both instances use the SAME group id. Kafka therefore splits the partitions
+# of agent.tasks.* between them: total throughput scales with the instance count,
+# and a single workflow is still processed by exactly one instance per partition,
+# because task keys are the workflow id.
+#
+# Consequences to keep in mind:
+#   * max-concurrent-tasks is PER INSTANCE. The default 24 means up to 48
+#     concurrent LLM calls with two workers. Set it explicitly rather than
+#     accepting the doubled figure.
+#   * Both instances ack independently. A task is redelivered to whichever
+#     instance owns the partition after a rebalance; the worker's result cache
+#     serves that without a second LLM call.
+#   * One instance down halves throughput, it does not break workflows.
+#
+# ── Two workers, two ports ─────────────────────────────────────────────────
+# The instances are separate services, not `--scale`, because each needs its own
+# published port for health and metrics. With `--scale` a fixed port mapping
+# collides on the second replica. For a larger fleet, drop the port mapping and
+# use `docker compose up -d --scale quad-worker=2` instead.
+#
+# ── Before starting ────────────────────────────────────────────────────────
+#   export EXTERNAL_KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9092
+#   export POSTGRES_URL=jdbc:postgresql://postgres.example.internal:5432/agent_platform
+#   export POSTGRES_USER=agent
+#   export POSTGRES_PASSWORD=...
+#   export OPENAI_API_KEY=...
+#   export OPENAI_MODEL=...
+#   mvn -B -ntp clean package -DskipTests
+#
+# Host sizing: the two workers together ask for 2 CPUs and 1 GB of memory.
+
+x-worker: &worker
+  image: augmentia/quad-workflow-worker:1.0.0-SNAPSHOT
+  # Kafka and Postgres on the Docker host are reachable as host.docker.internal.
+  # That name is a Docker Desktop convenience; on plain Linux it does not resolve
+  # and the client fails with "No resolvable bootstrap urls given in
+  # bootstrap.servers" - an error that names Kafka, not DNS. host-gateway maps it
+  # to the bridge address. Harmless when the infrastructure runs elsewhere.
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  build:
+    context: .
+    dockerfile: docker/Dockerfile-quad-workflow-worker-runtime
+  restart: unless-stopped
+  mem_limit: 512m
+  cpus: 1.0
+  environment: &worker-env
+    SPRING_PROFILES_ACTIVE: docker
+    KAFKA_BOOTSTRAP_SERVERS: ${EXTERNAL_KAFKA_BOOTSTRAP_SERVERS:?set EXTERNAL_KAFKA_BOOTSTRAP_SERVERS}
+    # Agent definitions come from the same table the orchestrator writes.
+    # Both spellings are needed: POSTGRES_* for the orchestrator's own
+    # spring.datasource.url placeholder, SPRING_DATASOURCE_* because the
+    # worker defines no datasource block of its own.
+    WORKER_QUAD_AGENT_SOURCE: db
+    POSTGRES_URL: ${POSTGRES_URL:?set POSTGRES_URL}
+    SPRING_DATASOURCE_URL: ${POSTGRES_URL:?set POSTGRES_URL}
+    SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:?set POSTGRES_USER}
+    SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    # Same group on both instances: that is what makes Kafka split the partitions.
+    WORKER_QUAD_GROUP_ID: quad-workflow-worker
+    # Per instance. Two workers x this value is the total LLM concurrency.
+    WORKER_QUAD_MAX_CONCURRENT_TASKS: ${WORKER_MAX_CONCURRENT_TASKS:-8}
+    # The worker registers exactly one model key, "simple", from OPENAI_*.
+    # Imported agents must use modelId "simple" or every task fails with
+    # "Unknown model key".
+    OPENAI_API_KEY: ${OPENAI_API_KEY:?set OPENAI_API_KEY}
+    OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://openrouter.ai/api/v1}
+    OPENAI_MODEL: ${OPENAI_MODEL:?set OPENAI_MODEL}
+
+services:
+  orchestrator:
+    image: agent-platform/orchestrator:1.0.0-SNAPSHOT
+    build:
+      context: .
+      dockerfile: docker/Dockerfile-agent-orchestrator
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      KAFKA_BOOTSTRAP_SERVERS: ${EXTERNAL_KAFKA_BOOTSTRAP_SERVERS:?set EXTERNAL_KAFKA_BOOTSTRAP_SERVERS}
+      POSTGRES_URL: ${POSTGRES_URL:?set POSTGRES_URL}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      SERVER_PORT: "8080"
+      # Worker replicas are fixed here, so the HPA-style autoscaling stays off.
+      # It also polls Redis every 30 s and would only log errors without one.
+      APP_AUTOSCALING_ENABLED: "false"
+      # Optional. Without Redis the idempotency reservation degrades to the
+      # database constraint, which still prevents a duplicate execution.
+      REDIS_HOST: ${REDIS_HOST:-localhost}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      MANAGEMENT_HEALTH_REDIS_ENABLED: ${MANAGEMENT_HEALTH_REDIS_ENABLED:-false}
+      VAULT_ENABLED: "false"
+    # Host ports are parameterised: a fixed one collides with whatever already
+    # listens on the machine, and the failure surfaces only at `up` as an opaque
+    # "address already in use" from the daemon.
+    ports:
+      - "${ORCH_HOST_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  # Instance 1
+  quad-worker-1:
+    <<: *worker
+    container_name: quad-worker-1
+    environment:
+      <<: *worker-env
+      SERVER_PORT: "8092"
+    ports:
+      - "${WORKER1_HOST_PORT:-8092}:8092"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8092/actuator/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  # Instance 2 — identical except for the port. Both are in one consumer group.
+  quad-worker-2:
+    <<: *worker
+    container_name: quad-worker-2
+    environment:
+      <<: *worker-env
+      SERVER_PORT: "8093"
+    ports:
+      - "${WORKER2_HOST_PORT:-8093}:8093"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8093/actuator/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s

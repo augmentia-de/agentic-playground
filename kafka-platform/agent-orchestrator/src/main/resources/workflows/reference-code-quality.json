@@ -1,0 +1,82 @@
+{
+  "name": "reference-code-quality",
+  "version": 1,
+  "dag_structure": {
+    "nodes": [
+      {
+        "stepId": "research_step",
+        "nodeType": "STEP",
+        "agentType": "researcher",
+        "requiresHumanApproval": false,
+        "dependsOn": []
+      },
+      {
+        "stepId": "quality_gate",
+        "nodeType": "DECISION",
+        "dependsOn": ["research_step"],
+        "branches": [
+          {
+            "branchId": "refine",
+            "condition": "context['research_step'].confidence < 0.8",
+            "target": "refinement_loop"
+          }
+        ],
+        "defaultTarget": "parallel_fork"
+      },
+      {
+        "stepId": "refinement_loop",
+        "nodeType": "LOOP",
+        "bodyAgentType": "refiner",
+        "maxIterations": 3,
+        "exitCondition": "context['refinement_loop'].confidence >= 0.8",
+        "dependsOn": ["quality_gate"]
+      },
+      {
+        "stepId": "parallel_fork",
+        "nodeType": "FORK",
+        "dependsOn": ["quality_gate", "refinement_loop"],
+        "branches": [
+          {
+            "branchId": "code",
+            "firstStep": "b.code.gen"
+          },
+          {
+            "branchId": "test",
+            "firstStep": "b.test.prep"
+          }
+        ]
+      },
+      {
+        "stepId": "b.code.gen",
+        "nodeType": "STEP",
+        "agentType": "coder",
+        "dependsOn": ["parallel_fork"]
+      },
+      {
+        "stepId": "b.test.prep",
+        "nodeType": "STEP",
+        "agentType": "test_writer",
+        "dependsOn": ["parallel_fork"]
+      },
+      {
+        "stepId": "merge_gate",
+        "nodeType": "JOIN",
+        "joinType": "AND",
+        "joinBranches": ["code", "test"],
+        "dependsOn": ["b.code.gen", "b.test.prep"]
+      },
+      {
+        "stepId": "final_review",
+        "nodeType": "STEP",
+        "agentType": "reviewer",
+        "requiresHumanApproval": true,
+        "dependsOn": ["merge_gate"]
+      },
+      {
+        "stepId": "end",
+        "nodeType": "END",
+        "dependsOn": ["final_review"]
+      }
+    ]
+  }
+}

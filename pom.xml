@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Root-Aggregator des Agentic-Platform-Monorepos.
+
+    Bewusst KEIN Parent fuer die Module: die beiden Reaktoren haben
+    unterschiedliche Eltern (quad -> eigener BOM-POM, kafka-platform ->
+    spring-boot-starter-parent) und unterschiedliche groupIds. Ein gemeinsamer
+    Parent muesste eine dieser beiden Kette aufgeben.
+
+    Was dieser Aggregator loest: kafka-platform/quad-workflow-worker haengt an
+    de.augmentia.quad:quad-core und an com.agentplatform:agent-common. quad-core
+    liegt aber in einem anderen Reaktor. Ohne diesen Aggregator loest Maven die
+    Abhaengigkeit nur auf, wenn vorher im richtigen Modul "mvn install" gelaufen
+    ist - sonst zieht der Worker ein veraltetes Jar aus dem lokalen Repository.
+    Im Root-Reaktor wird quad-core aus dem Reaktor aufgeloest.
+
+    Bauen:   mvn -T1C clean install        (alles, korrekte Reihenfolge)
+             mvn -pl kafka-platform/quad-workflow-worker -am test
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>de.augmentia.platform</groupId>
+    <artifactId>agentic-platform</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>Agentic Platform</name>
+    <description>Aggregator fuer quad-quarkus (Quarkus), kafka-platform (Spring Boot) und
+        agentflow (Spring Boot + Spring AI + Temporal). Enthaelt bewusst keine gemeinsamen
+        Dependencies, damit die Reaktoren unabhaengig bleiben. integration-tests bleibt ein
+        eigener Reaktor (eigenes groupId + e2e-Profil).</description>
+
+    <modules>
+        <module>quad-quarkus</module>
+        <module>kafka-platform</module>
+        <module>agentflow</module>
+    </modules>
+</project>

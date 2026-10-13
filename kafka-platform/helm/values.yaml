@@ -1,0 +1,97 @@
+replicaCount: 1
+
+image:
+  orchestrator:
+    repository: agent-platform/orchestrator
+    tag: "1.0.0-SNAPSHOT"
+    pullPolicy: IfNotPresent
+  worker:
+    repository: agent-platform/worker
+    tag: "1.0.0-SNAPSHOT"
+    pullPolicy: IfNotPresent
+
+orchestrator:
+  replicaCount: 2
+  resources:
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+  env: {}
+  serviceAccount:
+    annotations: {}
+
+worker:
+  minReplicas: 2
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+  resources:
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+
+kafka:
+  replicas: 3
+  resources:
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+  externalBootstrapServers: ""
+  clientProtocol: PLAINTEXT
+  saslMechanism: SCRAM-SHA-512
+  internalTopicCreation: false
+
+postgres:
+  enabled: true
+  postgresqlDatabase: agent_platform
+  postgresqlUsername: agent
+  postgresqlPassword: agent
+  resources:
+    limits:
+      cpu: "1"
+      memory: "2Gi"
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+
+redis:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 8Gi
+  resources:
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+
+vault:
+  enabled: true
+  injectAgentSecrets: true
+  agentPath: secret/data/kafka-platform/agent-orchestrator
+  sharedPath: secret/data/kafka-platform/shared
+  authPath: vault/auth/k8s
+  role: agent-platform
+  namespace: default
+  pathPrefix: secret/data
+
+serviceAccount:
+  create: true
+  name: agent-platform
+
+ingress:
+  enabled: false
+
+prometheus:
+  scrapeInterval: 15s
+  scrapeTimeout: 10s

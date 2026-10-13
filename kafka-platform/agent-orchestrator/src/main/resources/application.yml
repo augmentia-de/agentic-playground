@@ -1,0 +1,159 @@
+spring:
+  application:
+    name: agent-orchestrator
+  datasource:
+    url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/ap}
+    username: ${POSTGRES_USER:postgres}
+    password: ${POSTGRES_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      properties:
+        isolation.level: read_committed
+    listener:
+      ack-mode: record
+      concurrency: 1
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2s
+
+server:
+  port: ${SERVER_PORT:8080}
+
+app:
+  kafka:
+    agent-types:
+      - researcher
+      - planner
+      - coder
+      - test_writer
+      - tester
+      - reviewer
+      - fixer
+      - linter
+      - quality
+      - refiner
+  orchestration:
+    default-timeout-ms: 60000
+    default-max-attempts: 3
+    sweep-interval-ms: 5000
+    sweep-stale-grace-ms: 1000
+    # Cap for the task timeout. The worker blocks its poll thread until
+    # the whole batch is done; beyond that there is a rebalance and
+    # duplicate LLM calls. Must stay smaller than
+    # worker.quad.kafka.max-poll-interval-ms (default 900000).
+    max-task-timeout-ms: 600000
+  hitl:
+    ttl-hours: 24
+    max-escalations: 3
+  seeding:
+    enabled: true
+    locations: classpath*:workflows/*.json
+  agents:
+    # ReAct iteration limit, which lands in agent_definitions.max_react_iterations,
+    # if quad does not supply one on upload. Must be greater than 0 — quad rejects
+    # 0 in Agent.setReActMaxIterations, and the DB column has a CHECK.
+    # The worker has its own fallback (worker.quad.react-max-iterations);
+    # normally the number set here applies, because for every agent
+    # it stands explicitly in the database.
+    default-max-react-iterations: ${AGENTS_DEFAULT_MAX_REACT_ITERATIONS:10}
+  autoscaling:
+    enabled: true
+    poll-interval-seconds: 30
+    lag-threshold: 500
+    min-workers: 2
+    max-workers: 20
+    # Topic and consumer group whose lag serves as the scaling signal.
+    # Both have to match: what is measured is endOffset minus the committed offset
+    # of that group. The default points at agent.control.loop / orchestrator-dag-group,
+    # thus at the orchestrator itself (DagTopicListener) — NOT at worker load.
+    # To scale the workers instead, override this pair via relaxed binding, no code
+    # change needed: AUTOSCALING_LAG_TOPIC=agent.tasks.planner and
+    # AUTOSCALING_LAG_GROUP_ID=quad-workflow-worker.
+    lag-topic: agent.control.loop
+    lag-group-id: orchestrator-dag-group
+  vault:
+    enabled: ${VAULT_ENABLED:false}
+    url: ${VAULT_ADDR:http://vault:8200}
+    token: ${VAULT_TOKEN}
+    path-prefix: secret/data
+    cache-ttl-minutes: 60
+    auth-method: approle   # token | approle | kubernetes
+    approle:
+      role-id: ${VAULT_ROLE_ID}
+      secret-id: ${VAULT_SECRET_ID}
+  lease:
+    instance-id: ${HOSTNAME:orchestrator-1}
+    lock-expiration-minutes: 30
+  security:
+    enabled: ${APP_SECURITY_ENABLED:false}
+    jwt:
+      secret-base64: ${JWT_SECRET_BASE64:e30xMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU2Nzg5}
+      issuer: agent-platform
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  metrics:
+    tags:
+      application: agent-orchestrator
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  zipkin:
+    base-url: ${OTEL_ZIPKIN_URL:http://jaeger:9411}
+  traces:
+    sampling:
+      probability: ${OTEL_SAMPLING_RATE:0.1}
+
+# ─── OpenTelemetry Configuration ──────────────────────────────────────
+otel:
+  resource:
+    attributes:
+      service.name: agent-orchestrator
+      deployment.environment: development
+
+# ─── Resilience4j Circuit Breaker Configuration ──────────────────────
+resilience4j:
+  circuitbreaker:
+    instances:
+      llm-provider:
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+      worker-dispatch:
+        slidingWindowSize: 20
+        minimumNumberOfCalls: 10
+        failureRateThreshold: 70
+        waitDurationInOpenState: 60s
+
+  timelimiter:
+    instances:
+      llm-call:
+        timeoutDuration: 90s
+      task-dispatch:
+        timeoutDuration: 5s

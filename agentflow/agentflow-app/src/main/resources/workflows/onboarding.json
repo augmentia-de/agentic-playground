@@ -1,0 +1,66 @@
+{
+  "format": "quad.workflow",
+  "schemaVersion": 2,
+  "mainWorkflow": {
+    "id": "onboarding",
+    "name": "Onboarding Assistant",
+    "version": "1.0.0",
+    "status": "draft",
+    "initialTask": "Summarise the project context and produce a first-week onboarding plan.",
+    "nodes": [
+      {
+        "id": "context",
+        "type": "agent",
+        "title": "Project context",
+        "agent": { "ref": "ex-onboarding-context" }
+      },
+      {
+        "id": "plan",
+        "type": "agent",
+        "title": "Onboarding plan",
+        "dependsOn": ["context"],
+        "agent": { "ref": "ex-onboarding-planner" }
+      },
+      {
+        "id": "end",
+        "type": "end",
+        "title": "Done",
+        "dependsOn": ["plan"]
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": "ex-onboarding-context",
+      "name": "Project Context Reader",
+      "version": "1.0.0",
+      "category": "onboarding",
+      "model": "deepseek-v4.1-flash",
+      "temperature": 0.1,
+      "maxTokens": 1024,
+      "topP": 1.0,
+      "tools": ["readFile", "listDirectory", "grepSearch"],
+      "guardrailsInput": [],
+      "guardrailsOutput": [],
+      "hooks": [],
+      "active": true,
+      "systemPrompt": "You summarise the given project context into three bullet points that matter for a new hire."
+    },
+    {
+      "id": "ex-onboarding-planner",
+      "name": "Onboarding Planner",
+      "version": "1.0.0",
+      "category": "onboarding",
+      "model": "deepseek-v4.1-flash",
+      "temperature": 0.3,
+      "maxTokens": 2048,
+      "topP": 1.0,
+      "tools": [],
+      "guardrailsInput": [],
+      "guardrailsOutput": [],
+      "hooks": [],
+      "active": true,
+      "systemPrompt": "You are an onboarding assistant. Produce a concrete, day-by-day first-week plan."
+    }
+  ]
+}

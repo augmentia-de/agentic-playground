@@ -1,0 +1,5 @@
+{
+  "/agentflow": { "target": "http://localhost:8095", "secure": false, "changeOrigin": true },
+  "/actuator": { "target": "http://localhost:8095", "secure": false, "changeOrigin": true },
+  "/examples": { "target": "http://localhost:8095", "secure": false, "changeOrigin": true }
+}

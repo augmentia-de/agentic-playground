@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>de.augmentia.quad</groupId>
+    <artifactId>quad</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>QUAD Java - Native Open Agent Orchestration</name>
+    <description>Java/Quarkus port of QUAD with LangChain4j and Strands-inspired agent composition</description>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <maven.compiler.release>21</maven.compiler.release>
+        <quarkus.platform.version>3.33.2</quarkus.platform.version>
+        <quarkus-langchain4j.version>1.10.0</quarkus-langchain4j.version>
+        <langchain4j.version>1.15.0</langchain4j.version>
+        <langchain4j-mcp.version>1.15.0-beta25</langchain4j-mcp.version>
+        <surefire-plugin.version>3.2.5</surefire-plugin.version>
+
+        <!-- Testcontainers versions -->
+        <testcontainers.version>1.20.2</testcontainers.version>
+        <caffeine.version>3.1.8</caffeine.version>
+        <assertj.version>3.26.3</assertj.version>
+        <diff-utils.version>5.3.0</diff-utils.version>
+        <micrometer.version>1.14.5</micrometer.version>
+        <enforcer-plugin.version>3.6.3</enforcer-plugin.version>
+        <elasticsearch-java.version>8.12.2</elasticsearch-java.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.quarkus</groupId>
+                <artifactId>quarkus-bom</artifactId>
+                <version>${quarkus.platform.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>dev.langchain4j</groupId>
+                <artifactId>langchain4j-bom</artifactId>
+                <version>${langchain4j.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>de.augmentia.quad</groupId>
+                <artifactId>quad-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.augmentia.quad</groupId>
+                <artifactId>quad</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.augmentia.quad</groupId>
+                <artifactId>quad-tool-builtin</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.augmentia.quad</groupId>
+                <artifactId>quad-tool-mcp</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.augmentia.quad</groupId>
+                <artifactId>quad-sandbox-docker</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.augmentia.quad</groupId>
+                <artifactId>quad-workflow-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.augmentia.quad</groupId>
+                <artifactId>quad-workflow-engine</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.augmentia.quad</groupId>
+                <artifactId>quad-contract</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.augmentia.quad</groupId>
+                <artifactId>quad-quarkus-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <!--
+        No global <dependencies> block any more.
+
+        Previously jakarta.inject, jakarta.enterprise.cdi-api,
+        jakarta.ws.rs-api, jackson-databind and langchain4j stood here as normal
+        (compile) dependencies for EVERY module. That made the
+        framework neutrality of the individual modules unenforceable: the
+        Enforcer ban on io.quarkus did take effect, but every module got CDI and
+        JAX-RS forcibly imposed — also quad-contract and
+        quad-workflow-engine, which are supposed to be free of exactly that.
+
+        The dependencies are now declared per module, where they are needed.
+        dependencyManagement (BOMs + own versions) remains untouched.
+    -->
+
+    <modules>
+        <module>quad-core</module>
+        <module>quad-workflow-core</module>
+        <module>quad-tool-builtin</module>
+        <module>quad-tool-mcp</module>
+        <module>quad-sandbox-docker</module>
+        <module>quad-contract</module>
+        <module>quad-workflow-engine</module>
+        <module>quad-quarkus-core</module>
+        <module>quad-quarkus</module>
+        <module>quad-examples</module>
+    </modules>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+            <plugin>
+                <groupId>org.flywaydb</groupId>
+                <artifactId>flyway-maven-plugin</artifactId>
+                <version>11.14.1</version> <!-- Use your Flyway version -->
+                <configuration>
+                    <url>jdbc:sqlite:${project.basedir}/data/quad.db</url>
+                    <locations>
+                        <location>filesystem:src/main/resources/db/migration/sqlite</location>
+                    </locations>
+                </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.xerial</groupId>
+                        <artifactId>sqlite-jdbc</artifactId>
+                        <version>3.45.1.0</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.13.0</version>
+                    <configuration>
+                        <release>21</release>
+                        <!--
+                            TODO2 A1: ReflectiveToolMethod uses param.getName() as a fallback
+                            when a @Tool parameter carries no @Param. Without this flag the
+                            compiler delivers "arg0", "arg1", ... — the LLM then sends the real
+                            name, the binding finds nothing, and the parameter stays null,
+                            WITHOUT an exception. All built-in tools carry @Param and bypassed
+                            that so far; every new tool without @Param falls into the hole.
+                            The parameter name is part of the JSON schema, so it is not optional.
+                        -->
+                        <parameters>true</parameters>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>${surefire-plugin.version}</version>
+                    <configuration>
+                        <!--
+                            These tests need a running backend (localhost:8086), an LLM or a
+                            Kafka broker and therefore do NOT belong in the default build.
+                            Run with -Pintegration-tests.
+
+                            NOTE: JUnit tags match exactly. "e2e-llm" is a tag of its own
+                            and is not covered by "e2e" — it has to be named explicitly
+                            here, otherwise the test runs along and fails in the default
+                            build with "Connection refused".
+                        -->
+                        <excludedGroups>llm,e2e,e2e-llm</excludedGroups>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.jacoco</groupId>
+                    <artifactId>jacoco-maven-plugin</artifactId>
+                    <version>0.8.12</version>
+                </plugin>
+                <!--
+                    Boundary guard between the framework-neutral core and the
+                    Quarkus adapter. Configured by the modules with their own rule.
+                -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-enforcer-plugin</artifactId>
+                    <version>${enforcer-plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>io.smallrye</groupId>
+                    <artifactId>jandex-maven-plugin</artifactId>
+                    <version>3.6.0</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>integration-tests</id>
+            <build>
+                <pluginManagement>
+                    <plugins>
+                        <plugin>
+                            <groupId>org.apache.maven.plugins</groupId>
+                            <artifactId>maven-surefire-plugin</artifactId>
+                            <version>${surefire-plugin.version}</version>
+                            <configuration>
+                                <excludedGroups combine.self="override"/>
+                                <groups>llm,e2e,e2e-llm</groups>
+                            </configuration>
+                        </plugin>
+                    </plugins>
+                </pluginManagement>
+            </build>
+        </profile>
+    </profiles>
+</project>

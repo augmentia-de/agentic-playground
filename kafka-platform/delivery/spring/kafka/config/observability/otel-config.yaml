@@ -1,0 +1,58 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:4317"
+      http:
+        endpoint: "0.0.0.0:4318"
+
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'orchestrator'
+          scrape_interval: 15s
+          static_configs:
+            - targets: ['agent-orchestrator:8080']
+              labels:
+                service: 'orchestrator'
+        - job_name: 'worker'
+          scrape_interval: 15s
+          static_configs:
+            - targets: ['agent-worker:8080']
+              labels:
+                service: 'worker'
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+  transform:
+    trace_statements:
+      - context: span
+        statements:
+          - set(resource["service.name"], "agentic-platform")
+          - set(resource["deployment.environment"], "development")
+
+exporters:
+  jaeger:
+    endpoint: "jaeger:14250"
+    tls:
+      insecure: true
+
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+
+  logging:
+    verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch, transform]
+      exporters: [jaeger, logging]
+    metrics:
+      receivers: [prometheus]
+      processors: [batch]
+      exporters: [logging]

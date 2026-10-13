@@ -1,0 +1,67 @@
+{
+  "name": "error-taxonomy",
+  "version": 1,
+  "dag_structure": {
+    "nodes": [
+      {
+        "stepId": "trigger",
+        "nodeType": "STEP",
+        "agentType": "researcher",
+        "dependsOn": []
+      },
+      {
+        "stepId": "mode_gate",
+        "nodeType": "DECISION",
+        "dependsOn": ["trigger"],
+        "branches": [
+          {
+            "branchId": "retryable",
+            "condition": "context['trigger'].mode == 'retryable'",
+            "target": "b.retryable.task"
+          },
+          {
+            "branchId": "fatal",
+            "condition": "context['trigger'].mode == 'fatal'",
+            "target": "b.fatal.task"
+          }
+        ],
+        "defaultTarget": "b.hitl.task"
+      },
+      {
+        "stepId": "b.retryable.task",
+        "nodeType": "STEP",
+        "agentType": "fixer",
+        "dependsOn": ["mode_gate"]
+      },
+      {
+        "stepId": "b.retryable.verify",
+        "nodeType": "STEP",
+        "agentType": "tester",
+        "dependsOn": ["b.retryable.task"]
+      },
+      {
+        "stepId": "b.fatal.task",
+        "nodeType": "STEP",
+        "agentType": "coder",
+        "dependsOn": ["mode_gate"]
+      },
+      {
+        "stepId": "b.hitl.task",
+        "nodeType": "STEP",
+        "agentType": "reviewer",
+        "dependsOn": ["mode_gate"]
+      },
+      {
+        "stepId": "collect",
+        "nodeType": "STEP",
+        "agentType": "quality",
+        "dependsOn": ["b.retryable.verify", "b.fatal.task", "b.hitl.task"]
+      },
+      {
+        "stepId": "end",
+        "nodeType": "END",
+        "dependsOn": ["collect"]
+      }
+    ]
+  }
+}

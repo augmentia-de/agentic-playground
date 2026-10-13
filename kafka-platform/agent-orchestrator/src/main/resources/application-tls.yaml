@@ -1,0 +1,67 @@
+# ─── Spring Boot Kafka Client — TLS + SCRAM-SHA-512 ──────────────
+# Aktiv: SPRING_PROFILES_ACTIVE=tls
+# Verwendet in: agent-orchestrator, agent-worker
+
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:tls://kafka-tls:9092}
+    
+# ── Producer configuration (TLS+SASL) ──────────────────
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        
+        # ── Security Protocol ──────────────────────────────
+        security.protocol: SASL_SSL
+        sasl.mechanism: SCRAM-SHA-512
+        sasl.jaas.config: >-
+          org.apache.kafka.common.security.scram.ScramLoginModule required
+          username="${KAFKA_PRODUCER_USER:producer}"
+          password="${KAFKA_PRODUCER_PASS:producer-secret}";
+        
+        # ── SSL Config ─────────────────────────────────────
+        ssl.truststore.location: ${KAFKA_CLIENT_TRUSTSTORE:/etc/kafka/secrets/truststore.jks}
+        ssl.truststore.password: ${KAFKA_CLIENT_TRUSTSTORE_PASSWORD:kfk-pass}
+        ssl.truststore.type: JKS
+        ssl.keystore.location: ${KAFKA_CLIENT_KEYSTORE:"/etc/kafka/secrets/${KAFKA_CLIENT_CERT_NAME:orchestrator}-keystore.jks"}
+        ssl.keystore.password: ${KAFKA_CLIENT_KEYSTORE_PASSWORD:kfk-pass}
+        ssl.keystore.key-password: ${KAFKA_CLIENT_KEYSTORE_PASSWORD:kfk-pass}
+        ssl.keystore.type: JKS
+        ssl.endpoint.identification.algorithm: https
+        
+# ── Consumer configuration (TLS+SASL) ──────────────────
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      
+      properties:
+        isolation.level: read_committed
+        
+        # ── Security Protocol ──────────────────────────────
+        security.protocol: SASL_SSL
+        sasl.mechanism: SCRAM-SHA-512
+        sasl.jaas.config: >-
+          org.apache.kafka.common.security.scram.ScramLoginModule required
+          username="${KAFKA_CONSUMER_USER:consumer}"
+          password="${KAFKA_CONSUMER_PASS:consumer-secret}";
+        
+        # ── SSL Config ─────────────────────────────────────
+        ssl.truststore.location: ${KAFKA_CLIENT_TRUSTSTORE:/etc/kafka/secrets/truststore.jks}
+        ssl.truststore.password: ${KAFKA_CLIENT_TRUSTSTORE_PASSWORD:kfk-pass}
+        ssl.truststore.type: JKS
+        ssl.keystore.location: ${KAFKA_CLIENT_KEYSTORE:"/etc/kafka/secrets/${KAFKA_CLIENT_CERT_NAME:worker}-keystore.jks"}
+        ssl.keystore.password: ${KAFKA_CLIENT_KEYSTORE_PASSWORD:kfk-pass}
+        ssl.keystore.key-password: ${KAFKA_CLIENT_KEYSTORE_PASSWORD:kfk-pass}
+        ssl.keystore.type: JKS
+        ssl.endpoint.identification.algorithm: https
+    
+    listener:
+      ack-mode: record
+      concurrency: 1

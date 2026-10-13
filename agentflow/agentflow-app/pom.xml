@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>de.augmentia.agentflow</groupId>
+        <artifactId>agentflow</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>agentflow-app</artifactId>
+    <name>AgentFlow App</name>
+    <description>
+        Spring Boot app: LangGraph4j graph reasoning (Spring AI) wrapped in durable Temporal
+        workflows. Separately deployable; reuses quad-core building blocks.
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>de.augmentia.agentflow</groupId>
+            <artifactId>agentflow-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>de.augmentia.agentflow</groupId>
+            <artifactId>agentflow-examples</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Reuse existing framework building blocks -->
+        <dependency>
+            <groupId>de.augmentia.quad</groupId>
+            <artifactId>quad-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>de.augmentia.quad</groupId>
+            <artifactId>quad-tool-builtin</artifactId>
+            <version>${quad.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>de.augmentia.quad</groupId>
+            <artifactId>quad-tool-mcp</artifactId>
+            <version>${quad.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>de.augmentia.quad</groupId>
+            <artifactId>quad-workflow-core</artifactId>
+            <version>${quad.version}</version>
+        </dependency>
+
+        <!-- Spring Boot web + Spring AI (chat) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.bsc.langgraph4j</groupId>
+            <artifactId>langgraph4j-sqlite-saver</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-openai</artifactId>
+        </dependency>
+
+        <!-- Durable execution -->
+        <dependency>
+            <groupId>io.temporal</groupId>
+            <artifactId>temporal-sdk</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.temporal</groupId>
+            <artifactId>temporal-spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- CDI annotations referenced by quad-core (runs without a CDI container here) -->
+        <dependency>
+            <groupId>jakarta.enterprise</groupId>
+            <artifactId>jakarta.enterprise.cdi-api</artifactId>
+            <version>4.0.1</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.temporal</groupId>
+            <artifactId>temporal-testing</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.temporal</groupId>
+            <artifactId>temporal-test-server</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

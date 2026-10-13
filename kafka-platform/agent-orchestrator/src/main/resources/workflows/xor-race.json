@@ -1,0 +1,59 @@
+{
+  "name": "xor-race",
+  "version": 1,
+  "dag_structure": {
+    "nodes": [
+      {
+        "stepId": "plan",
+        "nodeType": "STEP",
+        "agentType": "planner",
+        "dependsOn": []
+      },
+      {
+        "stepId": "race_fork",
+        "nodeType": "FORK",
+        "dependsOn": ["plan"],
+        "branches": [
+          {
+            "branchId": "fast",
+            "firstStep": "b.fast.build"
+          },
+          {
+            "branchId": "slow",
+            "firstStep": "b.slow.build"
+          }
+        ]
+      },
+      {
+        "stepId": "b.fast.build",
+        "nodeType": "STEP",
+        "agentType": "coder",
+        "dependsOn": ["race_fork"]
+      },
+      {
+        "stepId": "b.slow.build",
+        "nodeType": "STEP",
+        "agentType": "tester",
+        "dependsOn": ["race_fork"]
+      },
+      {
+        "stepId": "race_join",
+        "nodeType": "JOIN",
+        "joinType": "XOR",
+        "joinBranches": ["fast", "slow"],
+        "dependsOn": ["b.fast.build", "b.slow.build"]
+      },
+      {
+        "stepId": "publish_winner",
+        "nodeType": "STEP",
+        "agentType": "quality",
+        "dependsOn": ["race_join"]
+      },
+      {
+        "stepId": "end",
+        "nodeType": "END",
+        "dependsOn": ["publish_winner"]
+      }
+    ]
+  }
+}

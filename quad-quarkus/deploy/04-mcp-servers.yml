@@ -1,0 +1,31 @@
+# 04-mcp-servers.yml — MCP Tool Server(s)
+# Starten: ./stack.sh mcp
+#
+# Dependencies: Layer 3 (03-identity-keycloak) for MCP token auth
+
+networks:
+  llm-net:
+    external: true
+
+services:
+  mcp-servers:
+    build:
+      context: ../mcp
+      dockerfile: Dockerfile
+    container_name: mcp-servers
+    ports:
+      - "3001:3001"   # filesystem
+      - "3002:3002"   # memory
+      - "3003:3003"   # git
+      - "3004:3004"   # fetch
+    volumes:
+      # Portable container paths. The MCP filesystem server is rooted at
+      # /workspace/shared and the Quarkus backend must be configured with
+      # QUAD_WORKSPACE=/workspace/shared (or quad.workspace=/workspace/shared)
+      # when using this containerized MCP stack — no absolute host paths.
+      - ../workspace/shared:/workspace/shared:rw
+      - ../workspace:/workspace:rw
+      - ../mcp/mcp-config.json:/workspace/mcp-config.json:ro
+    restart: unless-stopped
+    networks:
+      - llm-net

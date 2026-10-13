@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>de.augmentia.quad</groupId>
+        <artifactId>quad</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>quad-quarkus-core</artifactId>
+    <name>QUAD - Quarkus Adapter Layer</name>
+    <description>Quarkus-specific adapter layer over quad-core: CDI producers,
+        MicroProfile config mapping, Jandex index and native image hints.
+
+        quad-core remains framework-neutral and may be used by non-Quarkus consumers
+        (e.g. kafka-platform/quad-workflow-worker). Everything that needs Arc,
+        Quarkus build time or GraalVM, lies in this module.
+
+        Deliberately NO dependency on io.quarkiverse.langchain4j: the code
+        creates ChatModels so far via de.augmentia.quad.core.config.ModelFactory
+        with dev.langchain4j:langchain4j-open-ai. The quarkus-langchain4j extension
+        would be a separate migration with version coupling to the Quarkus platform
+        and is only pulled in once the producers are switched over.</description>
+
+    <dependencies>
+        <!-- The framework-neutral core. -->
+        <dependency>
+            <groupId>de.augmentia.quad</groupId>
+            <artifactId>quad-core</artifactId>
+        </dependency>
+
+        <!--
+            quad-tool-builtin is needed exclusively because of the native image hints:
+            QuadNativeImageHints references the @Tool classes by
+            class literals. quad-core does not register them itself, because that
+            module is missing.
+        -->
+        <dependency>
+            <groupId>de.augmentia.quad</groupId>
+            <artifactId>quad-tool-builtin</artifactId>
+        </dependency>
+
+        <!--
+            quad-contract is likewise only needed for the native image hints:
+            before the extraction the REST DTOs carried @RegisterForReflection on
+            themselves. In the framework-neutral contract module this annotation is not
+            allowed, so the Quarkus layer registers them via class literals.
+        -->
+        <dependency>
+            <groupId>de.augmentia.quad</groupId>
+            <artifactId>quad-contract</artifactId>
+        </dependency>
+
+        <!-- CDI container. compile here, because this module declares @Produces beans with annotations from Arc. -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-arc</artifactId>
+        </dependency>
+
+        <!-- ChatModel types of the producer. -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.eclipse.microprofile.config</groupId>
+            <artifactId>microprofile-config-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.jboss.logging</groupId>
+            <artifactId>jboss-logging</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>${assertj.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.enterprise</groupId>
+            <artifactId>jakarta.enterprise.cdi-api</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!--
+                Writes META-INF/jandex.idx. Quarkus finds the index in
+                dependencies automatically, so a
+                quarkus.index-dependency.quad-quarkus-core.* entry in the app is no longer needed.
+            -->
+            <plugin>
+                <groupId>io.smallrye</groupId>
+                <artifactId>jandex-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>make-index</id>
+                        <goals>
+                            <goal>jandex</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+                This layer must not pull the Quarkus runtime into foreign
+                classpaths. quad-core and the tool modules thereby remain
+                consumable for the Spring Boot worker.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>ban-non-quarkus-adapters</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <bannedDependencies>
+                                    <searchTransitive>true</searchTransitive>
+                                    <excludes>
+                                        <exclude>de.augmentia.quad:quad-workflow-core</exclude>
+                                    </excludes>
+                                    <message>quad-quarkus-core is a pure adapter layer and
+                                        must not pull in domain logic from quad-workflow-core.</message>
+                                </bannedDependencies>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

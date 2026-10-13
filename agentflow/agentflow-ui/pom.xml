@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>de.augmentia.agentflow</groupId>
+        <artifactId>agentflow</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>agentflow-ui</artifactId>
+    <packaging>pom</packaging>
+    <name>AgentFlow UI</name>
+    <description>
+        Angular webapp for AgentFlow (dashboard, runs, workflows/agents editing, HITL,
+        observability, examples, settings). Built with the Angular CLI; the Maven module only
+        wraps the frontend build in the optional 'ui' profile so the default reactor build stays
+        Node-free/offline-safe.
+    </description>
+
+    <properties>
+        <node.version>v22.16.0</node.version>
+        <npm.version>10.9.2</npm.version>
+        <frontend.plugin.version>1.15.1</frontend.plugin.version>
+    </properties>
+
+    <profiles>
+        <!-- Activate with: mvn -pl agentflow-ui -am -Pui package -->
+        <profile>
+            <id>ui</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.github.eirslett</groupId>
+                        <artifactId>frontend-maven-plugin</artifactId>
+                        <version>${frontend.plugin.version}</version>
+                        <configuration>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                            <installDirectory>${project.build.directory}</installDirectory>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>install-node-and-npm</id>
+                                <goals><goal>install-node-and-npm</goal></goals>
+                                <configuration>
+                                    <nodeVersion>${node.version}</nodeVersion>
+                                    <npmVersion>${npm.version}</npmVersion>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>npm-ci</id>
+                                <goals><goal>npm</goal></goals>
+                                <configuration>
+                                    <arguments>ci</arguments>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>npm-build</id>
+                                <goals><goal>npm</goal></goals>
+                                <configuration>
+                                    <arguments>run build</arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>

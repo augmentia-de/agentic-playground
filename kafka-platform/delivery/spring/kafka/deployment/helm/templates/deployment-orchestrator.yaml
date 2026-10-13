@@ -1,0 +1,114 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kafka-platform.fullname" . }}-orchestrator
+  namespace: {{ .Release.Namespace | default "default" }}
+  labels:
+    app.kubernetes.io/name: {{ include "kafka-platform.name" . }}
+    app.kubernetes.io/component: orchestrator
+spec:
+  replicas: {{ .Values.orchestrator.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "kafka-platform.name" . }}
+      app.kubernetes.io/component: orchestrator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "kafka-platform.name" . }}
+        app.kubernetes.io/component: orchestrator
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-secrets.yaml") . | sha256sum }}
+        {{- if .Values.vault.enabled }}
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/agent-inject-secret-config: {{ .Values.vault.agentPath }}/orchestrator
+        vault.hashicorp.com/agent-inject-template-config: |
+          {{- with secret .Values.vault.agentPath "/orchestrator" }}
+          # Orchestrator secrets from Vault
+          # LLM keys: {{ .Data.llmKeys }}
+          # Agent credentials: {{ .Data.agentCreds }}
+          {{- end }}
+        vault.hashicorp.com/role: {{ .Values.vault.role }}
+        vault.hashicorp.com/namespace: {{ .Values.vault.namespace | default "default" }}
+        {{- end }}
+    spec:
+      {{- if .Values.serviceAccount.create }}
+      serviceAccountName: {{ include "kafka-platform.fullname" . }}-sa
+      {{- end }}
+      containers:
+        - name: orchestrator
+          image: "{{ .Values.image.orchestrator.repository }}:{{ .Values.image.orchestrator.tag }}"
+          imagePullPolicy: {{ .Values.image.orchestrator.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: prometheus
+              containerPort: 9090
+              protocol: TCP
+          env:
+            - name: POSTGRES_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "kafka-platform.fullname" . }}-config
+                  key: SPRING_DATASOURCE_URL
+                  optional: true
+            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "kafka-platform.fullname" . }}-config
+                  key: SPRING_KAFKA_BOOTSTRAP_SERVERS
+            - name: SPRING_DATA_REDIS_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "kafka-platform.fullname" . }}-config
+                  key: SPRING_DATA_REDIS_HOST
+            {{- if not .Values.postgres.enabled }}
+            - name: POSTGRES_URL
+              value: {{ .Values.postgres.existingUrl | default "jdbc:postgresql://postgres:5432/agent_platform" | quote }}
+            {{- end }}
+            {{- range $key, $value := .Values.orchestrator.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.orchestrator.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kafka-platform.fullname" . }}-orchestrator
+  namespace: {{ .Release.Namespace | default "default" }}
+  labels:
+    app.kubernetes.io/name: {{ include "kafka-platform.name" . }}
+    app.kubernetes.io/component: orchestrator
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+    prometheus.io/path: "/actuator/prometheus"
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+    - name: prometheus
+      port: 9090
+      targetPort: prometheus
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: {{ include "kafka-platform.name" . }}
+    app.kubernetes.io/component: orchestrator

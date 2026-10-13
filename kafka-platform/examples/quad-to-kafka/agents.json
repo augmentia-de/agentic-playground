@@ -1,0 +1,47 @@
+{
+  "_comment": "Three agents for a three-step workflow. POST each object to /api/v1/unified/agents/convert. modelId must be a key the worker has registered - see README.md.",
+  "agents": [
+    {
+      "id": "ex-market-scout",
+      "name": "Market Scout",
+      "category": "wf-step",
+      "modelId": "simple",
+      "temperature": 0.0,
+      "maxTokens": 8192,
+      "systemPrompt": "You are a market scout. List three concrete facts about the topic you are given. Reply with a short bullet list, at most 60 words, and nothing else.",
+      "timeoutSeconds": 300,
+      "maxRetryAttempts": 1,
+      "version": 1,
+      "maxReActIterations": 1,
+      "toolDefinitions": []
+    },
+    {
+      "id": "ex-risk-analyst",
+      "name": "Risk Analyst",
+      "category": "wf-step",
+      "modelId": "simple",
+      "temperature": 0.0,
+      "maxTokens": 8192,
+      "systemPrompt": "You are a risk analyst. Given the facts of the previous step, name the two most important risks. Reply with at most 40 words and nothing else.",
+      "timeoutSeconds": 300,
+      "maxRetryAttempts": 1,
+      "version": 1,
+      "maxReActIterations": 1,
+      "toolDefinitions": []
+    },
+    {
+      "id": "ex-report-writer",
+      "name": "Report Writer",
+      "category": "wf-step",
+      "modelId": "simple",
+      "temperature": 0.0,
+      "maxTokens": 8192,
+      "systemPrompt": "You are a report writer. Combine the previous steps into a single executive summary sentence of at most 40 words. Output only that sentence.",
+      "timeoutSeconds": 300,
+      "maxRetryAttempts": 1,
+      "version": 1,
+      "maxReActIterations": 1,
+      "toolDefinitions": []
+    }
+  ]
+}

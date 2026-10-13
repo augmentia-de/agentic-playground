@@ -1,0 +1,115 @@
+# =============================================================================
+# Agentic Platform — konsolidierte .gitignore
+#
+# Zusammengeführt aus:
+#   quad-quarkus/.gitignore, kafka-platform/.gitignore, agentflow/.gitignore,
+#   integration-tests/.gitignore, quad-quarkus/quad-ui/.gitignore,
+#   agentflow/agentflow-ui/.gitignore
+# =============================================================================
+
+# ── Build-Output ────────────────────────────────────────────────────────────
+target/
+**/dependency-reduced-pom.xml
+*.class
+
+# ── Node / Angular / Vite (UI) ──────────────────────────────────────────────
+node_modules/
+dist/
+dist-ssr/
+out-tsc/
+bazel-out/
+**/.angular/cache/
+.sass-cache/
+coverage/
+__screenshots__/
+typings/
+connect.lock
+libpeerconnection.log
+testem.log
+# nur die quad-ui hat eine eingecheckte Lock-Datei
+quad-quarkus/quad-ui/package-lock.json
+# TypeScript-Declarations-Build-Ausgabe der quad-ui
+quad-quarkus/quad-ui/dist-types/
+# Quarkus-UI-Cache (während des Builds erzeugt)
+quad-quarkus/quad-quarkus/target/classes/META-INF/resources/ui/
+
+# ── Logs ────────────────────────────────────────────────────────────────────
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ── IDE / Editor / OS ───────────────────────────────────────────────────────
+.idea/
+*.iml
+*.ipr
+*.iws
+**/.vscode/*
+!**/.vscode/extensions.json
+!**/.vscode/settings.json
+!**/.vscode/tasks.json
+!**/.vscode/launch.json
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+.history/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
+
+# ── Secrets / lokale Env (Templates *.example bleiben getrackt) ─────────────
+.env
+.env.*
+!*.example
+!quad-quarkus/.env.test
+quad-quarkus/set_keys.sh
+quad-quarkus/openworker-quarkus/.env
+kafka-platform/quad-workflow-worker/.env
+integration-tests/scripts/set_env.local.sh
+*.local.sh
+*.local.env
+*.local
+
+# ── Runtime-Daten (generiert) ───────────────────────────────────────────────
+quad-quarkus/workspace/
+quad-quarkus/data/
+quad-quarkus/misc/
+quad-quarkus/mcp/
+quad-quarkus/quad-quarkus/data/
+quad-quarkus/openworker-quarkus/openworker.db
+*.pid
+
+# ── Tooling / Sonstiges ─────────────────────────────────────────────────────
+.codebase-memory/
+kafka-platform/quad-workflow-worker/deps.tar.gz
+kafka-platform/ai-agent-service/
+# lokale Notizen im quad-Wurzelverzeichnis
+quad-quarkus/Learnings.md
+quad-quarkus/lessons.md
+quad-quarkus/Luecken.md
+quad-quarkus/p.md
+
+# ── Root-Ebene: nur README.md + pom.xml sind getrackt ───────────────────────
+/.code-workspace
+/Makefile
+/start-both.sh
+/start-kafka.sh
+/start-quarkus.sh
+/TODO2.md
+/eys.md
+/solve.md
+/strands2quad.md
+/myclaw2quad.md
+/myclaw2quad-reviewed.md
+/logs/
+/target/

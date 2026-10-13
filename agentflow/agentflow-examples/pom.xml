@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>de.augmentia.agentflow</groupId>
+        <artifactId>agentflow</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>agentflow-examples</artifactId>
+    <name>AgentFlow Examples</name>
+    <description>
+        Five sample business cases built on AgentFlow + quad-core. A library module that is
+        component-scanned by agentflow-app, so the cases are exposed as durable Temporal
+        workflows next to the platform endpoints.
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>de.augmentia.agentflow</groupId>
+            <artifactId>agentflow-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Reuse quad-core building blocks directly (no dependency on agentflow-app) -->
+        <dependency>
+            <groupId>de.augmentia.quad</groupId>
+            <artifactId>quad-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>de.augmentia.quad</groupId>
+            <artifactId>quad-tool-builtin</artifactId>
+            <version>${quad.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>de.augmentia.quad</groupId>
+            <artifactId>quad-tool-mcp</artifactId>
+            <version>${quad.version}</version>
+        </dependency>
+
+        <!-- Durable execution -->
+        <dependency>
+            <groupId>io.temporal</groupId>
+            <artifactId>temporal-sdk</artifactId>
+        </dependency>
+        <!-- @WorkflowImpl/@ActivityImpl annotations for worker auto-discovery (runtime provided by the app) -->
+        <dependency>
+            <groupId>io.temporal</groupId>
+            <artifactId>temporal-spring-boot-autoconfigure</artifactId>
+            <version>${temporal.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- REST controllers + Jackson (provided at runtime by agentflow-app) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- CDI annotations referenced by quad-core code paths -->
+        <dependency>
+            <groupId>jakarta.enterprise</groupId>
+            <artifactId>jakarta.enterprise.cdi-api</artifactId>
+            <version>4.0.1</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.temporal</groupId>
+            <artifactId>temporal-testing</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.temporal</groupId>
+            <artifactId>temporal-test-server</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

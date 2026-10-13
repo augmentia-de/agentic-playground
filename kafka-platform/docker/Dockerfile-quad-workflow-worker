@@ -1,0 +1,31 @@
+FROM eclipse-temurin:21-jdk-alpine AS deps
+WORKDIR /build
+RUN apk add --no-cache maven bash curl > /dev/null 2>&1 || true
+
+COPY pom.xml .
+COPY src/main/java ./src/main/java  
+COPY src/main/resources ./src/main/resources
+RUN mvn clean package -DskipTests -q 2>/dev/null || { \
+    echo "Build failed, retrying..."; \
+    mvn package -DskipTests; \
+}
+RUN test -f target/quad-workflow-worker-*.jar && echo "BUILD SUCCESS" || exit 1
+
+FROM eclipse-temurin:21-jre-alpine AS runtime
+WORKDIR /app
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+COPY --from=deps /build/target/*.jar app.jar
+RUN mkdir -p /var/lib/quad-worker/workspace && chown -R appuser:appgroup /var/lib/quad-worker
+
+USER appuser
+EXPOSE 8092
+HEALTHCHECK --interval=15s --timeout=10s --retries=4 --start-period=90s \
+    CMD wget -qO- http://localhost:8092/actuator/health || exit 1
+ENTRYPOINT ["java", \
+    "-XX:+UseG1GC", \
+    "-Xms256m", \
+    "-Xmx512m", \
+    "-XX:+ExitOnOutOfMemoryError", \
+    "-Dspring.profiles.active=docker", \
+    "-jar", "app.jar"]

@@ -1,0 +1,38 @@
+# Runtime-only image for quad-workflow-worker.
+#
+# Deliberately does NOT run Maven inside the container. The Spring Boot fat jar
+# built on the host already contains every dependency (BOOT-INF/lib), so the
+# in-container build plus deps.tar.gz only added a failure mode: it could not
+# resolve com.agentplatform:agent-common, which exists nowhere but in a
+# locally installed ~/.m2.
+#
+# Build the jar first:
+#   mvn -B -ntp clean install -DskipTests
+# Then, from the repository root:
+#   docker build -f docker/Dockerfile-quad-workflow-worker-runtime -t augmentia/quad-workflow-worker:1.0.0-SNAPSHOT .
+
+FROM eclipse-temurin:21-jre-alpine AS runtime
+WORKDIR /app
+
+# Non-root, same as the previous image
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+COPY quad-workflow-worker/target/quad-workflow-worker-*.jar app.jar
+
+# Workspace the tools write into; must be writable by appuser
+RUN mkdir -p /var/lib/quad-worker/workspace && chown -R appuser:appgroup /var/lib/quad-worker
+
+USER appuser
+
+EXPOSE 8092
+
+HEALTHCHECK --interval=15s --timeout=10s --retries=4 --start-period=90s \
+    CMD wget -qO- http://localhost:8092/actuator/health || exit 1
+
+ENTRYPOINT ["java", \
+    "-XX:+UseG1GC", \
+    "-Xms256m", \
+    "-Xmx512m", \
+    "-XX:+ExitOnOutOfMemoryError", \
+    "-Dspring.profiles.active=docker", \
+    "-jar", "app.jar"]

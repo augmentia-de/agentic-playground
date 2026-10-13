@@ -1,0 +1,12 @@
+FROM eclipse-temurin:21-jre
+LABEL org.opencontainers.image.source="https://github.com/agentic-platform/kafka-platform"
+WORKDIR /app
+COPY agent-orchestrator/target/agent-orchestrator-*.jar app.jar
+EXPOSE 8080
+EXPOSE 9090
+ENTRYPOINT ["java", \
+    "-XX:+UseG1GC", \
+    "-Xms512m", \
+    "-Xmx1g", \
+    "-Dspring.profiles.active=docker", \
+    "-jar", "/app/app.jar"]

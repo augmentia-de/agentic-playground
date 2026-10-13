@@ -1,0 +1,67 @@
+{
+  "format": "quad.workflow",
+  "schemaVersion": 2,
+  "mainWorkflow": {
+    "id": "invoice-processing",
+    "name": "Invoice Processing",
+    "version": "1.0.0",
+    "status": "draft",
+    "initialTask": "Extract the invoice fields and decide whether it can be auto-approved.",
+    "nodes": [
+      {
+        "id": "extract",
+        "type": "agent",
+        "title": "Extract invoice",
+        "agent": { "ref": "ex-invoice-extractor" }
+      },
+      {
+        "id": "validate",
+        "type": "agent",
+        "title": "Validate invoice",
+        "dependsOn": ["extract"],
+        "agent": { "ref": "ex-invoice-validator" }
+      },
+      {
+        "id": "end",
+        "type": "end",
+        "title": "Done",
+        "dependsOn": ["validate"]
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": "ex-invoice-extractor",
+      "name": "Invoice Extractor",
+      "version": "1.0.0",
+      "category": "finance",
+      "model": "deepseek-v4.1-flash",
+      "temperature": 0.0,
+      "maxTokens": 1024,
+      "topP": 1.0,
+      "tools": [],
+      "guardrailsInput": [],
+      "guardrailsOutput": [],
+      "hooks": [],
+      "jsonOutput": true,
+      "active": true,
+      "systemPrompt": "Extract the invoice id, total, currency and vendor from the text and return JSON."
+    },
+    {
+      "id": "ex-invoice-validator",
+      "name": "Invoice Validator",
+      "version": "1.0.0",
+      "category": "finance",
+      "model": "deepseek-v4.1-flash",
+      "temperature": 0.0,
+      "maxTokens": 512,
+      "topP": 1.0,
+      "tools": [],
+      "guardrailsInput": [],
+      "guardrailsOutput": [],
+      "hooks": [],
+      "active": true,
+      "systemPrompt": "You validate invoices. State whether the invoice can be auto-approved and why. Maximum 40 words."
+    }
+  ]
+}

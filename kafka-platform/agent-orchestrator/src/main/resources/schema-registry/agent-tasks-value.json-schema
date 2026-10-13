@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-platform/com/agentplatform/common/event/AgentTaskEvent-value",
+  "title": "AgentTaskEvent",
+  "description": "Task assignment event (SPEC2 §4.3, agent.tasks.<agent_type>)",
+  "type": "object",
+  "required": ["header", "payload"],
+  "properties": {
+    "header": {
+      "type": "object",
+      "description": "Task header with routing metadata",
+      "required": ["workflowId", "taskId", "createdAt"],
+      "properties": {
+        "workflowId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Workflow execution identifier"
+        },
+        "taskId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique task identifier"
+        },
+        "parentTaskId": {
+          "type": ["string", "null"],
+          "format": "uuid",
+          "description": "Parent task ID for iterative workflows"
+        },
+        "traceParent": {
+          "type": ["string", "null"],
+          "pattern": "^00-[0-9a-f]{32}-[0-9a-f]{16}-(0[01])$",
+          "description": "W3C Trace Context traceparent header value"
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Current attempt number (0-based)"
+        },
+        "maxAttempts": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum retry attempts allowed"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when task was created"
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Task timeout in milliseconds"
+        }
+      },
+      "additionalProperties": false
+    },
+    "agentConfig": {
+      "type": ["object", "null"],
+      "description": "Agent configuration for this task",
+      "properties": {
+        "agentType": {
+          "type": "string",
+          "description": "Agent type (researcher, planner, coder, etc.)"
+        },
+        "version": {
+          "type": "integer",
+          "description": "Agent version number"
+        },
+        "model": {
+          "type": ["string", "null"],
+          "description": "LLM model name (null for mock agents)"
+        },
+        "temperature": {
+          "type": ["number", "null"],
+          "minimum": 0.0,
+          "maximum": 2.0,
+          "description": "Sampling temperature (0-2)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "payload": {
+      "type": "object",
+      "description": "Task input payload",
+      "required": ["inputPrompt"],
+      "properties": {
+        "inputPrompt": {
+          "type": "string",
+          "description": "The prompt to be processed by the agent"
+        },
+        "contextReferences": {
+          "type": ["array", "null"],
+          "items": {
+            "type": "string"
+          },
+          "description": "References to context outputs from prior checkpoints"
+        },
+        "parameters": {
+          "type": ["object", "null"],
+          "additionalProperties": true,
+          "description": "Additional parameters passed to the agent"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,665 @@
+/* ═══ QUAD Studio · 98.css — Custom Overrides Only ═════════════
+   98.css handles: buttons, inputs, tables, windows, title-bars, tabs, status-bars, field-border
+   This file overrides only quad-specific component layouts            */
+
+/* Der 98.css-Teil ist HELL (weiße/graue Flächen). Das globale :root
+   definiert nur die dunklen Grafiktheme-Tokens (--text, --text-dim, …),
+   daher braucht die helle Oberfläche ein eigenes Meta/Dim-Token.
+   Vorher war --text-m UNDEFINIERT → alle 35 Nutzer erbten #bdbcc4
+   (dunkler Theme-Text) auf weiß = < 2:1 Kontrast (fast unlesbar). */
+:root {
+  --text-m: #404040;   /* dim/meta auf hellen 98.css-Flächen; ≥ 6:1 auf weiß/#f0f0f0 */
+}
+
+/* ─── Title Bar Icon (links oben) ────────────────────────────── */
+
+.title-bar-text { display: flex; align-items: center; gap: 6px; }
+.app-icon { width: 16px; height: 16px; object-fit: contain; }
+
+/* ─── Desktop (minimized / closed — Win98 blau) ─────────────── */
+
+.desktop-screen {
+  position: fixed; inset: 0; z-index: 1000;
+  background: #000080; /* Windows Classic blue */
+}
+
+.desktop-icon-group {
+  display: flex; flex-direction: column; align-items: center;
+  cursor: pointer; user-select: none;
+  position: absolute; top: 16px; left: 16px;
+}
+
+.desktop-icon {
+  width: 64px; height: 64px; object-fit: contain;
+}
+
+.desktop-label {
+  color: #fff; font-family: "MS Sans Serif", "Segoe UI", Tahoma, sans-serif;
+  font-size: 11px; margin-top: 3px; text-align: center;
+  background: transparent; padding: 1px 4px;
+  text-shadow: 1px 1px 0 rgba(0,0,0,0.5);
+  border: 1px dotted transparent;
+}
+
+.desktop-icon-group:hover .desktop-label {
+  background: rgba(0,0,0,0.15);
+  border-color: rgba(255,255,255,0.6);
+}
+
+/* ─── Side Navigation (links als Tab-Buttons) ─────────────────── */
+
+.app-layout {
+  display: flex;
+  min-height: calc(100vh - 38px); /* minus title-bar */
+}
+
+.side-nav {
+  width: 170px;
+  background: #f0f0f0;
+  border-right: 2px groove #808080;
+  padding: 6px 4px;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+.side-nav ul {
+  list-style: none;
+  padding: 0; margin: 0;
+}
+
+.side-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: "MS Sans Serif", "Segoe UI", Tahoma, sans-serif;
+  font-size: 11px;
+  cursor: pointer;
+  outline: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.side-btn.active {
+  font-weight: bold;
+  background: #c0d8ee;               /* leichter Blauton als Win98-Highlight */
+  border-style: inset;
+  border-width: 2px;
+  border-color: #808080 #fff #fff #808080;
+}
+
+.main-content {
+  flex: 1;
+  padding: 10px 12px 12px;
+  overflow-y: auto;
+}
+
+/* ─── Error / Warning / Empty / Loading states ────────────────── */
+
+.error-state {
+  background: #ffe0e0; border: 2px groove #e08080; border-left-width: 4px;
+  border-left-color: #a02020; border-radius: 0; padding: 6px 8px;
+  font-size: 12px; margin: 6px 0; color: #000;
+}
+
+.warning-state {
+  background: #ffffcc; border: 2px groove #db3; border-left-width: 4px;
+  border-left-color: #b80; border-radius: 0; padding: 6px 8px;
+  font-size: 12px; margin: 6px 0; color: #000;
+}
+
+.empty-state { color: var(--text-m); font-size: 13px; padding: 4px 0; font-weight: 600; }
+.loading { padding: 8px 0; color: var(--text-m); font-size: 13px; font-weight: 600; }
+
+::selection { background: #000080; color: #fff; }
+
+pre {
+  font-family: "Courier New", Courier, monospace; font-size: 11px; line-height: 1.4;
+  background: #f0f0f0; border: 2px inset #808080; border-radius: 0;
+  padding: 6px 8px; white-space: pre-wrap; overflow: auto; color: #000; margin: 0;
+}
+pre code { background: none; border: none; padding: 0; }
+
+/* ─── Dashboard ─────────────────────────────────────────────── */
+
+.dashboard h1 { font-size: 18px; margin: 0 0 14px; }
+
+.actions-section, .task-execution-section, .monitoring-section, .dynamic-section {
+  padding-top: 8px; border-top: 2px groove #808080; margin-bottom: 16px;
+}
+.actions-section:first-of-type { border-top: none; padding-top: 0; }
+
+.quick-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.task-execution-form { display: flex; flex-direction: column; gap: 6px; }
+.task-execution-row { display: flex; gap: 6px; align-items: center; }
+.task-execution-row input { flex: 1; padding: 4px 6px; }
+.task-execution-row select { padding: 4px 6px; }
+
+.task-execution-row button {
+  background: #000080; border-color: #fff #808080 #808080 #fff;
+  color: #ffdd00; font-weight: bold; padding: 4px 14px;
+}
+.task-execution-row button:hover:not(:disabled) { background: #1084d0; }
+.task-execution-row button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.agent-selector { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.agent-selector label { font-family: "Courier New", Courier, monospace; font-size: 10px; text-transform: uppercase; color: var(--text-m); }
+.agent-selector select { padding: 3px 6px; max-width: 280px; }
+
+.task-result { margin-top: 10px; }
+.task-result-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+.task-result pre { max-height: 260px; }
+.task-meta { font-family: "Courier New", Courier, monospace; font-size: 10px; color: var(--text-m); }
+
+.mcp-servers { margin-top: 8px; font-family: "Courier New", Courier, monospace; font-size: 11px; }
+.mcp-servers h4 { text-transform: uppercase; letter-spacing: 0.1em; font-size: 10px; color: var(--text-m); margin: 0 0 4px; }
+
+.mcp-server-entry {
+  display: flex; gap: 6px; align-items: center; padding: 3px 0; color: #000;
+}
+.mcp-server-entry .status-badge { margin-left: auto; }
+
+/* Status grid (hairline instead of card shadows) */
+.status-grid, .agents-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 2px; background: #808080; border: 2px groove #808080; margin-bottom: 16px;
+}
+
+.agent-card {
+  background: #fff; padding: 12px; cursor: pointer; position: relative;
+  display: flex; flex-direction: column; gap: 4px; border-radius: 0;
+}
+.agent-card:hover { background: #f0f0f0; }
+.agent-card:hover::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #000080;
+}
+.agent-card h4 { margin: 0; font-size: 13px; }
+
+.agent-meta {
+  display: flex; gap: 5px; flex-wrap: wrap; align-items: center;
+  font-family: "Courier New", Courier, monospace; font-size: 10px;
+}
+.agent-meta .model {
+  background: #c0d8ee; border: 1px solid #808080; border-radius: 0;
+  padding: 1px 5px; color: #000080;
+}
+.agent-meta .tools { color: var(--text-m); }
+
+/* Metrics grid */
+.metrics-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 2px; background: #808080; border: 2px groove #808080; margin-bottom: 18px;
+}
+.metric-card { background: #fff; padding: 10px 12px; border-radius: 0; display: flex; flex-direction: column; gap: 2px; }
+.metric-card h4 { margin: 0; font-family: "Courier New", Courier, monospace; font-size: 11px; text-transform: uppercase; color: var(--text-m); }
+.metric-value {
+  font-family: "Courier New", Courier, monospace; font-size: 24px; font-weight: bold; line-height: 1.1; margin: 0; color: #000;
+}
+
+.run-node-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
+
+.run-node-card {
+  border: 1px solid #808080; border-left-width: 3px; border-radius: 0;
+  padding: 7px 9px; display: flex; flex-direction: column; gap: 4px; background: #fff;
+}
+.run-node-card h4 { margin: 0; font-size: 12px; }
+.run-node-card.running  { border-left-color: #b80; }
+.run-node-card.completed{ border-left-color: #000080; }
+.run-node-card.failed   { border-left-color: #a02020; background: #ffe0e0; }
+.run-node-card details summary { cursor: pointer; color: #000; }
+.run-node-card .run-input, .run-node-card .run-output { max-height: 160px; overflow: auto; font-size: 10px; }
+.run-node-card .run-input { background: #c0d8ee; border-color: #000080; }
+.run-node-card .run-output { background: #f0f0f0; }
+
+/* Mermaid canvas */
+.mermaid-diagram { margin-bottom: 18px; }
+.mermaid-diagram h3 { margin-bottom: 9px; }
+.mermaid-canvas {
+  background: #fff; border: 2px groove #808080; border-radius: 0; padding: 10px;
+  overflow: auto; min-height: 200px;
+}
+.mermaid-canvas svg { max-width: 100%; height: auto; }
+
+/* Dynamic workflow chat */
+.dynamic-view { display: flex; flex-direction: column; gap: 3px; }
+.dynamic-header { margin-bottom: 6px; }
+.dynamic-header h2 { margin: 0; }
+.dynamic-subtitle { color: var(--text-m); font-size: 12px; margin-top: 5px; }
+.dynamic-hint { color: var(--text-m); font-size: 12px; margin: 0 0 8px; }
+.dynamic-actions { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 10px; }
+.dynamic-primary {
+  background: #000080; border-color: #fff #808080 #808080 #fff;
+  color: #ffdd00; font-weight: bold; padding: 4px 14px;
+}
+.dynamic-primary:hover:not(:disabled) { background: #1084d0; }
+
+.success-state {
+  color: #000080; background: #c0d8ee; border: 2px groove #000080;
+  border-left-width: 4px; border-radius: 0; padding: 6px 8px; font-size: 12px; margin: 6px 0;
+}
+.dynamic-inline-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 7px; }
+.dynamic-table { width: 100%; border-collapse: collapse; }
+.dynamic-table tr.dimmed { opacity: 0.4; }
+.dynamic-table td select { background: #fff; }
+
+.dynamic-chat {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 18rem; overflow-y: auto; margin-bottom: 8px; padding-right: 3px;
+}
+.chat-bubble {
+  border: 1px solid #808080; border-radius: 0; padding: 6px 8px; font-size: 12px;
+}
+.chat-bubble .chat-role {
+  display: block; font-family: "Courier New", Courier, monospace;
+  font-size: 11px; text-transform: uppercase; color: var(--text-m); margin-bottom: 3px;
+}
+.chat-bubble.user { background: #c0d8ee; border-color: #000080; }
+.chat-bubble.assistant { background: #f0f0f0; }
+.chat-bubble pre { background: none; border: none; padding: 0; margin: 0; white-space: pre-wrap; font-size: 10px; }
+
+/* Run node cards with colored left borders */
+.run-steps-row td { background: #f0f0f0 !important; padding: 4px 10px !important; }
+.run-steps-row summary { font-family: "Courier New", Courier, monospace; font-size: 10px; color: var(--text-m); cursor: pointer; margin-bottom: 5px; }
+.run-steps-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+.run-steps-table th { font-family: "Courier New", Courier, monospace; font-size: 10px; text-transform: uppercase; color: var(--text-m); text-align: left; padding: 3px 7px; border-bottom: 1px solid #808080; }
+.run-steps-table td { padding: 2px 7px; border-bottom: 1px solid #808080; }
+
+.badge.runs-kind-tool    { border-color: #3a805a; color: #3a805a; background: #c0e8d0; }
+.badge.runs-kind-model   { border-color: #b80; color: #b80; background: #f0e8c0; }
+.badge.runs-status-running   { border-color: #b80; color: #b80; background: #f0e8c0; }
+.badge.runs-status-completed { border-color: #000080; color: #000080; background: #c0d8ee; }
+.badge.runs-status-failed   { border-color: #a85a4a; color: #a85a4a; background: #e8d0c0; }
+
+/* ─── Agent Manager ──────────────────────────────────────────── */
+
+.agent-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.agent-header h2 { margin: 0; }
+.agent-header button {
+  background: #000080; border-color: #fff #808080 #808080 #fff;
+  color: #ffdd00; font-weight: bold; padding: 4px 14px;
+}
+.agent-header button:hover:not(:disabled) { background: #1084d0; }
+
+.agent-filters { display: flex; gap: 6px; margin-bottom: 16px; }
+.agent-filters input { flex: 1; }
+.agent-filters select { padding: 3px 6px; }
+.agent-list h3 { margin: 4px 0 10px; }
+
+.guardrail-badges { display: flex; gap: 4px; flex-wrap: wrap; }
+
+.badge {
+  display: inline-block; font-family: "Courier New", Courier, monospace; font-size: 11px;
+  font-weight: bold; text-transform: uppercase; border: 1px solid #808080; border-radius: 0;
+  padding: 1px 5px; color: #000; background: transparent;
+}
+.badge-in    { border-color: #000080; color: #000080; background: #c0d8ee; }
+.badge-out   { border-color: #b80; color: #b80; background: #f0e8c0; }
+.badge-hook  { border-color: #6666cc; color: #3333aa; background: #d0d0f0; }
+.badge.kafka { border-color: #3a805a; color: #3a805a; background: #c0e8d0; }
+.badge.amqp  { border-color: #a85a4a; color: #a85a4a; background: #e8d0c0; }
+.badge.email { border-color: #b80; color: #b80; background: #f0e8c0; }
+.badge.success { border-color: #000080; color: #000080; background: #c0d8ee; }
+.badge.warning { border-color: #b80; color: #b80; background: #f0e8c0; }
+
+/* ─── Agent Editor (Modal) ───────────────────────────────────── */
+
+.agent-editor-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+  display: flex; align-items: center; justify-content: center; z-index: 50;
+}
+.agent-editor.modal {
+  background: #fff; border: 3px outset #808080; padding: 16px 14px;
+  width: 540px; max-width: calc(100vw - 2rem); max-height: 85vh; overflow: auto;
+}
+.agent-editor h3 { color: #000; margin: 0 0 12px; }
+
+.agent-editor-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.agent-editor-close {
+  background: transparent; border: 2px outset #808080; color: var(--text-m); border-radius: 0;
+  width: 22px; height: 22px; line-height: 1; cursor: pointer; font-size: 12px;
+}
+.agent-editor-close:hover { color: #000; }
+
+.form-group { margin-bottom: 8px; }
+.form-group label {
+  display: block; font-family: "Courier New", Courier, monospace;
+  font-size: 10px; font-weight: bold; text-transform: uppercase; color: var(--text-m); margin-bottom: 4px;
+}
+.form-group input, .form-group select, .form-group textarea { width: 100%; background: #fff; }
+.form-group textarea { min-height: 60px; resize: vertical; }
+
+.tool-checkbox-group { display: flex; flex-wrap: wrap; gap: 5px; }
+.tool-checkbox-group label {
+  font-family: inherit; font-size: 12px; font-weight: 400;
+  display: flex; align-items: center; gap: 4px; color: #000;
+  background: #fff;
+  border: 1px solid #808080; border-radius: 0; padding: 2px 7px; cursor: pointer;
+  user-select: none;
+}
+.tool-checkbox-group label:hover { border-color: #000080; }
+.tool-checkbox-group input { accent-color: #000080; }
+/* gewaehlte Chips deutlich absetzen: Navy-Flaeche + weisse Schrift */
+.tool-checkbox-group label:has(input:checked) {
+  background: #000080;
+  border-color: #000080;
+  color: #fff;
+}
+.tool-checkbox-group label:has(input:checked) span { color: #fff; }
+
+.form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+.form-actions button:last-child {
+  background: #000080; border-color: #fff #808080 #808080 #fff; color: #ffdd00; font-weight: bold;
+}
+.form-actions button:last-child:hover:not(:disabled) { background: #1084d0; }
+
+/* ─── Agent Playground ───────────────────────────────────────── */
+
+.agent-playground { border: 2px groove #808080; background: #ffffcc; padding: 12px 14px; margin-bottom: 16px; }
+.agent-playground h3 { color: #000; margin: 0 0 8px; }
+
+.playground-row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
+.playground-row select { max-width: 260px; background: #fff; }
+.playground-row input { flex: 1; }
+.playground-row button {
+  background: #000080; border-color: #fff #808080 #808080 #fff;
+  color: #ffdd00; font-weight: bold; padding: 4px 14px;
+}
+.playground-row button:hover:not(:disabled) { background: #1084d0; }
+.playground-row button:disabled { opacity: 0.45; cursor: not-allowed; }
+.playground-result { margin-top: 10px; }
+
+.playground-meta {
+  display: flex; gap: 12px; flex-wrap: wrap;
+  font-family: "Courier New", Courier, monospace; font-size: 10px;
+  color: var(--text-m); margin-bottom: 5px;
+}
+.playground-result pre { max-height: 260px; }
+
+.playground-chat-history {
+  display: flex; align-items: center; gap: 5px; margin-top: 6px;
+  font-family: "Courier New", Courier, monospace; font-size: 10px;
+  text-transform: uppercase; color: var(--text-m); cursor: pointer;
+}
+.playground-chat-history:hover { color: #000080; }
+.playground-session-hint { display: block; margin-top: 3px; color: var(--text-m); font-size: 10px; }
+
+.playground-chat { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.chat-message { border: 1px solid #808080; border-left-width: 3px; border-radius: 0; padding: 7px 8px; background: #f0f0f0; }
+.chat-message.user { background: #c0d8ee; border-color: #000080; }
+.chat-message .chat-role { display: block; font-family: "Courier New", Courier, monospace; font-size: 11px; text-transform: uppercase; color: var(--text-m); margin-bottom: 4px; }
+.chat-message.user .chat-role { color: #000080; }
+.chat-message pre { max-height: 260px; }
+
+/* ─── Security / Monitor / Audit / Sessions / Debug / Messaging headers ─ */
+
+.security-center h2, .monitor h2, .audit h2, .sessions-view h2, .debug-view h2, .messaging-view h2 { margin: 0 0 14px; }
+
+.guardrails-section, .hitl-section, .audit-section { padding-top: 8px; border-top: 2px groove #808080; margin-bottom: 16px; }
+.guardrails-section:first-of-type { border-top: none; padding-top: 0; }
+
+.status-card { background: #fff; padding: 10px 12px; position: relative; border: 2px groove #808080; border-radius: 0; }
+.status-card h4 { margin: 0 0 3px; font-size: 13px; }
+.status-card p { font-size: 12px; color: #000; }
+.status-indicator { position: absolute; top: 8px; right: 10px; }
+
+/* Tables — hairline rows, mono header, no shadow */
+.hitl-table, .audit-table, .runs-table, .dynamic-table {
+  width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px;
+}
+.hitl-table th, .hitl-table td, .audit-table th, .audit-table td,
+.runs-table th, .runs-table td, .dynamic-table th, .dynamic-table td {
+  padding: 5px 8px; text-align: left; border-bottom: 1px solid #808080; vertical-align: top;
+}
+.hitl-table th, .audit-table th, .runs-table th, .dynamic-table th {
+  font-family: "Courier New", Courier, monospace; font-size: 11px;
+  text-transform: uppercase; color: var(--text-m); background: #f0f0f0;
+  border-bottom: 1px solid #606060;
+}
+.hitl-table tbody tr:hover, .audit-table tbody tr:hover,
+.runs-table tbody tr:hover, .dynamic-table tbody tr:hover { background: #e8e8e8; }
+.hitl-table code, .audit-table code, .runs-table code, .dynamic-table code { font-size: 10px; }
+
+.hitl-table button { padding: 2px 7px; margin-right: 3px; font-family: "Courier New", Courier, monospace; font-size: 11px; text-transform: uppercase; }
+.hitl-table .approve, .hitl-approval-actions .approve { color: #000080; border-color: #000080; }
+.hitl-table .approve:hover:not(:disabled), .hitl-approval-actions .approve:hover:not(:disabled) { background: #c0d8ee; border-color: #000080; }
+
+.audit-controls, .runs-controls {
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+  margin-bottom: 8px; padding: 6px 9px; border: 2px groove #808080; background: #fff;
+}
+.audit-controls label, .runs-controls label {
+  font-family: "Courier New", Courier, monospace; font-size: 10px; text-transform: uppercase; color: var(--text-m);
+  display: flex; gap: 4px; align-items: center;
+}
+.audit-controls select, .audit-controls input, .runs-controls select, .runs-controls input { padding: 3px 6px; background: #fff; }
+
+/* Status badges (overriding 98.css defaults) */
+.status-badge {
+  display: inline-block; font-family: "Courier New", Courier, monospace; font-size: 11px;
+  font-weight: bold; text-transform: uppercase; border: 1px solid #808080;
+  border-radius: 0; padding: 1px 6px; color: #000; background: transparent;
+}
+.status-badge.pending   { color: var(--text-m); border-color: #808080; }
+.status-badge.running   { color: #b80; border-color: #b80; background: #f0e8c0; }
+.status-badge.completed { color: #000080; border-color: #000080; background: #c0d8ee; }
+.status-badge.failed    { color: #a02020; border-color: #a85a4a; background: #e8d0c0; }
+.status-badge.approved  { color: #000080; border-color: #000080; background: #c0d8ee; }
+.status-badge.rejected  { color: #a02020; border-color: #a85a4a; background: #e8d0c0; }
+.status-badge.cancelled { color: var(--text-m); border-color: #808080; background: #f0f0f0; }
+.status-badge.cancelling{ color: #b80; border-color: #b80; background: #f0e8c0; }
+
+/* Production runs */
+.production-section { margin-bottom: 16px; }
+.production-section .runs-table tr.selected-row { background: #c0d8ee; }
+.production-section .runs-table tr.selected-row td:first-child { border-left: 2px solid #000080; }
+.source-tag { color: var(--text-m); font-family: "Courier New", Courier, monospace; font-size: 11px; }
+.production-details { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: flex-start; }
+.run-meta { display: grid; grid-template-columns: max-content 1fr; gap: 3px 10px; font-size: 12px; }
+.run-meta strong { color: var(--text-m); font-weight: bold; }
+.run-meta code { font-size: 10px; }
+.action-bar { display: flex; gap: 6px; flex-wrap: wrap; }
+.production-events { margin-top: 10px; }
+
+.event-list {
+  margin: 6px 0 0; padding: 0; list-style: none; max-height: 320px; overflow: auto;
+  border: 2px inset #808080; background: #f0f0f0;
+}
+.event-list li { padding: 4px 8px; border-bottom: 1px solid #808080; font-family: "Courier New", Courier, monospace; font-size: 10px; color: #000; }
+
+.monitor-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+.monitor-error { margin-top: 8px; }
+
+/* ─── Audit ─────────────────────────────────────────────────── */
+
+.audit .audit-controls { margin-bottom: 10px; }
+.audit-header { display: flex; justify-content: space-between; align-items: center; }
+.audit-header h2 { margin: 0; }
+
+/* ─── Sessions View ──────────────────────────────────────────── */
+
+.sessions-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.sessions-list-section { margin-bottom: 10px; }
+
+.sessions-table {
+  width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; margin-top: 5px; table-layout: fixed;
+}
+.sessions-table th, .sessions-table td { padding: 5px 8px; text-align: left; border-bottom: 1px solid #808080; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sessions-table thead, .sessions-table tr { display: table; width: 100%; table-layout: fixed; }
+.sessions-table thead { position: sticky; top: 0; z-index: 1; }
+.sessions-table tbody { display: block; max-height: 12.5rem; overflow-y: auto; }
+.sessions-table th { font-family: "Courier New", Courier, monospace; font-size: 11px; text-transform: uppercase; color: var(--text-m); background: #f0f0f0; border-bottom: 1px solid #606060; }
+.sessions-table tbody tr:first-child { border-top: 1px solid #808080; }
+.sessions-table tbody tr:hover { background: #e8e8e8; }
+.sessions-table tr.selected { background: #c0d8ee; }
+.sessions-table .small-btn { margin-right: 3px; }
+
+.session-detail-section { margin-top: 16px; border: 2px groove #808080; background: #fff; padding: 12px 14px; }
+.session-detail-section h3 { color: #000; margin: 0 0 10px; }
+.session-detail-section h4 { margin: 10px 0 5px; font-family: "Courier New", Courier, monospace; font-size: 11px; text-transform: uppercase; color: var(--text-m); }
+
+.session-meta { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.meta-field { border: 1px solid #808080; border-radius: 0; padding: 6px 7px; background: #fff; font-size: 12px; }
+.meta-field strong { color: #000; }
+.meta-field pre { margin: 5px 0 0; max-height: 120px; font-size: 10px; }
+
+.session-events { display: flex; flex-direction: column; gap: 5px; }
+.session-event-card { border: 1px solid #808080; border-left-width: 3px; border-radius: 0; padding: 5px 7px; font-size: 12px; background: #fff; }
+.event-type { font-family: "Courier New", Courier, monospace; font-weight: bold; color: #000080; margin-right: 8px; }
+.event-time { font-family: "Courier New", Courier, monospace; font-size: 10px; color: var(--text-m); }
+.session-event-card pre { margin: 4px 0 0; font-size: 11px; background: #f0f0f0; border: 2px inset #808080; border-radius: 0; max-height: 120px; }
+
+/* ─── HITL Overlay ───────────────────────────────────────────── */
+
+.hitl-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.72); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.hitl-modal { background: #fff; border: 3px outset #808080; padding: 14px 16px; width: 540px; max-width: calc(100vw - 2rem); max-height: 85vh; overflow: auto; }
+.hitl-modal h3 { color: #000; margin: 0 0 10px; }
+.hitl-approval-card { border: 2px groove #808080; background: #f0f0f0; padding: 8px 10px; margin-bottom: 8px; }
+.hitl-approval-meta { display: flex; gap: 10px; flex-wrap: wrap; font-family: "Courier New", Courier, monospace; font-size: 10px; color: var(--text-m); margin-bottom: 6px; }
+.hitl-approval-meta strong { color: #000; font-weight: bold; }
+.hitl-approval-request { max-height: 200px; overflow: auto; font-family: "Courier New", Courier, monospace; font-size: 11px; white-space: pre-wrap; margin: 0 0 8px; color: #000; background: transparent; border: none; padding: 0; }
+.hitl-approval-actions { display: flex; gap: 6px; }
+.hitl-approval-actions button { font-family: "Courier New", Courier, monospace; font-size: 10px; text-transform: uppercase; }
+.hitl-dismiss { margin-top: 8px; padding: 4px 12px; color: var(--text-m); }
+.hitl-dismiss:hover:not(:disabled) { color: #000; }
+
+/* ─── Messaging View ─────────────────────────────────────────── */
+
+.messaging-view .hint { color: var(--text-m); font-size: 12px; margin-bottom: 14px; }
+
+.channel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; background: #808080; border: 2px groove #808080; }
+.channel-group { background: #fff; padding: 12px; }
+.channel-group h4 { margin: 0 0 7px; font-size: 13px; }
+.channel-group .empty-state { padding: 8px 0 3px; }
+
+.channel-group table, .messaging-view > .panel:last-of-type table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.channel-group th, .channel-group td, .messaging-view > .panel:last-of-type th, .messaging-view > .panel:last-of-type td { padding: 5px 7px; text-align: left; border-bottom: 1px solid #808080; }
+.channel-group th, .messaging-view > .panel:last-of-type th { font-family: "Courier New", Courier, monospace; font-size: 11px; text-transform: uppercase; color: var(--text-m); background: #f0f0f0; border-bottom: 1px solid #606060; }
+.messaging-view > .panel { background: #fff; border: 2px groove #808080; }
+
+/* ─── Runs ──────────────────────────────────────────────────── */
+
+.runs-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.runs-header h2 { margin: 0; }
+.runs-actions { display: flex; align-items: center; gap: 9px; }
+.inline-check { font-family: "Courier New", Courier, monospace; font-size: 10px; text-transform: uppercase; color: var(--text-m); display: flex; gap: 4px; align-items: center; cursor: pointer; }
+
+/* ─── Debug View ─────────────────────────────────────────────── */
+
+.debug-view pre { max-height: 400px; }
+.debug-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; }
+.debug-actions { display: flex; gap: 6px; align-items: center; }
+.debug-filter { min-width: 250px; }
+
+.journal-stats { display: flex; gap: 16px; font-family: "Courier New", Courier, monospace; font-size: 10px; color: var(--text-m); margin: 8px 0; padding: 6px 9px; border: 2px groove #808080; background: #fff; }
+.journal-stats strong { color: #000080; font-weight: bold; }
+
+.journal-entries { display: flex; flex-direction: column; gap: 6px; }
+.journal-entry { border: 1px solid #808080; border-left-width: 3px; border-radius: 0; padding: 6px 9px; font-size: 12px; background: #fff; }
+.journal-entry.error     { border-left-color: #a02020; }
+.journal-entry.tool      { border-left-color: #000080; }
+.journal-entry.llm       { border-left-color: #b80; }
+.journal-entry.guardrail { border-left-color: #8080c0; }
+.journal-entry.default   { border-left-color: #808080; }
+.journal-entry-header { display: flex; gap: 10px; align-items: center; }
+.journal-timestamp { font-family: "Courier New", Courier, monospace; font-size: 10px; color: var(--text-m); }
+.journal-type { font-weight: bold; color: #000; }
+.journal-agent { color: var(--text-m); font-style: italic; }
+.journal-detail { margin: 5px 0 0; background: #f0f0f0; border: 2px inset #808080; border-radius: 0; padding: 5px 7px; font-family: "Courier New", Courier, monospace; font-size: 10px; white-space: pre-wrap; max-height: 200px; overflow: auto; }
+
+/*
+ * Formular-Controls (98.css-Frame).
+ * 98.css lässt bei selects/inputs die body-Farbe erben (hier --text #bdbcc4, zu blass auf #fff)
+ * und setzt nur select:focus auf navy/weiß. Eigene background:#fff-Overrides oben (gleiche
+ * Spezifität, spätere Datei) gewinnen das background auch im Fokus -> weiß auf weiß.
+ * Daher: dunkler Text im Default + 98.css-Fokus (navy/weiß) hier verbindlich durchgesetzt.
+ */
+:is(input[type="email"], input[type="number"], input[type="password"], input[type="search"],
+    input[type="tel"], input[type="text"], input[type="url"], select, textarea) {
+  color: #000;
+}
+:is(input[type="email"], input[type="number"], input[type="password"], input[type="search"],
+    input[type="tel"], input[type="text"], input[type="url"], select, textarea):focus {
+  background-color: navy;
+  color: #fff;
+}
+
+/*
+ * ─── Win98-Skin: Text-/Akzentfarben kontextuell ─────────────────────────
+ *
+ * index.css definiert die Dunkel-Palette global (--text #bdbcc4 usw.), aber die
+ * 98.css-.window trägt die gesamte App SILBER. Text auf Silber/Weiß erbte so
+ * helle Grautöne (1:1 bis 1.9:1). Hier wird der helle Skin als Token-Scope
+ * festgelegt — alle var(--text*)/--accent/--warn/--danger lösen in hellen
+ * Bereichen auf dunkle, kontraststarke Farben auf.
+ * Dunkle Komponenten (Composer-Panels, Canvas-Nodes, Edge-Editor …) setzen
+ * eigene dunkle Hintergründe und erhalten die Tokens zurück an ihrer Wurzel.
+ */
+.app-layout, .status-bar {
+  color: #101010;
+  --text: #101010;
+  --text-h: #050508;
+  --text-dim: #3a3a40;
+  --text-m: #3f3f45;
+  --accent: #0b6b4e;
+  --accent-hover: #08503a;
+  --accent-bg: rgba(11, 107, 78, 0.10);
+  --accent-border: rgba(11, 107, 78, 0.42);
+  --warn: #5c3a00;
+  --warn-bg: rgba(92, 58, 0, 0.10);
+  --danger: #7c2d1a;
+  --danger-bg: rgba(124, 45, 26, 0.10);
+}
+
+/* Code-Chips im hellen Skin: helle Fläche mit dunkler Schrift. */
+.app-layout code {
+  color: #101010;
+  background: #ececef;
+  border-color: #a0a0a8;
+}
+
+/* Dunkle Inseln: opaque dunkle Boxen, die ihre Fläche selbst setzen. */
+.panel, .wf-node, .edge-input-row, .edge-input-path-item,
+.schema-tree-open, .source-button, .run-input, .run-output, .run-result details {
+  color: var(--text);
+  --text: #bdbcc4;
+  --text-h: #eef0f4;
+  --text-dim: #9b9aa4;
+  --text-m: #b3b1bb;
+  --accent: #75c29d;
+  --accent-hover: #8ad2af;
+  --accent-bg: rgba(117, 194, 157, 0.10);
+  --accent-border: rgba(117, 194, 157, 0.42);
+  --warn: #d5a24d;
+  --warn-bg: rgba(213, 162, 77, 0.12);
+  --danger: #d08367;
+  --danger-bg: rgba(208, 131, 103, 0.12);
+}
+
+/* Edge-Editor: Zellen mit dunklem Grund separat — row-Bereich bleibt hell. */
+.edge-editor th { color: #9b9aa4; }
+.edge-editor code { color: #eef0f4; }
+
+/* Sonderfälle: dunkle Flächen, die im hellen Scope liegen bleiben. */
+.form-group input, .form-group select, .form-group textarea { color: #d6d5dc; }
+.toolbar select { --text: #bdbcc4; color: var(--text); }
+.workflow-list tbody tr:hover,
+.messaging-channels-bar button.channel-btn:hover {
+  --text: #bdbcc4; --text-h: #eef0f4; --text-dim: #9b9aa4; --text-m: #b3b1bb;
+  color: var(--text-h);
+}
+
+/* Badges: dunkle Lettern auf hellen Klarsichtflächen (≥4.5:1). */
+.badge-out, .badge.email, .badge.warning, .badge.kafka, .badge.amqp {
+  color: #000;
+}
+
+/* Volle Akzentflächen (Buttons/Run): helle Schrift.
+ * .app-layout-Präfix: schlägt WorkflowComposer.css, das später gebundelt wird. */
+.app-layout .toolbar button:last-child,
+.app-layout .edge-input-add button,
+.app-layout .schema-popup-actions button,
+.app-layout .workflow-list .run,
+.app-layout .workflow-list .run:hover:not(:disabled) {
+  color: #fff;
+}

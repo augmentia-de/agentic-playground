@@ -1,0 +1,43 @@
+{
+  "name": "ex-market-report",
+  "task": "Assess the outlook for cargo bikes in European cities.",
+  "nodes": [
+    {
+      "id": "node-Scout",
+      "type": "agent",
+      "title": "Market Scout",
+      "status": "pending",
+      "config": {
+        "agentId": "ex-market-scout",
+        "tools": [],
+        "timeoutSeconds": 300
+      }
+    },
+    {
+      "id": "node-Analyst",
+      "type": "agent",
+      "title": "Risk Analyst",
+      "status": "pending",
+      "config": {
+        "agentId": "ex-risk-analyst",
+        "tools": [],
+        "timeoutSeconds": 300
+      }
+    },
+    {
+      "id": "node-Writer",
+      "type": "agent",
+      "title": "Report Writer",
+      "status": "pending",
+      "config": {
+        "agentId": "ex-report-writer",
+        "tools": [],
+        "timeoutSeconds": 300
+      }
+    }
+  ],
+  "edges": [
+    {"source": "node-Scout", "target": "node-Analyst"},
+    {"source": "node-Analyst", "target": "node-Writer"}
+  ]
+}

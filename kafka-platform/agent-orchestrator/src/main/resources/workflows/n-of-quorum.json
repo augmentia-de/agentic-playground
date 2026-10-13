@@ -1,0 +1,70 @@
+{
+  "name": "n-of-quorum",
+  "version": 1,
+  "dag_structure": {
+    "nodes": [
+      {
+        "stepId": "prepare",
+        "nodeType": "STEP",
+        "agentType": "planner",
+        "dependsOn": []
+      },
+      {
+        "stepId": "quorum_fork",
+        "nodeType": "FORK",
+        "dependsOn": ["prepare"],
+        "branches": [
+          {
+            "branchId": "alpha",
+            "firstStep": "b.alpha.review"
+          },
+          {
+            "branchId": "beta",
+            "firstStep": "b.beta.review"
+          },
+          {
+            "branchId": "gamma",
+            "firstStep": "b.gamma.review"
+          }
+        ]
+      },
+      {
+        "stepId": "b.alpha.review",
+        "nodeType": "STEP",
+        "agentType": "reviewer",
+        "dependsOn": ["quorum_fork"]
+      },
+      {
+        "stepId": "b.beta.review",
+        "nodeType": "STEP",
+        "agentType": "reviewer",
+        "dependsOn": ["quorum_fork"]
+      },
+      {
+        "stepId": "b.gamma.review",
+        "nodeType": "STEP",
+        "agentType": "reviewer",
+        "dependsOn": ["quorum_fork"]
+      },
+      {
+        "stepId": "quorum_join",
+        "nodeType": "JOIN",
+        "joinType": "N_OF",
+        "joinN": 2,
+        "joinBranches": ["alpha", "beta", "gamma"],
+        "dependsOn": ["b.alpha.review", "b.beta.review", "b.gamma.review"]
+      },
+      {
+        "stepId": "summarize",
+        "nodeType": "STEP",
+        "agentType": "quality",
+        "dependsOn": ["quorum_join"]
+      },
+      {
+        "stepId": "end",
+        "nodeType": "END",
+        "dependsOn": ["summarize"]
+      }
+    ]
+  }
+}

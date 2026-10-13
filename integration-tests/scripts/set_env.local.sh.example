@@ -1,0 +1,17 @@
+# Kopieren nach: set_env.local.sh
+#
+#   cp set_env.local.sh.example set_env.local.sh
+#
+# Diese Datei liegt in .gitignore und wird nicht eingecheckt. Hier gehoert der
+# echte Schluessel hin — nicht in set_env.sh, sonst landet er beim Zufuegen.
+
+# Ohne diesen Wert laeuft der Worker im Mock-Modus. Das ist kein Fehler; die
+# Verzweigungen werden dadurch erst deterministisch.
+# OPENAI_API_KEY="sk-oder-openrouter-..."
+
+# OPENAI_MODEL="deepseek/deepseek-v4-flash-0731"
+# OPENAI_BASE_URL="https://openrouter.ai/api/v1"
+
+# OPENAI_API_KEY=""
+# OPENAI_MODEL=""
+# OPENAI_BASE_URL=""

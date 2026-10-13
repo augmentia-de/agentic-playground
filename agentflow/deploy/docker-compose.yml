@@ -1,0 +1,34 @@
+# Temporal dev server + UI for AgentFlow (single container).
+#   docker compose up -d
+#   Temporal gRPC: localhost:7233   Web UI: http://localhost:8233
+#
+# Uses `temporal server start-dev` (SQLite-backed, dev only) — the previous
+# `temporalio/auto-setup` image does NOT support `DB=sqlite` (only mysql8/postgres12/cassandra).
+services:
+  temporal:
+    image: temporalio/temporal:latest
+    container_name: agentflow-temporal
+    # Dev-only: run as root so the named volume (/data) is writable; the image defaults to uid 1000.
+    user: "0:0"
+    command:
+      - server
+      - start-dev
+      - --ip
+      - 0.0.0.0
+      - --ui-ip
+      - 0.0.0.0
+      - --db-filename
+      - /data/temporal.db
+    ports:
+      - "7233:7233"   # gRPC frontend
+      - "8233:8233"   # Web UI (served by the dev server)
+    volumes:
+      - temporal-data:/data
+    healthcheck:
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "localhost:7233"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  temporal-data:

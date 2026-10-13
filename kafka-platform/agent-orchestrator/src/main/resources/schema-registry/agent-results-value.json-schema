@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-platform/com/agentplatform/common/event/AgentResultEvent-value",
+  "title": "AgentResultEvent",
+  "description": "Result event (SPEC2 §4.3, agent.execution.results)",
+  "type": "object",
+  "required": ["header", "output"],
+  "properties": {
+    "header": {
+      "type": "object",
+      "description": "Result header with completion metadata",
+      "required": ["workflowId", "taskId", "status", "completedAt"],
+      "properties": {
+        "workflowId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Workflow execution identifier"
+        },
+        "taskId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Task identifier that completed"
+        },
+        "agentType": {
+          "type": "string",
+          "description": "Agent type that produced the result"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["COMPLETED", "FAILED_RETRYABLE", "FAILED_FATAL", "NEEDS_HITL"],
+          "description": "Result status classification"
+        },
+        "completedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when task completed"
+        },
+        "executionDurationMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Execution duration in milliseconds"
+        }
+      },
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "description": "Result output data",
+      "required": [],
+      "properties": {
+        "resultData": {
+          "type": ["object", "null"],
+          "additionalProperties": true,
+          "description": "Structured result data stored as workflow context"
+        },
+        "errorMessage": {
+          "type": ["string", "null"],
+          "description": "Error message if status is FAILED"
+        },
+        "stackTrace": {
+          "type": ["string", "null"],
+          "description": "Stack trace for debugging failures"
+        }
+      },
+      "additionalProperties": false
+    },
+    "usage": {
+      "type": ["object", "null"],
+      "description": "Token usage and cost tracking (null for mock agents)",
+      "properties": {
+        "promptTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "completionTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalCostUsd": {
+          "type": "number",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

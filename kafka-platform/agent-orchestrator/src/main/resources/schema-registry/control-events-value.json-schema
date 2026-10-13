@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-platform/com/agentplatform/common/event/ControlEvents-value",
+  "title": "ControlEvents",
+  "description": "Control-plane events (SPEC2 §4.3 + §15.4/§15.6). Union type covering timeouts, loops, sweeps, cancellation, and HITL.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/timeoutEvent",
+      "title": "TimeoutEvent"
+    },
+    {
+      "$ref": "#/$defs/loopEvent",
+      "title": "LoopEvent"
+    },
+    {
+      "$ref": "#/$defs/sweepEvent",
+      "title": "SweepEvent"
+    },
+    {
+      "$ref": "#/$defs/cancellationEvent",
+      "title": "CancellationEvent"
+    },
+    {
+      "$ref": "#/$defs/hitlEvent",
+      "title": "HitlEvent"
+    },
+    {
+      "$ref": "#/$defs/emailIntakeEvent",
+      "title": "EmailIntakeEvent"
+    }
+  ],
+  "$defs": {
+    "timeoutEvent": {
+      "type": "object",
+      "required": ["taskId", "workflowId", "deadlineAt"],
+      "properties": {
+        "eventType": { "const": "TIMEOUT" },
+        "taskId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Task that timed out"
+        },
+        "workflowId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Workflow execution identifier"
+        },
+        "deadlineAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Original task deadline"
+        },
+        "escalateToHitl": {
+          "type": "boolean",
+          "description": "Whether to escalate to human-in-the-loop"
+        }
+      },
+      "additionalProperties": false
+    },
+    "loopEvent": {
+      "type": "object",
+      "required": ["workflowId", "stepId", "iteration"],
+      "properties": {
+        "eventType": { "const": "LOOP_ADVANCE" },
+        "workflowId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Workflow execution identifier"
+        },
+        "stepId": {
+          "type": "string",
+          "description": "Step ID within the loop body"
+        },
+        "iteration": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Current iteration number"
+        },
+        "exitConditionTrue": {
+          "type": "boolean",
+          "description": "Whether the exit condition evaluated to true"
+        },
+        "maxIterations": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum allowed iterations"
+        },
+        "resultData": {
+          "type": ["object", "null"],
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "sweepEvent": {
+      "type": "object",
+      "required": ["sweepId", "generatedAt"],
+      "properties": {
+        "eventType": { "const": "SWEEP_TICK" },
+        "sweepId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique sweep tick identifier"
+        },
+        "generatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when sweep was generated"
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["ALL", "WORKFLOW", "STEP"],
+          "description": "Scope of the sweep operation"
+        }
+      },
+      "additionalProperties": false
+    },
+    "cancellationEvent": {
+      "type": "object",
+      "required": ["workflowId"],
+      "properties": {
+        "eventType": { "const": "CANCELLATION" },
+        "workflowId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Workflow to cancel"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Reason for cancellation"
+        },
+        "actor": {
+          "type": ["string", "null"],
+          "description": "Actor who triggered cancellation (user/system)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "hitlEvent": {
+      "type": "object",
+      "required": ["workflowId", "ticketId", "action"],
+      "properties": {
+        "eventType": { "const": "HITL_ACTION" },
+        "workflowId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Workflow execution identifier"
+        },
+        "ticketId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "HITL ticket identifier"
+        },
+        "stepId": {
+          "type": "string",
+          "description": "Step that needs approval"
+        },
+        "iteration": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Iteration requiring approval"
+        },
+        "action": {
+          "type": "string",
+          "enum": ["APPROVE", "REJECT", "ESCALATE", "ABORT"],
+          "description": "Human decision action"
+        },
+        "decidedBy": {
+          "type": ["string", "null"],
+          "description": "Username or role of the person who decided"
+        }
+      },
+      "additionalProperties": false
+    },
+    "emailIntakeEvent": {
+      "type": "object",
+      "required": ["triggerKey", "emailBody"],
+      "properties": {
+        "eventType": { "const": "EMAIL_INTAKE" },
+        "workflowId": {
+          "type": ["string", "null"],
+          "format": "uuid",
+          "description": "Created workflow ID (null until assigned)"
+        },
+        "triggerKey": {
+          "type": "string",
+          "description": "Workflow trigger key extracted from email subject"
+        },
+        "emailBody": {
+          "type": "string",
+          "description": "Body content of the inbound email"
+        },
+        "attachments": {
+          "type": ["array", "null"],
+          "items": { "type": "string" },
+          "description": "List of attachment references or URLs"
+        },
+        "initiatorEmail": {
+          "type": ["string", "null"],
+          "format": "email",
+          "description": "Email address of the sender"
+        },
+        "receivedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the email was received"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

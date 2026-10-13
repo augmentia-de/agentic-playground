@@ -1,0 +1,76 @@
+spring:
+  application:
+    name: agentflow
+  ai:
+    openai:
+      # Standard OpenAI(-compatible) configuration. Point OPENAI_BASE_URL at any compatible
+      # endpoint (e.g. https://opencode.ai/zen/go/v1); no separate provider setting is needed.
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      api-key: ${OPENAI_API_KEY:}
+      chat:
+        options:
+          model: ${OPENAI_MODEL:gpt-4o-mini}
+          temperature: 0.2
+  temporal:
+    connection:
+      target: ${TEMPORAL_TARGET:localhost:7233}
+    namespace: ${TEMPORAL_NAMESPACE:default}
+    workers-auto-discovery:
+      enabled: true
+      workflow-packages: de.augmentia.agentflow
+
+server:
+  port: ${AGENTFLOW_PORT:8095}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+agentflow:
+  checkpoint:
+    path: ${AGENTFLOW_CHECKPOINT_PATH:target/agentflow-checkpoints.db}
+  capability:
+    # hnsw (in-memory, default) | pgvector (needs a DataSource + PostgreSQL)
+    index: ${AGENTFLOW_CAPABILITY_INDEX:hnsw}
+    table: ${AGENTFLOW_CAPABILITY_TABLE:capability_index}
+    autoload: ${AGENTFLOW_CAPABILITY_AUTOLOAD:true}
+    cache-size: 200
+    cache-minutes: 10
+  workflows:
+    # Declarative v2 workflow definitions (quad.workflow.v2). Override to load from disk, e.g.
+    #   AGENTFLOW_WORKFLOWS_LOCATION=file:./workflows/*.json
+    location: ${AGENTFLOW_WORKFLOWS_LOCATION:classpath*:workflows/*.json}
+    # Authoring overrides are persisted here (with a versions/ snapshot before each overwrite).
+    state-dir: ${AGENTFLOW_WORKFLOWS_STATE_DIR:target/agentflow-workflow-overrides}
+  workflow:
+    generator:
+      # Token budget for one LLM planner call of the dynamic workflow generator (0 = model default).
+      max-output-tokens: ${AGENTFLOW_WORKFLOW_GENERATOR_MAX_OUTPUT_TOKENS:0}
+  security:
+    # Opt-in API-key gate for /agentflow/** (health stays open).
+    enabled: ${AGENTFLOW_SECURITY_ENABLED:false}
+    api-keys: ${AGENTFLOW_API_KEYS:}
+    oidc:
+      # Opt-in OIDC/JWT resource server. When true, configure:
+      #   spring.security.oauth2.resourceserver.jwt.issuer-uri (or .jwk-set-uri)
+      enabled: ${AGENTFLOW_OIDC_ENABLED:false}
+  tenant:
+    # Opt-in: read X-Tenant-Id and scope capability search.
+    enabled: ${AGENTFLOW_TENANT_ENABLED:false}
+  testbench:
+    input-price-per-1k: ${AGENTFLOW_PRICE_INPUT_PER_1K:0}
+    output-price-per-1k: ${AGENTFLOW_PRICE_OUTPUT_PER_1K:0}
+  ui:
+    temporal-url: ${AGENTFLOW_TEMPORAL_UI:http://localhost:8233}
+  llm:
+    # Optional HTTP headers for ALL LLM calls (Spring AI graph + quad/LangChain4j agents).
+    # If nothing is configured here, NO headers are set. Values may be static, dynamic or partly
+    # dynamic; placeholders (double braces on purpose): {{requestId}}/{{sessionId}} (per run,
+    # fallback below) and {{apiKey}}. Example (only when the provider requires them, e.g. OpenCode):
+    # headers:
+    #   User-Agent: "agentflow/1.0 (run {{requestId}})"
+    #   x-opencode-session: "{{requestId}}"
+    #   Authorization: "Bearer {{apiKey}}"
+    fallback-request-id: ${AGENTFLOW_LLM_FALLBACK_REQUEST_ID:agentflow-process}

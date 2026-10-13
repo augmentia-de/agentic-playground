@@ -1,0 +1,199 @@
+server:
+  port: 8092
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: quad-workflow-worker
+    
+  # Do NOT auto-configure JDBC: DataSource/JdbcTemplate are only created when
+  # worker.quad.agent-source=db als eigene Beans erzeugt (QuadWorkerConfig).
+  # That way the worker stays startable without a database (QUAD-only mode).
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration
+  
+  main:
+    allow-bean-definition-overriding: true
+  
+  # load the .env file (spring-dotenv)
+  config:
+    import: "optional:file:.env[.properties]"
+    activate:
+      on-property: "spring.config.import"
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true
+        transactional.id: ${spring.application.name}-tx-
+
+worker:
+  quad:
+    enabled: true
+    group-id: quad-workflow-worker
+    # Wildcard pattern for all task topics. NOTE: exactly ONE backslash here.
+    # YAML treats backslashes in plain scalars literally — an "agent\\\\.tasks"
+    # would yield the regex agent\\.tasks (literal backslash) and would match no
+# topic. The worker would then stay at "partitions assigned: []" permanently.
+    # counter-check in WorkflowTaskListenerTest and the default in the annotation.
+    task-topic-pattern: ${WORKER_TASK_TOPIC_PATTERN:agent\.tasks\..*}
+    result-topic: agent.execution.results
+    dlq-topic: agent.execution.dlq
+    concurrency: 3
+    max-concurrent-tasks: 24
+    default-timeout-ms: 120000
+    workspace-base: /tmp/quad-worker/workspace
+    # Item 1: source of the agent configuration.
+    #   yaml (default): application.yml only (no database needed → QUAD-only)
+    #   db:                     agent_definitions (Shared-DB) zuerst, YAML als Fallback
+    agent-source: yaml
+    # ReAct iteration limit. Applies only when the agent definition brings none —
+    # with agent-source: db that is the max_react_iterations column, which the
+    # orchestrator writes; this value is the fallback for rows that still come from
+    # a migration without the column. Must be greater than 0.
+    react-max-iterations: ${WORKER_REACT_MAX_ITERATIONS:10}
+    kafka:
+      max-poll-records: 8
+      poll-interval-ms: 5000
+      max-poll-interval-ms: 900000
+    agents:
+      researcher:
+        agent-id: researcher
+        model-key: simple
+        temperature: 0.2
+        max-react-iterations: 8
+        allowed-tools:
+          - readFile
+          - webSearch
+          - webfetch
+        structured-output-enabled: true
+      planner:
+        agent-id: planner
+        model-key: simple
+        temperature: 0.3
+        max-react-iterations: 6
+        allowed-tools:
+          - readFile
+          - grepSearch
+          - listDirectory
+        structured-output-enabled: true
+      coder:
+        agent-id: coder
+        model-key: simple
+        temperature: 0.1
+        max-react-iterations: 10
+        allowed-tools:
+          - readFile
+          - writeFile
+          - grepSearch
+          - listDirectory
+        structured-output-enabled: true
+      # ── Remaining agentTypes of the seeded workflows ──
+      # The orchestrator workflows under agent-orchestrator/src/main/resources/workflows
+      # use ten agentTypes. Before this addition the worker only knew three —
+      # every workflow would have failed at dispatch with "Unknown agent type".
+      # The list is reconciled with V2__seed_agent_definitions.sql in the orchestrator.
+      linter:
+        agent-id: linter
+        model-key: simple
+        temperature: 0.0
+        max-react-iterations: 4
+        allowed-tools:
+          - readFile
+          - grepSearch
+        structured-output-enabled: true
+      quality:
+        agent-id: quality
+        model-key: simple
+        temperature: 0.0
+        max-react-iterations: 4
+        allowed-tools:
+          - readFile
+        structured-output-enabled: true
+      refiner:
+        agent-id: refiner
+        model-key: simple
+        temperature: 0.2
+        max-react-iterations: 8
+        allowed-tools:
+          - readFile
+          - grepSearch
+        structured-output-enabled: true
+      reviewer:
+        agent-id: reviewer
+        model-key: simple
+        temperature: 0.1
+        max-react-iterations: 6
+        allowed-tools:
+          - readFile
+          - grepSearch
+        structured-output-enabled: true
+      fixer:
+        agent-id: fixer
+        model-key: simple
+        temperature: 0.1
+        max-react-iterations: 8
+        allowed-tools:
+          - readFile
+          - writeFile
+          - grepSearch
+        structured-output-enabled: true
+      tester:
+        agent-id: tester
+        model-key: simple
+        temperature: 0.0
+        max-react-iterations: 6
+        allowed-tools:
+          - readFile
+          - grepSearch
+        structured-output-enabled: true
+      test_writer:
+        agent-id: test_writer
+        model-key: simple
+        temperature: 0.1
+        max-react-iterations: 8
+        allowed-tools:
+          - readFile
+          - writeFile
+        structured-output-enabled: true
+
+# ── LLM-Provider-Timeouts ──
+# HTTP timeout of the model client. Must be LARGER than the maximum
+# task timeout of the orchestrator (app.orchestration.max-task-timeout-ms = 600 s),
+# otherwise the HTTP call ends before the task and the step runs as
+# FAILED_RETRYABLE instead of as a timeout into the retry — the cause is then
+# hidden. 660 s = 600 s task cap + 60 s reserve for the ReAct cycle.
+llm:
+  timeout-seconds: ${LLM_TIMEOUT_SECONDS:660}
+  max-tokens: ${LLM_MAX_TOKENS:4096}
+  temperature: ${LLM_TEMPERATURE:0.2}
+
+# Actuator for health/metrics (Prometheus)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+# Logging with all relevant context fields
+logging:
+  pattern:
+    level: "%5p [workflow=%X{workflowId:-}, taskId=%X{taskId:-}, step=%X{stepId:-}]"
+  level:
+    de.augmentia.quad.worker: INFO
+    org.apache.kafka: WARN

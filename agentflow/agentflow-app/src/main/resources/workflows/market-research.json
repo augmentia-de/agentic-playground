@@ -1,0 +1,89 @@
+{
+  "format": "quad.workflow",
+  "schemaVersion": 2,
+  "mainWorkflow": {
+    "id": "market-research",
+    "name": "Market Research",
+    "version": "1.0.0",
+    "status": "draft",
+    "initialTask": "Research the topic, assess risks and produce an executive brief.",
+    "nodes": [
+      {
+        "id": "scout",
+        "type": "agent",
+        "title": "Market scout",
+        "agent": { "ref": "ex-market-scout" }
+      },
+      {
+        "id": "analyst",
+        "type": "agent",
+        "title": "Risk analyst",
+        "dependsOn": ["scout"],
+        "agent": { "ref": "ex-market-analyst" }
+      },
+      {
+        "id": "writer",
+        "type": "agent",
+        "title": "Report writer",
+        "dependsOn": ["analyst"],
+        "agent": { "ref": "ex-report-writer" }
+      },
+      {
+        "id": "end",
+        "type": "end",
+        "title": "Done",
+        "dependsOn": ["writer"]
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": "ex-market-scout",
+      "name": "Market Scout",
+      "version": "1.0.0",
+      "category": "research",
+      "model": "deepseek-v4.1-flash",
+      "temperature": 0.2,
+      "maxTokens": 2048,
+      "topP": 1.0,
+      "tools": ["webSearch", "webfetch"],
+      "guardrailsInput": [],
+      "guardrailsOutput": [],
+      "hooks": [],
+      "active": true,
+      "systemPrompt": "You are a market scout. Search the web and gather three concrete, sourced facts about the topic."
+    },
+    {
+      "id": "ex-market-analyst",
+      "name": "Risk Analyst",
+      "version": "1.0.0",
+      "category": "research",
+      "model": "deepseek-v4.1-flash",
+      "temperature": 0.2,
+      "maxTokens": 1024,
+      "topP": 1.0,
+      "tools": [],
+      "guardrailsInput": [],
+      "guardrailsOutput": [],
+      "hooks": [],
+      "active": true,
+      "systemPrompt": "You are a risk analyst. Given the facts of the previous step, name the two most important risks. Maximum 40 words."
+    },
+    {
+      "id": "ex-report-writer",
+      "name": "Report Writer",
+      "version": "1.0.0",
+      "category": "research",
+      "model": "deepseek-v4.1-flash",
+      "temperature": 0.3,
+      "maxTokens": 1024,
+      "topP": 1.0,
+      "tools": [],
+      "guardrailsInput": [],
+      "guardrailsOutput": [],
+      "hooks": [],
+      "active": true,
+      "systemPrompt": "You are a report writer. Combine the previous steps into a single executive summary sentence. Output only that sentence."
+    }
+  ]
+}

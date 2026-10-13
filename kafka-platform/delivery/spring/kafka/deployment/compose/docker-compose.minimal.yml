@@ -1,0 +1,89 @@
+# Minimal deployment: application containers only.
+#
+# Postgres and Kafka are NOT defined here — they are expected to exist already.
+# Point the two required variables at them before starting:
+#
+#   export EXTERNAL_KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9092
+#   export POSTGRES_URL=jdbc:postgresql://postgres.example.internal:5432/agent_platform
+#   export POSTGRES_USER=agent
+#   export POSTGRES_PASSWORD=...
+#   export OPENAI_API_KEY=sk-...
+#   docker compose -f docker-compose.minimal.yml up -d
+#
+# Deliberately omitted compared to docker-compose.yml:
+#   postgres, kafka-dev, redis, vault, jaeger, otel-collector,
+#   prometheus, grafana, kafka-tls, and the legacy agent-worker.
+#
+# Two deviations from docker-compose.yml that are required for correctness:
+#   1. APP_AUTOSCALING_ENABLED=false — AutoScalingService is active by default and
+#      polls Redis every 30s. Without Redis in this file it would only produce
+#      error logs. Enable it again once a Redis is reachable.
+#   2. No 18090:9090 port mapping — the orchestrator exposes the Prometheus
+#      endpoint on its main port (8080), it does not bind 9090 at all.
+#
+# Both images copy a pre-built jar from the host, so run first:
+#   mvn -B -ntp clean package -DskipTests
+
+services:
+  orchestrator:
+    image: agent-platform/orchestrator:1.0.0-SNAPSHOT
+    build:
+      context: .
+      dockerfile: docker/Dockerfile-agent-orchestrator
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      KAFKA_BOOTSTRAP_SERVERS: ${EXTERNAL_KAFKA_BOOTSTRAP_SERVERS:?set EXTERNAL_KAFKA_BOOTSTRAP_SERVERS}
+      POSTGRES_URL: ${POSTGRES_URL:?set POSTGRES_URL}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      SERVER_PORT: "8080"
+      APP_AUTOSCALING_ENABLED: "false"
+      # Required in addition to the above: the actuator still has a Redis
+      # health contributor on the classpath. It probes localhost:6379, gets
+      # connection-refused and drags the aggregate status to DOWN — which fails
+      # the Docker HEALTHCHECK even though the application itself is fine
+      # (liveness and readiness both report UP).
+      MANAGEMENT_HEALTH_REDIS_ENABLED: "false"
+      # Only needed if app.vault.enabled is turned on:
+      VAULT_ENABLED: "false"
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  quad-worker:
+    image: augmentia/quad-workflow-worker:1.0.0-SNAPSHOT
+    build:
+      context: .
+      dockerfile: docker/Dockerfile-quad-workflow-worker-runtime
+    restart: unless-stopped
+    # Needs no Postgres: worker.quad.agent-source defaults to yaml, and
+    # QuadWorkflowWorkerApplication excludes DataSourceAutoConfiguration.
+    #
+    # That default is also the limit of this file: with agent-source=yaml the
+    # database is never consulted, so every agent imported through
+    # /api/v1/unified/agents/convert fails with "Unknown agent type". This file
+    # runs the seeded agent types only. For workflows imported from quad, use
+    # docker-compose.two-workers.yml, which sets WORKER_QUAD_AGENT_SOURCE=db.
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      KAFKA_BOOTSTRAP_SERVERS: ${EXTERNAL_KAFKA_BOOTSTRAP_SERVERS:?set EXTERNAL_KAFKA_BOOTSTRAP_SERVERS}
+      SERVER_PORT: "8092"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?set OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENAI_MODEL: ${OPENAI_MODEL:?set OPENAI_MODEL}
+    ports:
+      - "8092:8092"
+    mem_limit: 512m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8092/actuator/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s

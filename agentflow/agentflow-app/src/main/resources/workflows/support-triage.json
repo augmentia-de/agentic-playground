@@ -1,0 +1,91 @@
+{
+  "format": "quad.workflow",
+  "schemaVersion": 2,
+  "mainWorkflow": {
+    "id": "support-triage",
+    "name": "Customer Support Triage",
+    "version": "1.0.0",
+    "status": "draft",
+    "initialTask": "Classify the incoming support ticket, find the playbook and draft a reply.",
+    "nodes": [
+      {
+        "id": "classify",
+        "type": "agent",
+        "title": "Classify ticket",
+        "requiresHumanApproval": true,
+        "agent": { "ref": "ex-support-classifier" }
+      },
+      {
+        "id": "playbook",
+        "type": "agent",
+        "title": "Find playbook",
+        "dependsOn": ["classify"],
+        "agent": { "ref": "ex-playbook-finder" }
+      },
+      {
+        "id": "respond",
+        "type": "agent",
+        "title": "Draft customer reply",
+        "dependsOn": ["playbook"],
+        "agent": { "ref": "ex-support-writer" }
+      },
+      {
+        "id": "end",
+        "type": "end",
+        "title": "Done",
+        "dependsOn": ["respond"]
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": "ex-support-classifier",
+      "name": "Support Classifier",
+      "version": "1.0.0",
+      "category": "support",
+      "model": "deepseek-v4.1-flash",
+      "temperature": 0.1,
+      "maxTokens": 1024,
+      "topP": 1.0,
+      "tools": [],
+      "guardrailsInput": [],
+      "guardrailsOutput": [],
+      "hooks": [],
+      "jsonOutput": true,
+      "active": true,
+      "systemPrompt": "You classify customer support tickets. Return JSON with category, priority (LOW/MEDIUM/HIGH), sentiment and a short suggested reply."
+    },
+    {
+      "id": "ex-playbook-finder",
+      "name": "Playbook Finder",
+      "version": "1.0.0",
+      "category": "support",
+      "model": "deepseek-v4.1-flash",
+      "temperature": 0.0,
+      "maxTokens": 512,
+      "topP": 1.0,
+      "tools": [],
+      "guardrailsInput": [],
+      "guardrailsOutput": [],
+      "hooks": [],
+      "active": true,
+      "systemPrompt": "You are a knowledge assistant. Name the two most relevant runbooks or tools for the ticket. Reply with a short comma-separated list and nothing else."
+    },
+    {
+      "id": "ex-support-writer",
+      "name": "Support Writer",
+      "version": "1.0.0",
+      "category": "support",
+      "model": "deepseek-v4.1-flash",
+      "temperature": 0.3,
+      "maxTokens": 1024,
+      "topP": 1.0,
+      "tools": [],
+      "guardrailsInput": [],
+      "guardrailsOutput": [],
+      "hooks": [],
+      "active": true,
+      "systemPrompt": "You are a support agent. Write a friendly, concise customer reply using the previous analysis. Maximum 120 words."
+    }
+  ]
+}

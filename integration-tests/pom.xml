@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Integrationstests über beide Plattformen.
+
+    Diese Tests gehören bewusst NICHT in den Default-Build der beiden
+    Anwendungsrepos: Sie brauchen eine laufende Infrastruktur (Kafka, Postgres)
+    und, für L1–L3, gestartete Prozesse. Sie sind als eigenes Modul gebaut,
+    damit ein Lauf nichts am Produktions-Code verändert und umgekehrt.
+
+    Ebenfalls bewusst NICHT Teil: KafkaTopicInitializer erzeugt die Topics beim
+    Start des Orchestrators, und er läuft mit admin-Rechten. Hier wird der Broker
+    als externer Dienst vorausgesetzt.
+
+    Schichten:
+      L0  Contract  — DTOs, Schema, Bridge. Kein Netzwerk, kein Broker.
+      L1  API       — gegen eine laufende Instanz, ohne Kafka.
+      L2  Kafka     — Broker-Vertrag: Topics, Schlüssel, Serialisierung, Ende-zu-Ende über Topics.
+      L3  E2E       — beide Plattformen zusammen, echter Workflow-Durchlauf.
+
+    Aufruf:
+      mvn -f integration-tests/pom.xml test                          # L0 + L2(Kafka braucht Broker)
+      mvn -f integration-tests/pom.xml test -Pintegration           # + L1 + L3
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>de.augmentia.it</groupId>
+    <artifactId>integration-tests</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <name>Integration Tests — kafka-platform × quad</name>
+    <description>
+        Schichtweise Integrationstests über die REST-APIs, die Kafka-Übergabe und beide
+        Plattformen. Läuft gegen eine extern gestartete Umgebung, nicht gegen Testcontainer.
+    </description>
+
+    <properties>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- Endpunkte. Ueberschreibbar per -D oder Umgebung. -->
+        <it.orchestrator.url>http://localhost:18080</it.orchestrator.url>
+        <it.quad.url>http://localhost:18086</it.quad.url>
+        <it.kafka.bootstrap>localhost:9092</it.kafka.bootstrap>
+
+        <junit.version>5.11.4</junit.version>
+        <assertj.version>3.26.3</assertj.version>
+        <kafka.version>3.9.2</kafka.version>
+        <jackson.version>2.18.2</jackson.version>
+        <errorprone.version>2.50.0</errorprone.version>
+
+        <!--
+            Standard: alles, was eine laufende Umgebung braucht, ist ausgeschlossen. L0 laeuft
+            immer und braucht nichts. Die Profile ueberschreiben NUR diese Property — deshalb
+            darf in <build> kein Tag hartkodiert stehen, sonst gewinnt die Basiskonfiguration
+            und das Profil waere wirkungslos.
+        -->
+        <surefire.excludedGroups>requires-orchestrator, requires-kafka, requires-e2e</surefire.excludedGroups>
+    </properties>
+
+    <dependencies>
+        <!-- Produktcode beider Plattformen, ohne die Spring-Boot-Laufzeit. -->
+        <dependency>
+            <groupId>com.agentplatform</groupId>
+            <artifactId>agent-common</artifactId>
+            <version>1.0.0-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>de.augmentia.quad</groupId>
+            <artifactId>quad-core</artifactId>
+            <version>1.0.0-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>de.augmentia.quad</groupId>
+            <artifactId>quad-contract</artifactId>
+            <version>1.0.0-SNAPSHOT</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>${assertj.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>kafka-clients</artifactId>
+            <version>${kafka.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!--
+            Transitive Anforderung von jackson-databind. Festgepinnt auf eine lokal
+            vorhandene Version, damit der Offline-Lauf deterministisch bleibt.
+        -->
+        <dependency>
+            <groupId>com.google.errorprone</groupId>
+            <artifactId>error_prone_annotations</artifactId>
+            <version>${errorprone.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.2</version>
+                <configuration>
+                    <!--
+                        L1 braucht einen laufenden Orchestrator, L2 einen Broker,
+                        L3 beides. Ohne die Umgebung sollen sie als "nicht ausgeführt"
+                        gelten statt als Fehlschlag — sonst ist ein normaler Checkout rot.
+                    -->
+                    <excludedGroups>${surefire.excludedGroups}</excludedGroups>
+                    <systemPropertyVariables>
+                        <it.orchestrator.url>${it.orchestrator.url}</it.orchestrator.url>
+                        <it.quad.url>${it.quad.url}</it.quad.url>
+                        <it.kafka.bootstrap>${it.kafka.bootstrap}</it.kafka.bootstrap>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!--
+            L1 (laufender Orchestrator) und L2 (Broker). L3 laeuft hier bewusst nicht mit,
+            weil dafuer zusaetzlich ein Worker gebraucht wird — dafuer gibt es das Profil e2e.
+        -->
+        <profile>
+            <id>integration</id>
+            <properties>
+                <surefire.excludedGroups>requires-e2e</surefire.excludedGroups>
+            </properties>
+        </profile>
+
+        <!--
+            Beide Plattformen: Orchestrator, Worker und quad.
+            "Nichts ausschliessen" kann Surefire nicht leer ausdruecken, deshalb ein
+            Tag, den es in dieser Suite nicht gibt.
+        -->
+        <profile>
+            <id>e2e</id>
+            <properties>
+                <surefire.excludedGroups>requires-none</surefire.excludedGroups>
+            </properties>
+        </profile>
+    </profiles>
+</project>
