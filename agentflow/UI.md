@@ -1,66 +1,66 @@
-# AgentFlow UI — Design & Spezifikation
+# AgentFlow UI — Design & Specification
 
-**Status:** Entwurf (2026-10-10) · Ziel: Angular-Webapp im Modul `agentflow-ui`.
+**Status:** Draft (2026-10-10) · Goal: Angular web app in the `agentflow-ui` module.
 
-Diese Datei beschreibt die geplante Benutzeroberfläche für AgentFlow: Informationsarchitektur,
-Screens, Interaktionen, Datenfluss, API-Abbildung, Design-System und Roadmap. Die Umsetzung
-erfolgt als eigenständiges Angular-Modul (`agentflow-ui/`), das das Backend (`agentflow-app`)
-über REST nutzt.
-
----
-
-## 1. Ziele & Leitprinzipien
-
-AgentFlow ist **durabel** (Temporal), **graph-basiert** (LangGraph4j) und **quad-komponiert**
-(Tools/Skills/Guardrails/Memory/Saga/…). Die UI macht genau diese Fähigkeiten bedienbar:
-
-1. **Observe first** — Runs, Status, Metriken, Provenance/Audit sichtbar machen.
-2. **Start in Sekunden** — jeder Engine/Case per Formular startbar, ohne curl.
-3. **Editierbar ohne Code** — deklarative `quad.workflow`-v2-Definitionen (Workflow **und**
-   Agenten) im Browser validieren und speichern.
-4. **Human-in-the-Loop** — pausierte Runs finden, Entscheidungen senden.
-5. **Sicherheit & Transparenz** — effektive Settings anzeigen, **niemals** Secrets.
-6. **Keine Wartungslast** — eine SPA, ein Build-Artefakt, statisch auslieferbar.
-
-**Nicht-Ziele (v1):** Drag-&-Drop-Graph-Editor, Nutzerverwaltung/Login, Multi-Tenant,
-Persistenz der Workflow-Änderungen über Neustart (Runtime-Override statt Datei-Write).
+This document describes the planned user interface for AgentFlow: information architecture,
+screens, interactions, data flow, API mapping, design system and roadmap. The implementation
+is done as a standalone Angular module (`agentflow-ui/`), which uses the backend (`agentflow-app`)
+via REST.
 
 ---
 
-## 2. Tech-Stack & Architektur
+## 1. Goals & guiding principles
 
-| Aspekt | Entscheidung | Begründung |
+AgentFlow is **durable** (Temporal), **graph-based** (LangGraph4j) and **quad-composed**
+(tools/skills/guardrails/memory/saga/…). The UI makes exactly these capabilities operable:
+
+1. **Observe first** — make runs, status, metrics, provenance/audit visible.
+2. **Start in seconds** — every engine/case startable via a form, without curl.
+3. **Editable without code** — validate and save declarative `quad.workflow` v2 definitions
+   (workflow **and** agents) in the browser.
+4. **Human-in-the-Loop** — find paused runs, send decisions.
+5. **Security & transparency** — show effective settings, **never** secrets.
+6. **No maintenance burden** — one SPA, one build artifact, deployable statically.
+
+**Non-goals (v1):** drag-and-drop graph editor, user management/login, multi-tenant,
+persistence of workflow changes across restarts (runtime override instead of file write).
+
+---
+
+## 2. Tech stack & architecture
+
+| Aspect | Decision | Rationale |
 |---|---|---|
-| Framework | **Angular 20**, Standalone Components | Vorgabe; Signals + `provideHttpClient` |
-| State | **Signals** + kleine Stores (kein NgRx) | geringe Komplexität, reaktiv |
-| Routing | `provideRouter` mit Lazy-Loading | schneller Start |
-| HTTP | `HttpClient` + typisierte Services | REST gegen `agentflow-app` |
-| Styling | SCSS + CSS-Variablen (eigenes Design-System) | keine schweren UI-Deps |
-| Build | Angular CLI / `ng build` | statische Assets → vom Backend/Reverse-Proxy auslieferbar |
-| Tests | Vitest/Jasmine (CLI-Default) + Services gemockt | Buildbarkeit absichern |
+| Framework | **Angular 20**, Standalone Components | Requirement; Signals + `provideHttpClient` |
+| State | **Signals** + small stores (no NgRx) | low complexity, reactive |
+| Routing | `provideRouter` with lazy loading | fast startup |
+| HTTP | `HttpClient` + typed services | REST against `agentflow-app` |
+| Styling | SCSS + CSS variables (own design system) | no heavy UI deps |
+| Build | Angular CLI / `ng build` | static assets → deployable by the backend/reverse proxy |
+| Tests | Vitest/Jasmine (CLI default) + mocked services | ensure buildability |
 
-**Deployment-Wege**
-- Dev: `ng serve` (Proxy ist in `angular.json` verdrahtet: `proxy.conf.json` → `/agentflow`, `/actuator`, `/examples` gehen an `http://localhost:8095`).
-- Prod: `ng build` → `dist/` statisch; entweder eigenes Static-Hosting oder vom Backend
-  (`spring.web.resources`) unter `/ui` ausgeliefert.
+**Deployment paths**
+- Dev: `ng serve` (proxy is wired in `angular.json`: `proxy.conf.json` → `/agentflow`, `/actuator`, `/examples` go to `http://localhost:8095`).
+- Prod: `ng build` → `dist/` static; either its own static hosting or served by the backend
+  (`spring.web.resources`) under `/ui`.
 
 ---
 
-## 3. Informationsarchitektur
+## 3. Information architecture
 
 ```
 ┌──────────── Sidebar ────────────┐
-│ ▣ Dashboard        (/)           │   Übersicht: Health, Metriken, Counts, Quick-Start
-│ ▶ Runs             (/runs)       │   starten + Liste + Detail + Signale
-│ ⧉ Workflows        (/workflows)  │   deklarative Defs + Editor (v2 JSON) + Validate/Save
-│ ✦ Generate         (/generate)   │   Aufgabe → LLM-generierter v2-Workflow (Vorschau/Save/Run)
-│ ⚙ Agents           (/agents)     │   Agenten aus allen Defs + Editor
-│ ⏸ HITL             (/hitl)       │   pausierte/approval-pflichtige Runs + Entscheidungen
-│ ∿ Observability    (/observe)    │   Metriken, Provenance, Audit, Temporal-Link
-│ ☰ Examples         (/examples)   │   die fünf Business-Cases
-│ ⚙ Settings         (/settings)   │   effektive Konfiguration (read-only, ohne Secrets)
+│ ▣ Dashboard        (/)           │   Overview: health, metrics, counts, quick start
+│ ▶ Runs             (/runs)       │   start + list + detail + signals
+│ ⧉ Workflows        (/workflows)  │   declarative defs + editor (v2 JSON) + validate/save
+│ ✦ Generate         (/generate)   │   task → LLM-generated v2 workflow (preview/save/run)
+│ ⚙ Agents           (/agents)     │   agents from all defs + editor
+│ ⏸ HITL             (/hitl)       │   paused/approval-required runs + decisions
+│ ∿ Observability    (/observe)    │   metrics, provenance, audit, Temporal link
+│ ☰ Examples         (/examples)   │   the five business cases
+│ ⚙ Settings         (/settings)   │   effective configuration (read-only, without secrets)
 └──────────────────────────────────┘
-Topbar: App-Titel · Backend-Status-Badge (Health) · Temporal-UI-Link · Theme-Toggle
+Topbar: app title · backend status badge (health) · Temporal UI link · theme toggle
 ```
 
 ---
@@ -68,162 +68,162 @@ Topbar: App-Titel · Backend-Status-Badge (Health) · Temporal-UI-Link · Theme-
 ## 4. Screens im Detail
 
 ### 4.1 Dashboard `/`
-**Zweck:** Lagebild + Einstieg.
-- **Statuskarten:** Backend (`/actuator/health`), Temporal-Verbindung (abgeleitet aus Runs-Liste),
-  Anzahl Workflow-Definitionen (`/agentflow/workflows`), Anzahl Capabilities (`/agentflow/capabilities`).
-- **Metrik-Kacheln:** `agent.llm.calls`, `agent.tool.executions`, `agent.errors`,
-  `agent.execution.duration` (aus `/actuator/prometheus`, gefiltert).
-- **Quick-Start:** Dropdown „Engine" (quad, quad-rich, authorized, structured, provenance,
-  subagents, metrics, capability-search, saga, declarative, examples/*) + Prompt-Feld → startet.
-- **Letzte Runs:** aus der Runs-Liste (`/agentflow/runs?limit=10`).
-- **Engine-Info:** `/agentflow/info` (graph/durability/quad-reuse).
+**Purpose:** situational overview + entry point.
+- **Status cards:** backend (`/actuator/health`), Temporal connection (derived from the runs list),
+  number of workflow definitions (`/agentflow/workflows`), number of capabilities (`/agentflow/capabilities`).
+- **Metric tiles:** `agent.llm.calls`, `agent.tool.executions`, `agent.errors`,
+  `agent.execution.duration` (from `/actuator/prometheus`, filtered).
+- **Quick start:** "Engine" dropdown (quad, quad-rich, authorized, structured, provenance,
+  subagents, metrics, capability-search, saga, declarative, examples/*) + prompt field → starts.
+- **Latest runs:** from the runs list (`/agentflow/runs?limit=10`).
+- **Engine info:** `/agentflow/info` (graph/durability/quad-reuse).
 
 ### 4.2 Runs `/runs`, `/runs/:id`
-**Liste:** Tabelle mit `workflowId`, `workflowType`, `status`, `startTime`, `duration`, `taskQueue`.
-- Filter: Freitext (Temporal-Query, z. B. `ExecutionStatus = "Running"`), Zeitraum, Typ.
-- Aktionen je Zeile: *Detail*; *Terminate* nur bei laufenden Runs (`status = RUNNING`) — beendete
-  Runs lassen sich nicht terminieren (Backend antwortet dann `409 Conflict`).
-- **Start-Panel** (rechts/oben): Formulare je Engine mit den jeweiligen Parametern
-  (input, tools, roles, orderId+amount, op/scope/content, serverUrl/tool/args). Bei der Engine
-  **declarative** ist `workflowId` ein **Dropdown der vorhandenen Definitionen**
-  (`GET /agentflow/workflows`, Anzeige `Name (id)`) + Task — keine ID-Eingabe nötig.
+**List:** table with `workflowId`, `workflowType`, `status`, `startTime`, `duration`, `taskQueue`.
+- Filter: free text (Temporal query, e.g. `ExecutionStatus = "Running"`), time range, type.
+- Actions per row: *detail*; *terminate* only for running runs (`status = RUNNING`) — finished
+  runs cannot be terminated (the backend then responds with `409 Conflict`).
+- **Start panel** (right/top): forms per engine with the respective parameters
+  (input, tools, roles, orderId+amount, op/scope/content, serverUrl/tool/args). For the engine
+  **declarative**, `workflowId` is a **dropdown of the existing definitions**
+  (`GET /agentflow/workflows`, display `Name (id)`) + task — no ID input needed.
 
 **Detail `/runs/:id`:**
-- Kopfdaten + Status-Badge, History-Länge, Timing (`describe`).
-- **Ergebnis** (falls abgeschlossen): Payload-String (JSON pretty-print).
-- **Signale:** kontextabhängig „HITL: approve/reject", „Declarative: approve", „Escalate".
-- **Timeline:** Rohereignisliste (falls verfügbar) + Deep-Link in die Temporal-UI.
+- Header data + status badge, history length, timing (`describe`).
+- **Result** (if completed): payload string (JSON pretty-print).
+- **Signals:** context-dependent "HITL: approve/reject", "Declarative: approve", "Escalate".
+- **Timeline:** raw event list (if available) + deep link into the Temporal UI.
 
 ### 4.3 Workflows `/workflows`, `/workflows/:id`
-**Liste:** id, name, version, status, Anzahl Nodes, Agent-Refs. **+ Neuer Workflow** (Name eingeben)
-→ `POST /agentflow/workflows` legt ein leeres v2-Dokument (nur `end`) an und öffnet es im Detail.
+**List:** id, name, version, status, number of nodes, agent refs. **+ new workflow** (enter name)
+→ `POST /agentflow/workflows` creates an empty v2 document (only `end`) and opens it in the detail view.
 **Detail:**
-- **Graph-Ansicht** (v1: verschachtelte Liste/Tabelle nach `dependsOn`-Topologie,
-  `type`-Badges `agent|decision|loop|fork|join|hitl|subworkflow|end`,
-  `requiresHumanApproval`-Marker).
-- **Agenten** des Dokuments (`agents[]`): id, model, tools, systemPrompt, guardrails/hooks.
-- **Editor:** JSON-Textarea des v2-Dokuments mit:
-  - *Validate* → `POST /agentflow/workflows/validate` (Publish-Compiler + Semantic-Validator).
-  - *Save* → `PUT /agentflow/workflows/{id}` (Runtime-Override, sofort lauffähig).
-  - Fehlerliste mit JSON-Pointer; Buttons *Formatieren*, *Zurücksetzen*, *Herunterladen*.
-- **Run this** → startet `POST /agentflow/runs/declarative?workflowId=…&task=…`.
+- **Graph view** (v1: nested list/table by `dependsOn` topology,
+  `type` badges `agent|decision|loop|fork|join|hitl|subworkflow|end`,
+  `requiresHumanApproval` marker).
+- **Agents** of the document (`agents[]`): id, model, tools, systemPrompt, guardrails/hooks.
+- **Editor:** JSON textarea of the v2 document with:
+  - *validate* → `POST /agentflow/workflows/validate` (publish compiler + semantic validator).
+  - *save* → `PUT /agentflow/workflows/{id}` (runtime override, immediately runnable).
+  - Error list with JSON pointer; buttons *format*, *reset*, *download*.
+- **Run this** → starts `POST /agentflow/runs/declarative?workflowId=…&task=…`.
 
 ### 4.4 Generate `/generate`
-**Zweck:** aus einer Aufgabe einen lauffähigen v2-Workflow erzeugen (LLM-Dekomposition).
-- Formular: Aufgabe (Textarea), Name (optional).
-- Aktionen:
-  - *Vorschau* → `POST /agentflow/workflows/generate` (`{task,name?}`) → publiziertes v2-Dokument
-    (nicht persistiert).
-  - *Speichern* → `POST /agentflow/workflows/generate/save` → Runtime-Override + Datei; erscheint
-    unter Workflows/Agents.
-  - *Ausführen* → `POST /agentflow/workflows/generate/run` → durabler Temporal-Lauf (Ergebnis unter Runs).
-- Vorschau: Knoten-/Agent-Zähler, Node-Tabelle (id/type/Titel/dependsOn/agent), Agent-Chips und JSON.
+**Purpose:** generate a runnable v2 workflow from a task (LLM decomposition).
+- Form: task (textarea), name (optional).
+- Actions:
+  - *preview* → `POST /agentflow/workflows/generate` (`{task,name?}`) → published v2 document
+    (not persisted).
+  - *save* → `POST /agentflow/workflows/generate/save` → runtime override + file; appears
+    under workflows/agents.
+  - *run* → `POST /agentflow/workflows/generate/run` → durable Temporal run (result under runs).
+- Preview: node/agent counters, node table (id/type/title/dependsOn/agent), agent chips and JSON.
 
 ### 4.5 Agents `/agents`
-- Flache Liste aller Agenten über alle Workflow-Definitionen (id, name, model, guardrail-Summary,
-  Def).
-- **Editor:** bearbeitet den `agents[]`-Ausschnitt des zugehörigen Dokuments (Formular:
-  id/name/model/temperature/maxTokens/tools/systemPrompt/jsonOutput) und speichert via denselben
-  `PUT`-Endpoint (verändert die Definition, nicht den Workflow-Graph).
-- **+ Neuer Agent:** Ziel-Definition wählen → neuer Agent (eindeutige id, Defaults) wird dem
-  `agents[]` hinzugefügt (erscheint sofort im Agent-Ref-Dropdown des Graph-Editors).
-- **Guardrails & Hooks:** Multi-Selects *Guardrails (Input/Output)* (`pii`, `sql-injection`,
-  `prompt-injection`) → `guardrailsInput`/`guardrailsOutput`; *PII-Masken* → Hook `pii:…`;
-  Checkbox *Audit-Trail* → Hook `audit`. Werte aus `GET /agentflow/quad/capabilities`.
-- *Test-Run*: startet einen quad-Run mit dem `systemPrompt` als Prompt (Schnelltest).
+- Flat list of all agents across all workflow definitions (id, name, model, guardrail summary,
+  def).
+- **Editor:** edits the `agents[]` section of the associated document (form:
+  id/name/model/temperature/maxTokens/tools/systemPrompt/jsonOutput) and saves via the same
+  `PUT` endpoint (changes the definition, not the workflow graph).
+- **+ new agent:** choose target definition → new agent (unique id, defaults) is added to the
+  `agents[]` (appears immediately in the graph editor's agent-ref dropdown).
+- **Guardrails & hooks:** multi-selects *guardrails (input/output)* (`pii`, `sql-injection`,
+  `prompt-injection`) → `guardrailsInput`/`guardrailsOutput`; *PII masks* → hook `pii:…`;
+  checkbox *audit trail* → hook `audit`. Values from `GET /agentflow/quad/capabilities`.
+- *test run*: starts a quad run with the `systemPrompt` as prompt (quick test).
 
 ### 4.6 HITL `/hitl`
-- Filtert Runs-Liste auf „wartend": `ExecutionStatus = "Running"` **und** Workflow-Typ in
+- Filters the runs list to "waiting": `ExecutionStatus = "Running"` **and** workflow type in
   {`HitlWorkflow`, `DeclarativeAgentWorkflow`, `AuthorizedAgentWorkflow`, `SupportTriageWorkflow`,
   `ContractReviewWorkflow`}.
-- Karte je Run: Typ, Startzeit, wartet auf was; Aktionen *Approve* / *Reject* / *Escalate*.
-- Optional: Aging-Indikator (wie lange wartend).
+- Card per run: type, start time, waiting for what; actions *approve* / *reject* / *escalate*.
+- Optional: aging indicator (how long waiting).
 
 ### 4.7 Observability `/observe`
-- **Metriken:** aus `/actuator/prometheus` gefilterte `agent_*`-Familien; `agent.llm.calls`,
-  `agent.tool.executions`, `agent.errors`, `agent.execution.duration.seconds_*`, Token-Summaries.
-- **Provenance:** Button „Provenance-Run" → `POST /agentflow/runs/provenance`, Ergebnis als Tabelle
-  (Tool, Quelle, Zeit).
-- **Audit/Logs:** geführter Run (`/runs/provenance`, `/runs/metrics`) + Roh-Prometheus-Text
-  als aufklappbarer Block; Deep-Link Temporal-UI für Event-Historie.
-- **Hinweis:** Es gibt (noch) kein Log-File-API; Logs = Metriken + Run-Historie + Audit-Hook-Ausgabe.
+- **Metrics:** `agent_*` families filtered from `/actuator/prometheus`; `agent.llm.calls`,
+  `agent.tool.executions`, `agent.errors`, `agent.execution.duration.seconds_*`, token summaries.
+- **Provenance:** "provenance run" button → `POST /agentflow/runs/provenance`, result as a table
+  (tool, source, time).
+- **Audit/logs:** guided run (`/runs/provenance`, `/runs/metrics`) + raw Prometheus text
+  as a collapsible block; deep link to Temporal UI for event history.
+- **Note:** there is (not yet) a log-file API; logs = metrics + run history + audit hook output.
 
 ### 4.8 Examples `/examples`
-- Karten aus `GET /examples` (id, title, endpoint, capabilities).
-- Pro Case ein startbares Formular (liest den `endpoint`-Pfad und bietet die passenden Felder).
+- Cards from `GET /examples` (id, title, endpoint, capabilities).
+- Per case a startable form (reads the `endpoint` path and offers the matching fields).
 
 ### 4.9 Settings `/settings`
-- **Read-only** effektive Konfiguration (`GET /agentflow/settings`), gruppiert:
-  - *LLM*: model, base-url, `hasApiKey` (boolesch — **kein** Key), `headersConfigured` + Header-**Namen**.
+- **Read-only** effective configuration (`GET /agentflow/settings`), grouped:
+  - *LLM*: model, base-url, `hasApiKey` (boolean — **no** key), `headersConfigured` + header **names**.
   - *Durability*: temporal target/namespace, taskQueue.
-  - *Capability-Search*: index (hnsw/pgvector), table, autoload, cache.
+  - *Capability search*: index (hnsw/pgvector), table, autoload, cache.
   - *Workflows*: location.
   - *Checkpoint*: path.
   - *Endpoints*: metrics, temporal-ui.
-- Änderungen bewusst **nur** über Env/Neustart (kein Hot-Config v1) — UI zeigt, wo gesetzt wird.
-- **Sicherheitsregel:** Secrets werden nie serialisiert oder angezeigt.
+- Changes deliberately **only** via env/restart (no hot config v1) — the UI shows where they are set.
+- **Security rule:** secrets are never serialized or displayed.
 
 ---
 
-## 5. API-Abbildung (Backend-Endpoints)
+## 5. API mapping (backend endpoints)
 
-### Bestehend
-| Methode | Pfad | Zweck |
+### Existing
+| Method | Path | Purpose |
 |---|---|---|
-| POST | `/agentflow/runs` | LangGraph-Workflow |
+| POST | `/agentflow/runs` | LangGraph workflow |
 | POST | `/agentflow/runs/quad` | quad `Agents.simple()` |
 | POST | `/agentflow/runs/quad-rich` | Tools/Skills/Guardrails/PII/Audit |
 | POST | `/agentflow/runs/authorized` | RBAC |
 | POST | `/agentflow/runs/hitl` + `/hitl/{id}/decide` | HITL |
 | POST | `/agentflow/runs/saga` | Saga |
-| POST | `/agentflow/runs/quad-saga` | quad Session-Saga |
+| POST | `/agentflow/runs/quad-saga` | quad session saga |
 | POST | `/agentflow/runs/structured` | Structured Output |
 | POST | `/agentflow/runs/provenance` | Provenance |
 | POST | `/agentflow/runs/memory?op=remember\|recall` | Memory |
 | POST | `/agentflow/runs/mcp?op=list\|run` | MCP |
-| POST | `/agentflow/runs/subagents` | Sub-Agenten |
-| POST | `/agentflow/runs/metrics` | Metriken/OTel |
+| POST | `/agentflow/runs/subagents` | Sub-agents |
+| POST | `/agentflow/runs/metrics` | Metrics/OTel |
 | POST | `/agentflow/runs/capability-search` | Capability/RAG |
-| POST | `/agentflow/runs/declarative` + `/{id}/approve` | deklarativ v2 |
-| GET | `/agentflow/info`, `/quad/capabilities`, `/security/roles` | Info/Config |
-| GET | `/agentflow/capabilities`, `/capabilities/search?q=` | Capability-Katalog |
-| GET | `/agentflow/workflows`, `/workflows/{id}` | deklarative Defs |
-| GET | `/examples` | Business-Cases |
+| POST | `/agentflow/runs/declarative` + `/{id}/approve` | declarative v2 |
+| GET | `/agentflow/info`, `/quad/capabilities`, `/security/roles` | Info/config |
+| GET | `/agentflow/capabilities`, `/capabilities/search?q=` | Capability catalog |
+| GET | `/agentflow/workflows`, `/workflows/{id}` | Declarative defs |
+| GET | `/examples` | Business cases |
 | GET | `/actuator/health`, `/metrics`, `/prometheus` | Observability |
 
-### Neu (für die UI ergänzt)
-| Methode | Pfad | Zweck |
+### New (added for the UI)
+| Method | Path | Purpose |
 |---|---|---|
-| GET | `/agentflow/runs?query=&limit=` | Run-Liste (Temporal-Visibility) |
-| GET | `/agentflow/runs/{id}` | Run-Detail (Status + ggf. Ergebnis) |
-| POST | `/agentflow/runs/{id}/terminate` | Admin-Abbruch |
-| POST | `/agentflow/workflows/validate` | v2-Dokument prüfen (Compiler+Semantik) |
-| PUT | `/agentflow/workflows/{id}` | v2-Dokument speichern (Runtime-Override) |
-| GET | `/agentflow/settings` | effektive Config ohne Secrets |
-| GET | `/agentflow/runs/stream?query=` | **SSE**: Run-Liste live |
-| GET | `/agentflow/runs/{id}/stream` | **SSE**: Status **+ History-Events** bis terminal |
-| GET | `/agentflow/runs/{id}/events?max=` | History-Events (Log) als JSON |
-| POST | `/agentflow/testbench/run` | Einzel-Agent-Trace (Tokens/Tools/Kosten/Provenance) |
-| GET | `/agentflow/workflows/{id}/versions` | Version-Snapshots |
-| GET | `/agentflow/workflows/{id}/versions/{v}` | Version laden |
-| POST | `/agentflow/workflows/generate` | LLM: Aufgabe → v2-Dokument (Vorschau) |
-| POST | `/agentflow/workflows/generate/save` | generieren + speichern (Override + Datei) |
-| POST | `/agentflow/workflows/generate/run` | generieren + durabel ausführen (Temporal) |
-| POST | `/agentflow/workflows` | neuen, leeren Workflow (nur `end`) anlegen |
+| GET | `/agentflow/runs?query=&limit=` | Run list (Temporal visibility) |
+| GET | `/agentflow/runs/{id}` | Run detail (status + result if applicable) |
+| POST | `/agentflow/runs/{id}/terminate` | Admin abort |
+| POST | `/agentflow/workflows/validate` | Validate v2 document (compiler+semantics) |
+| PUT | `/agentflow/workflows/{id}` | Save v2 document (runtime override) |
+| GET | `/agentflow/settings` | Effective config without secrets |
+| GET | `/agentflow/runs/stream?query=` | **SSE**: run list live |
+| GET | `/agentflow/runs/{id}/stream` | **SSE**: status **+ history events** until terminal |
+| GET | `/agentflow/runs/{id}/events?max=` | History events (log) as JSON |
+| POST | `/agentflow/testbench/run` | Single-agent trace (tokens/tools/cost/provenance) |
+| GET | `/agentflow/workflows/{id}/versions` | Version snapshots |
+| GET | `/agentflow/workflows/{id}/versions/{v}` | Load version |
+| POST | `/agentflow/workflows/generate` | LLM: task → v2 document (preview) |
+| POST | `/agentflow/workflows/generate/save` | generate + save (override + file) |
+| POST | `/agentflow/workflows/generate/run` | generate + run durably (Temporal) |
+| POST | `/agentflow/workflows` | create a new, empty workflow (only `end`) |
 
-Optionale Header (nur wenn im Backend aktiviert): `X-API-Key`/`Authorization: Bearer`
-(API-Key-Gate), `X-Tenant-Id` (Capability-Scoping).
+Optional headers (only when enabled in the backend): `X-API-Key`/`Authorization: Bearer`
+(API-key gate), `X-Tenant-Id` (capability scoping).
 
 ---
 
-## 6. Datenfluss & State
+## 6. Data flow & state
 
 ```
 ApiService (HttpClient)
    ├── HealthService      → /actuator/health            (Poll 10s)
    ├── RunsService        → /agentflow/runs(/…)         (Poll 5s)
    ├── WorkflowService    → /agentflow/workflows(/…), validate, save
-   ├── AgentService       → abgeleitet aus Workflows (+ Test-Run)
+   ├── AgentService       → derived from workflows (+ test run)
    ├── CapabilityService  → /agentflow/capabilities(/search)
    ├── MetricsService     → /actuator/prometheus        (Poll 15s)
    ├── ExampleService     → /examples
@@ -234,91 +234,91 @@ Stores (Signals):
    WorkflowStore { definitions, draft, validationErrors, dirty }
    ToastStore  { messages }
 ```
-- **Polling** statt SSE/WebSocket (Temporal liefert keine Push-API an den Client).
-- Fehler werden zentral als Toast gezeigt; HTTP-Status sichtbar.
+- **Polling** instead of SSE/WebSocket (Temporal provides no push API to the client).
+- Errors are shown centrally as a toast; HTTP status visible.
 
 ---
 
-## 7. Design-System
+## 7. Design system
 
-- **Farben:** dunkles Theme als Default, helles Theme via CSS-Variablen umschaltbar.
-  Akzente: Indigo (primär), Amber (warn/waiting), Grün (ok), Rot (Fehler).
-- **Typo:** System-Stack; Monospace für IDs/JSON.
-- **Komponenten:** `AppShell`, `StatCard`, `DataTable`, `StatusBadge`, `JsonEditor`,
+- **Colors:** dark theme by default, light theme switchable via CSS variables.
+  Accents: indigo (primary), amber (warn/waiting), green (ok), red (error).
+- **Typography:** system stack; monospace for IDs/JSON.
+- **Components:** `AppShell`, `StatCard`, `DataTable`, `StatusBadge`, `JsonEditor`,
   `FormField`, `Toast`, `Tabs`, `EmptyState`, `Spinner`.
-- **Status-Farben:** RUNNING=blau, COMPLETED=grün, FAILED/TIMED_OUT=rot, CANCELED/TERMINATED=grau,
+- **Status colors:** RUNNING=blue, COMPLETED=green, FAILED/TIMED_OUT=red, CANCELED/TERMINATED=gray,
   WAITING/approval=amber.
-- **Barrierefreiheit:** Fokus-Ringe, `aria-label`, ausreichende Kontraste, Tastaturbedienung.
-- **Sprache:** Deutsch (Labels/Fehlermeldungen), Code/IDs englisch.
+- **Accessibility:** focus rings, `aria-label`, sufficient contrasts, keyboard operation.
+- **Language:** German (labels/error messages), code/IDs in English.
 
 ---
 
-## 8. Sicherheit
+## 8. Security
 
-- Keine Secrets im UI/API-Response; `/settings` liefert nur `hasApiKey`.
-- Admin-Aktionen (Terminate) mit Bestätigungsdialog.
-- CSP-freundliche, statische Assets; keine externen CDNs.
-- CORS: im Dev über Angular-Proxy umgangen; in Prod empfohlen, UI vom selben Origin auszuliefern.
-
----
-
-## 9. Umgesetzt (v2)
-
-1. **Persistenz & Versionierung**: `WorkflowDefinitionStore` schreibt publizierte Defs nach
-   `agentflow.workflows.state-dir` und legt vor jeder Überschreibung einen Snapshot unter
-   `versions/<id>/<timestamp>.json` ab (git-fähig). UI-Tab „Versionen“ (laden/ansehen).
-2. **Visueller Graph-Editor**: `af-graph-editor` — Layered-Layout, Drag (Position je Workflow in
-   localStorage), **Dependencies setzen** per Checkbox-Liste und **Click-to-Connect** (🔗 Quelle→Ziel),
-   Umbenennen/Löschen mit **Referenz-Integrität** (aktualisiert `dependsOn`/Branches/`bodySteps`/`defaultTarget`),
-   `+ Node`/`+ verbunden`, Ziele als Dropdowns. Änderungen werden schema-konform ins JSON übernommen.
-3. **SSE komplett**: `/agentflow/runs/stream` (Liste) und `/agentflow/runs/{id}/stream`
-   (Status **+ inkrementelle History-Events**); zusätzlich REST `GET /agentflow/runs/{id}/events`.
-   UI zeigt ein Live-Log (Event-ID/Typ/Detail/Zeit) und nutzt `EventSource` mit REST-Fallback.
-4. **Alle Knotentypen im Runner**: `DeclarativePlanner` flacht (Sub-Workflows inline, Alias auf
-   `end`) + `DeclarativeAgentWorkflow` interpretiert `agent/decision/loop/fork/join/hitl/end`
-   (dependency-getrieben, Branch-Pruning, Loop-Exit-Conditions, per-Node-HITL-Signal `decide`).
-5. **Auth: OIDC (deaktiv) + API-Key/Tenant (opt-in)**: `WebSecurityConfig` liefert permissiv
-   (Default, `agentflow.security.oidc.enabled=false`); bei Aktivierung wird ein
-   **JWT-Resource-Server** (`issuer-uri`/`jwk-set-uri`) geschaltet. Separat `ApiKeyFilter`
-   (`agentflow.security.enabled`) und `TenantFilter` (`X-Tenant-Id`-Scoping).
-6. **Agent-Testbench**: `/agentflow/testbench/run` liefert Antwort, Input/Output-Tokens,
-   Tool-Calls, Dauer, Kostenschätzung und Tool-Provenance; UI-Seite „Testbench“.
-7. **Dynamische Workflow-Generierung**: `/agentflow/workflows/generate[/save|/run]` — ein LLM
-   („Workflow-Architect“, quad-core-Pfad) zerlegt eine Aufgabe in einen v2-Workflow (Agent-Schritte
-   + genau ein `end`), publiziert über denselben Compiler/Validator; UI-Seite „Generate“
-   (Vorschau/Speichern/Ausführen).
-8. **Agenten/Workflows anlegen + Guardrails/PII/Audit**: `POST /agentflow/workflows` (leerer
-   Workflow), „+ Neuer Agent“ auf `/agents`. Deklarative Guardrails (`guardrailsInput`/
-   `guardrailsOutput`), PII-Maskierung und Audit (`hooks`) werden im Runner über quad-core's
-   `GuardrailPlugin` (Hook-Pipeline, `beforeModelCall`/`afterModelCall`), `PiiAnonymizerHook` und
-   `AuditTrailHook` durchgesetzt; Namen über `GET /agentflow/quad/capabilities`.
-
-### Roadmap (weiter)
-- OIDC aktivieren + Keycloak-Realm (Rollen → Tenant-Mapping); `agentflow.security.oidc.enabled=true`.
-- Persistenz-Trigger „git commit“ bei Save (Hook).
-- Graph-Editor: Undo/Redo, Multi-Select, Kanten-Löschen per Klick auf die Linie.
-- `decision`-Angleiche an quad/kafka (Regex/Expression) — Vergleich siehe `DECISION_NODE_COMPARISON.md`,
-  bewusst **noch nicht** umgesetzt.
+- No secrets in the UI/API response; `/settings` only returns `hasApiKey`.
+- Admin actions (terminate) with a confirmation dialog.
+- CSP-friendly, static assets; no external CDNs.
+- CORS: bypassed in dev via the Angular proxy; in prod it is recommended to serve the UI from the same origin.
 
 ---
 
-## 10. Umsetzungs-Checkliste (v1)
+## 9. Implemented (v2)
 
-- [x] App-Shell + Routing + Design-System
-- [x] Dashboard (Health, Metriken, Counts, Quick-Start)
-- [x] Runs (Liste, Detail, Start-Formulare, Signale/Terminate)
-- [x] Workflows (Liste, Detail, JSON-Editor mit Validate/Save)
-- [x] Agents (Liste, Editor, Test-Run)
-- [x] HITL (wartende Runs + Entscheidungen)
-- [x] Observability (Metriken, Provenance, Temporal-Link)
-- [x] Examples (Karten + Formulare)
-- [x] Settings (read-only, ohne Secrets)
-- [x] Visueller Graph-Editor (Drag/Properties, alle Node-Typen)
-- [x] Persistenz + Versionen (Datei + Snapshot, UI-Tab)
-- [x] SSE-Live-Updates (Liste + Einzel-Run **mit History-Events**)
-- [x] Runner für alle Knotentypen (decision/loop/fork/join/subworkflow/hitl)
-- [x] Auth (OIDC **deaktiv** + API-Key/Tenant opt-in) + Testbench-Seite
-- [x] Generate (LLM-Aufgabe → v2-Workflow: Vorschau/Speichern/Ausführen)
-- [x] Graph-Editor: Dependencies setzen/verbinden, Add/Rename/Delete
-- [x] `decision`-Vergleich quad/kafka/agentflow (`DECISION_NODE_COMPARISON.md`)
-- [x] Proxy + Build + README
+1. **Persistence & versioning**: `WorkflowDefinitionStore` writes published defs to
+   `agentflow.workflows.state-dir` and, before each overwrite, stores a snapshot under
+   `versions/<id>/<timestamp>.json` (git-friendly). UI tab "Versions" (load/view).
+2. **Visual graph editor**: `af-graph-editor` — layered layout, drag (position per workflow in
+   localStorage), **set dependencies** via checkbox list and **click-to-connect** (🔗 source→target),
+   rename/delete with **reference integrity** (updates `dependsOn`/branches/`bodySteps`/`defaultTarget`),
+   `+ Node`/`+ connected`, targets as dropdowns. Changes are applied to the JSON in a schema-conformant way.
+3. **SSE complete**: `/agentflow/runs/stream` (list) and `/agentflow/runs/{id}/stream`
+   (status **+ incremental history events**); additionally REST `GET /agentflow/runs/{id}/events`.
+   The UI shows a live log (event ID/type/detail/time) and uses `EventSource` with REST fallback.
+4. **All node types in the runner**: `DeclarativePlanner` flattens (sub-workflows inline, alias to
+   `end`) + `DeclarativeAgentWorkflow` interprets `agent/decision/loop/fork/join/hitl/end`
+   (dependency-driven, branch pruning, loop exit conditions, per-node HITL signal `decide`).
+5. **Auth: OIDC (disabled) + API key/tenant (opt-in)**: `WebSecurityConfig` serves permissively
+   (default, `agentflow.security.oidc.enabled=false`); when activated, a
+   **JWT resource server** (`issuer-uri`/`jwk-set-uri`) is enabled. Separately `ApiKeyFilter`
+   (`agentflow.security.enabled`) and `TenantFilter` (`X-Tenant-Id` scoping).
+6. **Agent testbench**: `/agentflow/testbench/run` returns answer, input/output tokens,
+   tool calls, duration, cost estimate and tool provenance; UI page "Testbench".
+7. **Dynamic workflow generation**: `/agentflow/workflows/generate[/save|/run]` — an LLM
+   ("workflow architect", quad-core path) decomposes a task into a v2 workflow (agent steps
+   + exactly one `end`), published via the same compiler/validator; UI page "Generate"
+   (preview/save/run).
+8. **Create agents/workflows + guardrails/PII/audit**: `POST /agentflow/workflows` (empty
+   workflow), "+ new agent" on `/agents`. Declarative guardrails (`guardrailsInput`/
+   `guardrailsOutput`), PII masking and audit (`hooks`) are enforced in the runner via quad-core's
+   `GuardrailPlugin` (hook pipeline, `beforeModelCall`/`afterModelCall`), `PiiAnonymizerHook` and
+   `AuditTrailHook`; names via `GET /agentflow/quad/capabilities`.
+
+### Roadmap (further)
+- Enable OIDC + Keycloak realm (roles → tenant mapping); `agentflow.security.oidc.enabled=true`.
+- Persistence trigger "git commit" on save (hook).
+- Graph editor: undo/redo, multi-select, delete edges by clicking the line.
+- Align `decision` with quad/kafka (regex/expression) — for comparison see `DECISION_NODE_COMPARISON.md`,
+  deliberately **not yet** implemented.
+
+---
+
+## 10. Implementation checklist (v1)
+
+- [x] App shell + routing + design system
+- [x] Dashboard (health, metrics, counts, quick start)
+- [x] Runs (list, detail, start forms, signals/terminate)
+- [x] Workflows (list, detail, JSON editor with validate/save)
+- [x] Agents (list, editor, test run)
+- [x] HITL (waiting runs + decisions)
+- [x] Observability (metrics, provenance, Temporal link)
+- [x] Examples (cards + forms)
+- [x] Settings (read-only, without secrets)
+- [x] Visual graph editor (drag/properties, all node types)
+- [x] Persistence + versions (file + snapshot, UI tab)
+- [x] SSE live updates (list + single run **with history events**)
+- [x] Runner for all node types (decision/loop/fork/join/subworkflow/hitl)
+- [x] Auth (OIDC **disabled** + API key/tenant opt-in) + testbench page
+- [x] Generate (LLM task → v2 workflow: preview/save/run)
+- [x] Graph editor: set/connect dependencies, add/rename/delete
+- [x] `decision` comparison quad/kafka/agentflow (`DECISION_NODE_COMPARISON.md`)
+- [x] Proxy + build + README

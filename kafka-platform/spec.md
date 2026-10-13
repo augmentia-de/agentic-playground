@@ -1574,67 +1574,67 @@ Specification written successfully.
 
 ```
 
-Die detaillierte Systemspezifikation für die **Event-Driven AI Agent Platform** wurde im Markdown-Format erstellt und als Datei gespeichert.
+The detailed system specification for the **Event-Driven AI Agent Platform** was created in Markdown format and saved as a file.
 
 ---
 
-### Übersicht & Kernkomponenten der Spezifikation
+### Overview & Core Components of the Specification
 
-#### 1. Systemarchitektur & Technologie-Stack
+#### 1. System Architecture & Technology Stack
 
-* **Runtime & Framework**: Java 21 (LTS mit Virtual Threads / Project Loom), Spring Boot 3.3, Spring Kafka.
-* **Build System**: Multi-Module Maven Build (`agent-domain`, `agent-orchestrator`, `agent-worker`, `agent-alerting`).
-* **Event Broker (Kafka)**: Entkoppelte Asynchronität, partitioning nach `workflow_id`, compacted Config-Updates.
+* **Runtime & Framework**: Java 21 (LTS with Virtual Threads / Project Loom), Spring Boot 3.3, Spring Kafka.
+* **Build System**: Multi-module Maven build (`agent-domain`, `agent-orchestrator`, `agent-worker`, `agent-alerting`).
+* **Event Broker (Kafka)**: Decoupled asynchrony, partitioning by `workflow_id`, compacted config updates.
 * **Persistence & State**:
-* **PostgreSQL 16**: Exakte DAG-Checkpoints, Workflow-Status, Versionierung & dynamic Agent Configurations.
-* **Redis 7.2**: Ephemerer Context Cache, Redlock für Task-Sperren, Idempotenz-Prüfungen (`dedup:task:{id}`).
+* **PostgreSQL 16**: Exact DAG checkpoints, workflow status, versioning & dynamic agent configurations.
+* **Redis 7.2**: Ephemeral context cache, Redlock for task locks, idempotency checks (`dedup:task:{id}`).
 
 
-* **Observability**: Distributed Tracing via OpenTelemetry & W3C Trace Context Propagation über Kafka-Header.
+* **Observability**: Distributed tracing via OpenTelemetry & W3C Trace Context propagation via Kafka headers.
 
 ---
 
-#### 2. Kafka Topic Topologie
+#### 2. Kafka Topic Topology
 
 | Topic Name | Partitions | Key Strategy | Description |
 | --- | --- | --- | --- |
-| `agent.execution.intake` | 12 | `workflow_id` | Eingangskanal für neue Workflows |
-| `agent.tasks.<agent_type>` | 12 | `workflow_id` | Agenten-spezifische Task-Queues |
-| `agent.execution.results` | 12 | `workflow_id` | Ergebnisse & Status-Rückmeldungen |
-| `agent.control.timeouts` | 6 | `task_id` | Monitoring verzögerter/hängender Tasks |
-| `agent.control.hitl` | 6 | `workflow_id` | Escalation Queue für Human-in-the-Loop |
-| `agent.config.updates` | 1 | `agent_type` | Compacted Topic für dynamic DB Config Reloads |
+| `agent.execution.intake` | 12 | `workflow_id` | Ingress channel for new workflows |
+| `agent.tasks.<agent_type>` | 12 | `workflow_id` | Agent-specific task queues |
+| `agent.execution.results` | 12 | `workflow_id` | Results & status feedback |
+| `agent.control.timeouts` | 6 | `task_id` | Monitoring of delayed/hanging tasks |
+| `agent.control.hitl` | 6 | `workflow_id` | Escalation queue for human-in-the-loop |
+| `agent.config.updates` | 1 | `agent_type` | Compacted topic for dynamic DB config reloads |
 
 ---
 
-#### 3. PostgreSQL Schema (Auszug)
+#### 3. PostgreSQL Schema (Excerpt)
 
-Das Schema beinhaltet Tabellen für:
+The schema includes tables for:
 
-* `agent_definitions`: Dynamic Configuration (Prompts, Model, Temperature, Max Retries).
-* `workflow_definitions` & `workflow_executions`: DAG-Strukturen und globale Instanz-Zustände.
-* `workflow_checkpoints`: Atomare Zustände einzelner Knoten im DAG.
-* `hitl_tickets`: Audit-Trail & Statusverwaltung für manuelle Eingriffe.
+* `agent_definitions`: Dynamic configuration (prompts, model, temperature, max retries).
+* `workflow_definitions` & `workflow_executions`: DAG structures and global instance states.
+* `workflow_checkpoints`: Atomic states of individual nodes in the DAG.
+* `hitl_tickets`: Audit trail & status management for manual interventions.
 
 ---
 
 #### 4. Dynamic Agent Configuration System
 
-Agenten-Parameter (Prompts, Tools, Modelle) werden **dynamisch aus PostgreSQL** geladen und im Speicher gecached (`ConcurrentHashMap`). Bei Änderungen in der Datenbank wird ein Event auf `agent.config.updates` publiziert, wodurch Workers ohne Neustart ihre Konfiguration im laufenden Betrieb aktualisieren.
+Agent parameters (prompts, tools, models) are loaded **dynamically from PostgreSQL** and cached in memory (`ConcurrentHashMap`). When changes occur in the database, an event is published to `agent.config.updates`, causing workers to update their configuration at runtime without a restart.
 
 ---
 
 #### 5. Human-In-The-Loop (HITL) Alerting & Fallbacks
 
-Wenn ein Agent maximale Retries überschreitet, Guardrails fehlschlagen oder Timeouts auftreten:
+When an agent exceeds maximum retries, guardrails fail, or timeouts occur:
 
-1. Der Workflow geht in den Zustand `PAUSED_HITL`.
-2. Ein Ticket wird in `hitl_tickets` generiert.
-3. Der **Alerting Dispatcher Service** feuert Notifications via **Slack Webhooks** (inkl. interaktiver Buttons für *Retry*, *Skip*, *Abort*) und **PagerDuty REST APIs**.
+1. The workflow enters the `PAUSED_HITL` state.
+2. A ticket is generated in `hitl_tickets`.
+3. The **Alerting Dispatcher Service** fires notifications via **Slack Webhooks** (incl. interactive buttons for *Retry*, *Skip*, *Abort*) and **PagerDuty REST APIs**.
 
 ---
 
-### Vorschau des generierten Java Code-Snippets (Dynamic Config Registry)
+### Preview of the Generated Java Code Snippet (Dynamic Config Registry)
 
 ```java
 package com.platform.worker.config;

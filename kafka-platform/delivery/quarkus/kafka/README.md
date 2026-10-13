@@ -1,8 +1,8 @@
-# Kafka-Infrastruktur (Quarkus-Stack)
+# Kafka infrastructure (Quarkus stack)
 
-Kafka, Postgres-pgvector, Redis und das Netz, in dem der Quarkus-Stack läuft.
+Kafka, Postgres-pgvector, Redis and the network in which the Quarkus stack runs.
 
-## Inhalt
+## Contents
 
 ```
 deployment/
@@ -18,40 +18,40 @@ config/observability/
 
 ## Services
 
-`01-infrastructure.yml` bringt vier Dienste in einem Netz (`llm-net`):
+`01-infrastructure.yml` brings up four services in one network (`llm-net`):
 
-| Service | Zweck |
+| Service | Purpose |
 |---|---|
-| `kafka` | Broker für den Quarkus-Stack |
-| `postgres-pgvector` | quad-Datenbank mit Vektorunterstützung |
-| `redis` | von quad für Sessions und Caching genutzt |
+| `kafka` | Broker for the Quarkus stack |
+| `postgres-pgvector` | quad database with vector support |
+| `redis` | used by quad for sessions and caching |
 
-Anwendung auflegen mit dem passenden Overlay aus `../quad/deployment/compose/`.
+Deploy the application with the matching overlay from `../quad/deployment/compose/`.
 
-## Externes Kafka
+## External Kafka
 
-Statt des mitgelieferten Brokers wird eine bestehende Infrastruktur verwendet.
-Dann entfällt der Kafka-Teil des Overlays und die Verbindung läuft über
-`EXTERNAL_KAFKA_BOOTSTRAP_SERVERS` beziehungsweise die entsprechende Variable in
-der quad-Konfiguration (`QUAD_MESSAGING_KAFKA_INBOUND_BOOTSTRAP_SERVERS`).
+Instead of the bundled broker, existing infrastructure is used.
+The Kafka part of the overlay is then dropped and the connection runs via
+`EXTERNAL_KAFKA_BOOTSTRAP_SERVERS` or the corresponding variable in
+the quad configuration (`QUAD_MESSAGING_KAFKA_INBOUND_BOOTSTRAP_SERVERS`).
 
 ## TLS
 
-Die beiden Skripte sind die SASL-SSL-Variante:
+The two scripts are the SASL-SSL variant:
 
 ```bash
 ./kafka-pki-setup.sh              # Zertifikate erzeugen
 ./sasl-ssl-init.sh                # Broker-Konfiguration anwenden
 ```
 
-Sie stammen aus `kafka-platform/kafka` und `kafka-platform/scripts` und liegen
-hier, weil die TLS-Konfiguration in beiden Delivery-Zweigen identisch ist. Ein
-zweiter Ort für dieselbe Datei wäre eine zweite Stelle, an der sie veralten kann.
-Anleitung für Zertifikate, Scram-Nutzer und die nötigen Jaas-Konfigurationen
-steht in `kafka-platform/TLS_SASL_README.md`.
+They come from `kafka-platform/kafka` and `kafka-platform/scripts` and live
+here because the TLS configuration is identical in both delivery branches. A
+second place for the same file would be a second place where it can become outdated.
+Instructions for certificates, Scram users and the necessary JAAS configurations
+are in `kafka-platform/TLS_SASL_README.md`.
 
 ## Observability
 
-Prometheus- und OTel-Konfiguration unter `config/observability/`. Der
-OTel-Collector exportiert nach Tempo; Trace-Endpoint und Sampling stehen in
+Prometheus and OTel configuration under `config/observability/`. The
+OTel collector exports to Tempo; trace endpoint and sampling are in
 `otel-collector-config.yaml`.

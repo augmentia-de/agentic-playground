@@ -1,12 +1,12 @@
 # Quad Workflow Worker – End-to-End Testing Guide
 
-## Ziel
+## Goal
 
-Verifizieren dass der **quad-workflow-worker** echte LLM-Anfragen (OpenRouter/OpenAI) sendet und korrekte Ergebnisse über Kafka zurckliefert. Kein Mock!
+Verify that the **quad-workflow-worker** sends real LLM requests (OpenRouter/OpenAI) and returns correct results via Kafka. No mock!
 
 ---
 
-## Architektur im Test
+## Architecture Under Test
 
 ```
 ┌─────────────────┐    ┌──────────────┐    ┌──────────────────┐
@@ -34,32 +34,32 @@ Verifizieren dass der **quad-workflow-worker** echte LLM-Anfragen (OpenRouter/Op
 
 ---
 
-## Infrastruktur
+## Infrastructure
 
-| Service | Port(s) | Zweck |
+| Service | Port(s) | Purpose |
 |---------|---------|-------|
 | Kafka | 9092 | Message Broker (Confluent 7.7) |
 | PostgreSQL | 5432 | Orchestrator DB |
-| Redis | 6379 | Orchestrator Cache (Idempotenz) |
+| Redis | 6379 | Orchestrator Cache (idempotency) |
 | Orchestrator | 8080 | REST API + Workflow Engine |
-| mock-worker | 8091 | Deterministischer Mock-Worker |
-| **quad-worker** | 8092 | Echter LLM-Worker (Test-Ziel) |
+| mock-worker | 8091 | Deterministic mock worker |
+| **quad-worker** | 8092 | Real LLM worker (test target) |
 
-### Voraussetzungen
+### Prerequisites
 
-- Docker Desktop mit ≥ 4 GB Memory
-- `.env` Datei im Projektverzeichnis mit API Key:
+- Docker Desktop with ≥ 4 GB memory
+- `.env` file in the project directory with API key:
   ```bash
   OPENAI_API_KEY="sk-or-v1-..."
   KAFKA_BOOTSTRAP_SERVERS=localhost:9092
   ```
-- Maven ≥ 3.9 (für lokale Tests falls nötig)
+- Maven ≥ 3.9 (for local tests if needed)
 
 ---
 
-## Setup-Schritte
+## Setup Steps
 
-### 1. Infrastruktur starten
+### 1. Start Infrastructure
 
 ```bash
 cd /home/torsten/dev/my-projects/kafka_workflow
@@ -72,7 +72,7 @@ sleep 30
 docker compose ps --filter status=healthy
 ```
 
-### 2. Quad-Worker bauen & starten
+### 2. Build & Start the Quad Worker
 
 ```bash
 cd quad-workflow-worker
@@ -93,9 +93,9 @@ curl -s http://localhost:8092/actuator/health | jq .status
 docker logs quad-worker 2>&1 | grep -i "model\|openrouter\|configured"
 ```
 
-### 3. Topics validieren
+### 3. Validate Topics
 
-Die benötigten Topics werden automatisch erstellt (auto.create.topics.enable=true in Confluent). Falls nicht:
+The required topics are created automatically (auto.create.topics.enable=true in Confluent). If not:
 
 ```bash
 # Topic existiert?
@@ -113,13 +113,13 @@ docker exec agent-platform-kafka \
 
 ---
 
-## Test-Szenarien
+## Test Scenarios
 
 ### T1: Simple Research Task (Baseline)
 
-**Beschreibung:** Ein einfacher `research`-Task an den researcher-Agenten schicken und das Ergebnis vom LLM prüfen.
+**Description:** Send a simple `research` task to the researcher agent and check the result from the LLM.
 
-**Ablauf:**
+**Procedure:**
 ```bash
 # 1. Workflow Definition erstellen
 curl -X POST http://localhost:8080/api/v1/workflow-definitions \
@@ -161,14 +161,14 @@ curl -X POST http://localhost:8080/api/v1/workflows/start \
 # Response: {"workflowExecutionId":"<uuid>","duplicate":false}
 ```
 
-**Erwartetes Verhalten:**
-1. Orchestrator publish Task auf `agent.tasks.researcher`
-2. quad-worker消费 Task → Prompt bauen → LLM aufrufen
-3. LLM antwortet mit JSON-strukturiertem Inhalt
-4. quad-worker publiziert Result auf `agent.execution.results`
-5. Orchestrator empfängt Result → Checkpoint aktualisiert
+**Expected Behavior:**
+1. Orchestrator publishes task to `agent.tasks.researcher`
+2. quad-worker consumes task → builds prompt → calls LLM
+3. LLM responds with JSON-structured content
+4. quad-worker publishes result to `agent.execution.results`
+5. Orchestrator receives result → checkpoint updated
 
-**Validierung:**
+**Validation:**
 ```bash
 # 1. Checkpoints prüfen (HTTP)
 EXEC_ID="<from-start-response>"
@@ -183,7 +183,7 @@ docker exec agent-platform-kafka \
 curl -s http://localhost:8092/actuator/prometheus | grep quad_worker
 ```
 
-**Gültige Result-Felder:**
+**Valid Result Fields:**
 ```json
 {
   "executor": "quad-core",
@@ -196,9 +196,9 @@ curl -s http://localhost:8092/actuator/prometheus | grep quad_worker
 
 ---
 
-### T2: Multi-Step Research mit Decision Gate
+### T2: Multi-Step Research with Decision Gate
 
-**Beschreibung:** Research-Task mit Confidence-Gate: Bei confidence < 0.7 → Retry.
+**Description:** Research task with a confidence gate: if confidence < 0.7 → retry.
 
 **Workflow:**
 ```
@@ -207,24 +207,24 @@ research → quality_gate(DECISION)
                └─ pass → end
 ```
 
-**Ablauf:** Siehe JSON-Payload unten. Hier geht es um Routing-Logik – der Worker liefert einfach COMPLETED zurück, der Orchestrator entscheidet über Retry basierend auf confidence.
+**Procedure:** See the JSON payload below. This is about routing logic — the worker simply returns COMPLETED, and the orchestrator decides about a retry based on confidence.
 
-**Test-Befehle:** Siehe T1. Unterschied: Die Qualität des ersten Ergebnisses bestimmt ob Retry passiert.
+**Test Commands:** See T1. Difference: the quality of the first result determines whether a retry happens.
 
 ---
 
 ### T3: Error Handling – Timeout Simulation
 
-**Beschreibung:** Validieren dass timeouts korrekt als `FAILED_RETRYABLE` klassifiziert werden.
+**Description:** Validate that timeouts are correctly classified as `FAILED_RETRYABLE`.
 
-**Test-Methode:** Temporär LLM Timeout von 120s auf 100ms reduzieren und Task ausführen.
+**Test Method:** Temporarily reduce the LLM timeout from 120s to 100ms and execute a task.
 
-**Erwartet:**
-- Task wird vom Worker abgeholt
-- LLM Call timeout nach ~100ms
-- Result mit `status: FAILED_RETRYABLE` publiziert
-- Orchestrator setzt Checkpoint auf `RETRYING`
-- Nach Sweep → neuer attempt gestartet
+**Expected:**
+- Task is picked up by the worker
+- LLM call times out after ~100ms
+- Result published with `status: FAILED_RETRYABLE`
+- Orchestrator sets checkpoint to `RETRYING`
+- After sweep → new attempt started
 
 **Check:**
 ```bash
@@ -236,11 +236,11 @@ curl -s http://localhost:8092/actuator/prometheus | grep "quad_worker_task_durat
 
 ### T4: Multiple Parallel Tasks (Fork/Join)
 
-**Beschreibung:** Zwei researcher-Tasks parallel schicken und sehen ob beide verarbeitet werden.
+**Description:** Send two researcher tasks in parallel and see whether both are processed.
 
-**Orchestrierte Abfolge:** Der Orchestrator fork/join für diesen Test nicht notwendig – man startet einfach zwei Workflows parallel mit verschiedenen `idempotencyKey`s.
+**Orchestrated Sequence:** The orchestrator's fork/join is not necessary for this test — you simply start two workflows in parallel with different `idempotencyKey`s.
 
-**Befehl:**
+**Command:**
 ```bash
 curl -s -X POST http://localhost:8080/api/v1/workflows/start \
   -H "Content-Type: application/json" \
@@ -251,15 +251,15 @@ curl -s -X POST http://localhost:8080/api/v1/workflows/start \
   -d '{"workflowName":"test-research-flow","version":1,"inputParams":{"query":"Query B"},"idempotencyKey":"parallel-test-B"}'
 ```
 
-**Check:** Beide sollten unterschiedliche executionIds erhalten und unabhängig processed werden.
+**Check:** Both should receive different executionIds and be processed independently.
 
 ---
 
-### T5: Idempotenz-Prüfung
+### T5: Idempotency Check
 
-**Beschreibung:** Gleichen Workflow zweimal mit derselben `idempotencyKey` starten.
+**Description:** Start the same workflow twice with the same `idempotencyKey`.
 
-**Befehl:**
+**Command:**
 ```bash
 # Erster Call
 curl -s -X POST http://localhost:8080/api/v1/workflows/start \
@@ -272,15 +272,15 @@ curl -s -X POST http://localhost:8080/api/v1/workflows/start \
   -d '{"workflowName":"test-research-flow","version":1,"inputParams":{"query":"Duplicate Test"},"idempotencyKey":"idem-test-001"}'
 ```
 
-**Erwartet:** Zweiter Call → `"duplicate": true`. Nur ein Task wird ausgeführt, aber kein Fehler geworfen.
+**Expected:** Second call → `"duplicate": true`. Only one task is executed, but no error is thrown.
 
 ---
 
-### T6: Kosten-Tracking (Token Usage)
+### T6: Cost Tracking (Token Usage)
 
-**Beschreibung:** Überprüfen dass Token-Nutzung und Kosten tracked werden.
+**Description:** Verify that token usage and costs are tracked.
 
-**Voraussetzung:** quad-core exposes TokenUsage in AgentResult (upstream-fix nötig, aktuell oft `promptTokens=0`).
+**Prerequisite:** quad-core exposes TokenUsage in AgentResult (upstream fix needed, currently often `promptTokens=0`).
 
 **Check:**
 ```bash
@@ -291,11 +291,11 @@ curl -s "http://localhost:8080/api/v1/workflows/<exec-id>/checkpoints" | jq '.[]
 
 ## Monitoring & Observability
 
-### Prometheus Metriken (Quad Worker)
+### Prometheus Metrics (Quad Worker)
 
 Endpoint: `http://localhost:8092/actuator/prometheus`
 
-Wichtige Metriken:
+Important metrics:
 ```text
 # HELP quad_worker_tasks_received_total Total tasks received from Kafka
 quad_worker_tasks_received_total 42.0
@@ -328,7 +328,7 @@ curl -s http://localhost:8080/actuator/health | jq .
 
 ### Logging Format
 
-Jeder Log-Eintrag enthält:
+Every log entry contains:
 ```
 [INFO] Processing task: workflow=<wfId>, taskId=<taskId>, agentType=researcher, step=research
 [INFO] Agent created for type=researcher, model=simple
@@ -339,7 +339,7 @@ Jeder Log-Eintrag enthält:
 
 ## Troubleshooting
 
-### LLM Calls fehlgeschlagen
+### LLM Calls Failed
 
 ```bash
 # Prüfen ob API Key gesetzt ist
@@ -353,7 +353,7 @@ curl https://openrouter.ai/api/v1/models \
   -H "Authorization: Bearer $OPENAI_API_KEY" | jq ".data[:3]"
 ```
 
-### Task wird nicht vom Worker verarbeitet
+### Task Not Being Processed by the Worker
 
 ```bash
 # Topic existiert?
@@ -378,24 +378,24 @@ docker logs quad-worker 2>&1 | tail -50
 
 ---
 
-## Ergebnisse & Fazit
+## Results & Conclusion
 
-### Erwartete Ergebnisse bei erfolgreicher Ausführung
+### Expected Results on Successful Execution
 
-| Kriterium | Erwartung | Status |
+| Criterion | Expectation | Status |
 |-----------|-----------|--------|
-| Workflow Definition erstellen | 201 Created | ✅ |
-| Workflow starten | 202 Accepted | ✅ |
-| Task auf Kafka Topic sichtbar | Ja | ✅ |
-| Worker消费 Task | In Logs sichtbar | ✅ |
-| LLM Call erfolgreich | 200 OK von OpenRouter | ⏳ zu verifizieren |
-| Result in `agent.execution.results` | Ja | ⏳ |
-| Checkpoint aktualisiert | Ja | ⏳ |
-| Prometheus Metrics inkrementiert | Ja | ⏳ |
-| Idempotenz geprüft | duplicate: true | ✅ |
+| Create workflow definition | 201 Created | ✅ |
+| Start workflow | 202 Accepted | ✅ |
+| Task visible on Kafka topic | Yes | ✅ |
+| Worker consumes task | Visible in logs | ✅ |
+| LLM call successful | 200 OK from OpenRouter | ⏳ to be verified |
+| Result in `agent.execution.results` | Yes | ⏳ |
+| Checkpoint updated | Yes | ⏳ |
+| Prometheus metrics incremented | Yes | ⏳ |
+| Idempotency checked | duplicate: true | ✅ |
 
-### Bekannte Einschränkungen
+### Known Limitations
 
-1. **TokenUsage**: `quad-core` expose TokenUsage noch unvollständig (promptTokens oft 0). Upstream-Fix #3 erforderlich für korrekte Cost-Metriken.
-2. **Rate-Limits**: Standard-Limiter auf 100 tokens/min / 5 concurrent calls. Bei mehreren parallelen Workflows evtl. erhöhen.
-3. **Timeout**: Default 120s pro Task. Bei komplexen Prompts/Lang LLM Calls möglicherweise erhöht werden.
+1. **TokenUsage**: `quad-core` exposes TokenUsage incompletely as yet (promptTokens often 0). Upstream fix #3 required for correct cost metrics.
+2. **Rate limits**: default limiter at 100 tokens/min / 5 concurrent calls. May need to be increased with several parallel workflows.
+3. **Timeout**: default 120s per task. May need to be increased for complex prompts/long LLM calls.

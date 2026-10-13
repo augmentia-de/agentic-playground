@@ -1,12 +1,12 @@
-# Spring-Boot-Laufzeit
+# Spring Boot runtime
 
-Beide Dienste der Kafka-Plattform laufen auf Spring Boot. Der Worker bringt
-quad-core mit und führt Workflow-Schritte aus, die quad entworfen hat.
+Both services of the Kafka platform run on Spring Boot. The worker bundles
+quad-core and executes workflow steps that quad designed.
 
 ## `quad/` — quad-workflow-worker
 
-Führt einzelne Workflow-Schritte aus. Nimmt Tasks von `agent.tasks.*` und legt
-das Ergebnis auf `agent.execution.results`.
+Executes individual workflow steps. Takes tasks from `agent.tasks.*` and puts
+the result on `agent.execution.results`.
 
 ```
 deployment/
@@ -18,34 +18,34 @@ config/
 └── worker.env.example                          erforderliche Einstellungen
 ```
 
-Das Compose-Fragment für den Worker liegt in `../kafka/deployment/compose/`,
-weil `docker-compose.minimal.yml` beide Dienste gemeinsam startet.
+The Compose fragment for the worker is in `../kafka/deployment/compose/`,
+because `docker-compose.minimal.yml` starts both services together.
 
-### Zwei Einstellungen ohne die nichts aus importierten Agenten läuft
+### Two settings without which nothing from imported agents runs
 
-**`WORKER_QUAD_AGENT_SOURCE=db`.** Der Worker liest Agentendefinitionen nur bei
-dieser Einstellung aus der Datenbank. Sonst greift die statische Liste aus
-`application.yml` und jeder über `/agents/convert` importierte Agent scheitert:
+**`WORKER_QUAD_AGENT_SOURCE=db`.** The worker reads agent definitions from the
+database only with this setting. Otherwise the static list from
+`application.yml` applies and every agent imported via `/agents/convert` fails:
 
 ```
 Unknown agent type: ex-market-scout. Available types: coder, fixer, linter, …
 ```
 
-**`modelId` muss `simple` sein.** Der Worker registriert genau einen Model-Key,
-aus `OPENAI_*` in `ChatModelRegistry`. Jeder andere Key wirft:
+**`modelId` must be `simple`.** The worker registers exactly one model key,
+from `OPENAI_*` in `ChatModelRegistry`. Every other key throws:
 
 ```
 IllegalArgumentException: Unknown model key: gpt-4o-mini. Available: [simple]
 ```
 
-Das betrifft auch den automatisch angelegten Stub-Agenten. Der Orchestrator
-schreibt seinen Default aus `app.agents.default-model-key` (Default `simple`),
-das muss zum registrierten Key passen.
+This also applies to the automatically created stub agent. The orchestrator
+writes its default from `app.agents.default-model-key` (default `simple`),
+which must match the registered key.
 
-### Timeout-Grenzen
+### Timeout limits
 
-Der Listener wartet auf den **kompletten** Batch, bevor der nächste Poll
-startet. Daraus folgt die Kette:
+The listener waits for the **complete** batch before the next poll
+starts. This gives the chain:
 
 ```
 worker.quad.max-task-timeout-ms   (600000)
@@ -53,11 +53,11 @@ worker.quad.max-task-timeout-ms   (600000)
   < .env-Datei / Workflow, das einen Timeout > 600s fordert
 ```
 
-Ein Task über 600 s wird gekürzt und protokolliert. Ohne diese Grenze evictet
-ein einzelner Task den Consumer, die Partition wird neu zugestellt und alle
-LLM-Aufrufe der Partition werden zweimal bezahlt.
+A task over 600 s is truncated and logged. Without this limit, a single task
+evicts the consumer, the partition is redelivered and all
+LLM calls of the partition are paid for twice.
 
-`auto.offset.reset` steht auf `earliest`. Auf `latest` fällt ein Task, der vor
-der Partition-Zuweisung produziert wurde — bei jedem neu importierten Agent-Typ
-der erste Task. Der Preis ist ein Replay beim Beitritt zu einer Gruppe, den der
-Result-Cache ohne zweiten LLM-Call bedient.
+`auto.offset.reset` is set to `earliest`. On `latest`, a task produced before
+the partition assignment is dropped — for every newly imported agent type
+the first task. The price is a replay on joining a group, which the
+result cache serves without a second LLM call.

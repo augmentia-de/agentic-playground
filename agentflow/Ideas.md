@@ -1,50 +1,50 @@
 # AgentFlow — Ideas
 
-**Status:** Konzept (2026-10-10). Grundlage: `agentflow/` (`agentflow-core`, `agentflow-app`).
+**Status:** Concept (2026-10-10). Basis: `agentflow/` (`agentflow-core`, `agentflow-app`).
 Stack: **Spring Boot 4.0.8 · Spring AI 2.0.1 · LangGraph4j 1.9.4 · Temporal 1.40.0 · quad-core**.
-Ziel dieses Dokuments: Was die App heute kann, welche komplexen Use Cases darauf aufsetzen, und
-wie eine UI für **Observe, Config, Logs, HITL und Task-Start** aussehen kann.
+Goal of this document: what the app can do today, which complex use cases build on it, and
+how a UI for **observe, config, logs, HITL and task start** could look.
 
 ---
 
-## 0. Was die App heute kann (real, nicht Wunsch)
+## 0. What the app can do today (real, not wishful thinking)
 
-| Fähigkeit | Umsetzung | Status |
+| Capability | Implementation | Status |
 |---|---|---|
-| Graph-Reasoning (plan → execute → review, conditional retry) | `AgentFlowGraph` (`StateGraph`, `addConditionalEdges`) | ✅ |
-| Durable Orchestration (Replay/Retry/Timers) | Temporal `AgentFlowWorkflow` + Activity | ✅ |
-| quad-core-Agent als durable Activity | `QuadAgentWorkflow` + `AgentFlowActivities.runQuadAgent` (`Agents.simple()`) | ✅ |
-| **Rich quad-Agent** (Tools/Skills/Guardrails/PII/Audit) | `QuadCapabilities` + `RichAgentWorkflow`, `/agentflow/runs/quad-rich` | ✅ |
-| **Built-in Tools** (workspace-confined) | readFile, writeFile, listDirectory, grepSearch, findFiles, webSearch, webfetch | ✅ |
+| Graph reasoning (plan → execute → review, conditional retry) | `AgentFlowGraph` (`StateGraph`, `addConditionalEdges`) | ✅ |
+| Durable orchestration (replay/retry/timers) | Temporal `AgentFlowWorkflow` + activity | ✅ |
+| quad-core agent as durable activity | `QuadAgentWorkflow` + `AgentFlowActivities.runQuadAgent` (`Agents.simple()`) | ✅ |
+| **Rich quad agent** (tools/skills/guardrails/PII/audit) | `QuadCapabilities` + `RichAgentWorkflow`, `/agentflow/runs/quad-rich` | ✅ |
+| **Built-in tools** (workspace-confined) | readFile, writeFile, listDirectory, grepSearch, findFiles, webSearch, webfetch | ✅ |
 | **Skills (JIT)** | `AgentBuilder.withSkills` → `load_skill` / `skill_search` | ✅ |
-| **Guardrails** | `GuardrailPlugin` via `withGuardrail` (Prompt-Injection) | ✅ |
-| **PII-Anonymisierung** | `PiiAnonymizerHook` (EMAIL/PHONE/CREDIT_CARD → `[REDACTED]`) | ✅ |
-| **Audit-Trail** | `AuditTrailHook` (in-memory) | ✅ |
-| **RBAC (rollenbasierte Tools)** | `QuadSecurity` + quad `RoleBasedToolGuard` (`/runs/authorized`) | ✅ |
-| **Saga/Kompensation (durabel)** | Temporal `SagaWorkflow` + quad `SagaAgentInterceptor` (`/runs/saga`, `/runs/quad-saga`) | ✅ |
+| **Guardrails** | `GuardrailPlugin` via `withGuardrail` (prompt injection) | ✅ |
+| **PII anonymization** | `PiiAnonymizerHook` (EMAIL/PHONE/CREDIT_CARD → `[REDACTED]`) | ✅ |
+| **Audit trail** | `AuditTrailHook` (in-memory) | ✅ |
+| **RBAC (role-based tools)** | `QuadSecurity` + quad `RoleBasedToolGuard` (`/runs/authorized`) | ✅ |
+| **Saga/compensation (durable)** | Temporal `SagaWorkflow` + quad `SagaAgentInterceptor` (`/runs/saga`, `/runs/quad-saga`) | ✅ |
 | **Structured Output** | `withStructuredOutput(ContentPlan)` + `/runs/structured` | ✅ |
 | **Provenance** | quad `ProvenanceTracker` + `/runs/provenance` | ✅ |
 | **Long-term Memory** | quad `PersistentMemoryStore` (in-memory) + `/runs/memory` | ✅ |
-| **MCP-Tools** | `SseMcpProxy`/`McpToolMethod` + `/runs/mcp` (SSE-URL konfigurierbar) | ✅ |
-| **Sub-Agenten** | quad `SubAgentTool` via `withSubAgent` + `/runs/subagents` | ✅ |
-| **OTel/Metriken** | quad `MetricsHook` (Micrometer) + `TracingHook` (OTel) + `/runs/metrics`, `/actuator/prometheus` | ✅ |
-| **Capability-Search/RAG** | quad `CapabilitySearch`/`CapabilityIndex` (HNSW bzw. PgVector) + `/runs/capability-search`, `/capabilities/search` | ✅ |
-| **Business-Cases** | Modul `agentflow-examples`: 5 Cases unter `/examples/**` | ✅ |
-| **Declarative Workflows/Agents (v2)** | `quad.workflow` v2 JSON (`workflows/*.json`, inkl. `agents[]`) via `quad-workflow-core` (Publish-Compiler + Semantic-Validator) → `/agentflow/workflows`, `/runs/declarative` | ✅ |
+| **MCP tools** | `SseMcpProxy`/`McpToolMethod` + `/runs/mcp` (SSE URL configurable) | ✅ |
+| **Sub-agents** | quad `SubAgentTool` via `withSubAgent` + `/runs/subagents` | ✅ |
+| **OTel/metrics** | quad `MetricsHook` (Micrometer) + `TracingHook` (OTel) + `/runs/metrics`, `/actuator/prometheus` | ✅ |
+| **Capability search/RAG** | quad `CapabilitySearch`/`CapabilityIndex` (HNSW or PgVector) + `/runs/capability-search`, `/capabilities/search` | ✅ |
+| **Business cases** | module `agentflow-examples`: 5 cases under `/examples/**` | ✅ |
+| **Declarative workflows/agents (v2)** | `quad.workflow` v2 JSON (`workflows/*.json`, incl. `agents[]`) via `quad-workflow-core` (publish compiler + semantic validator) → `/agentflow/workflows`, `/runs/declarative` | ✅ |
 | Human-in-the-Loop | `interruptBefore(REVIEWER)` + `HitlWorkflow` (`@SignalMethod decide`) | ✅ |
-| Persistente Checkpoints (Worker-Neustart-fest) | `SQLiteSaverV2`, `graphId=agentflow` | ✅ |
-| LLM (OpenAI-kompatibel) + konfigurierbare Header | `spring.ai.openai.*` (eine Quelle) + `LlmConfigBridge` + `LlmHeaderConfig` (Header nur wenn konfiguriert) | ✅ |
-| REST-Start/Signal | `/runs*` (inkl. `structured`, `provenance`, `memory`, `mcp`, `subagents`, `metrics`, `capability-search`, `declarative`), `/capabilities`, `/capabilities/search`, `/workflows`, `/workflows/{id}`, `/info`, `/quad/capabilities`, `/security/roles`, `/examples**` | ✅ |
-| Tests | Graph (3), Exceptions (15), Examples (8, inkl. durable Workflows via `TestWorkflowEnvironment`) | ✅ |
-| **UI** | Modul `agentflow-ui` (Angular 20), siehe `UI.md` | ✅ |
-| Run-Listing / HITL-Queue / Config-API | `GET /agentflow/runs(/{id})`, `/agentflow/settings`, Workflow-Editor (`/workflows/validate`, `PUT`) | ✅ |
+| Persistent checkpoints (worker-restart-safe) | `SQLiteSaverV2`, `graphId=agentflow` | ✅ |
+| LLM (OpenAI-compatible) + configurable headers | `spring.ai.openai.*` (single source) + `LlmConfigBridge` + `LlmHeaderConfig` (headers only when configured) | ✅ |
+| REST start/signal | `/runs*` (incl. `structured`, `provenance`, `memory`, `mcp`, `subagents`, `metrics`, `capability-search`, `declarative`), `/capabilities`, `/capabilities/search`, `/workflows`, `/workflows/{id}`, `/info`, `/quad/capabilities`, `/security/roles`, `/examples**` | ✅ |
+| Tests | Graph (3), exceptions (15), examples (8, incl. durable workflows via `TestWorkflowEnvironment`) | ✅ |
+| **UI** | module `agentflow-ui` (Angular 20), see `UI.md` | ✅ |
+| Run listing / HITL queue / config API | `GET /agentflow/runs(/{id})`, `/agentflow/settings`, workflow editor (`/workflows/validate`, `PUT`) | ✅ |
 
-**Ehrliche Grenzen heute:** keine UI, keine Run-Liste, kein Live-Stream, keine Config-CRUD,
-State lebt in Activity-Logik (nicht als First-Class-Run-Objekt), HITL pausiert nur den einen Knoten.
+**Honest limits today:** no UI, no run list, no live stream, no config CRUD,
+state lives in activity logic (not as a first-class run object), HITL only pauses the one node.
 
 ---
 
-## 1. Fähigkeitslandkarte (Zielbild)
+## 1. Capability map (target picture)
 
 ```
 Temporal (Durability)      LangGraph4j (Reasoning)        Spring AI (Model/Tools)
@@ -57,46 +57,46 @@ Temporal (Durability)      LangGraph4j (Reasoning)        Spring AI (Model/Tools
 
 ---
 
-## 1.1 Tiefe quad-Nutzung — Katalog
+## 1.1 Deep quad usage — catalog
 
-**Bereits verdrahtet** (`QuadCapabilities` / `RichAgentWorkflow`, `/agentflow/runs/quad-rich`)
+**Already wired** (`QuadCapabilities` / `RichAgentWorkflow`, `/agentflow/runs/quad-rich`)
 
-| Baustein | quad-core-Klasse | Wirkung |
+| Building block | quad-core class | Effect |
 |---|---|---|
-| Built-in Tools | `ReadFile/WriteTool/LsTool/GrepTool/FindTool/WebSearchTool/WebFetchTool` | Datei-/Web-Tools, im Workspace confined |
-| Tool-Registry | `QuadToolRegistry` + `ReflectiveToolMethod` | Tools unter Katalog-Namen registriert |
-| Skills (JIT) | `AgentBuilder.withSkills` → `AgentSkillsPlugin`, `SkillLoadTool`, `SkillSearchTool`, `ToolActivatorTool`, `SkillActivationHook` | Katalog statt Volltext; `load_skill` on demand |
-| Guardrails | `Guardrail`, `GuardrailPlugin` | blockt Prompt-Injection |
-| PII/GDPR | `PiiAnonymizerHook` | maskiert E-Mail/Telefon/Kreditkarte vor dem Modell |
-| Audit | `AuditTrailHook` (+ `AuditStore`) | Tool-/Agent-Aktionen revisionssicher |
-| RBAC/Permissions | `RoleBasedToolGuard`, `SecurityContext` (via `QuadSecurity`) | rollenbasierte Tool-Scopes (deny by absence) |
-| Saga/Kompensation | `SagaAgentInterceptor`, `CompensatingAction` (+ Temporal `SagaWorkflow`) | Ausgleich vorwärts/rückwärts, durabel |
-| Structured Output | `StructuredOutputConfig`, `Agent.executeStructured` | typisierte Ausgaben |
-| Memory | `PersistentMemoryStore`, `MemoryEntry`, `MemoryCategory` | Langzeitgedächtnis je Scope |
-| Provenance | `ProvenanceTracker`, `ProvenanceEntry` | Herkunft/Quelle je Tool |
-| MCP | `SseMcpProxy`, `McpToolMethod`, `McpToolClient` | externe MCP-Server als Tools |
-| Sub-Agenten | `SubAgentTool`, `DynamicSubAgentTool` | Hierarchie/Handoff via registriertem Tool |
-| Metriken/OTel | `MetricsHook`, `AgentMetrics`, `TracingHook`, `OTelAgentTracer` | Micrometer-Counter (Prometheus) + OTel-Spans |
-| Capability-Search/RAG | `CapabilitySearch`, `CapabilityIndex`, `CapabilitySearchTool`, `CapabilitySearchRouter` | Tool-/Skill-Retrieval (HNSW bzw. PgVector) |
-| Events/Logging | `AgentEventPublisher` + `LoggingHook` | Token-/Tool-/Lifecycle-Events |
-| Workspace/Session | `WorkspaceResolver`, `CurrentSession` | Pfad-Confinenment, Session-Bindung |
-| Modell | `ModelFactory` (+ `ModelHeaders`) | OpenAI-kompatibel inkl. OpenCode-Go-Header |
+| Built-in Tools | `ReadFile/WriteTool/LsTool/GrepTool/FindTool/WebSearchTool/WebFetchTool` | file/web tools, confined to the workspace |
+| Tool-Registry | `QuadToolRegistry` + `ReflectiveToolMethod` | tools registered under catalog names |
+| Skills (JIT) | `AgentBuilder.withSkills` → `AgentSkillsPlugin`, `SkillLoadTool`, `SkillSearchTool`, `ToolActivatorTool`, `SkillActivationHook` | catalog instead of full text; `load_skill` on demand |
+| Guardrails | `Guardrail`, `GuardrailPlugin` | blocks prompt injection |
+| PII/GDPR | `PiiAnonymizerHook` | masks email/phone/credit card before the model |
+| Audit | `AuditTrailHook` (+ `AuditStore`) | tool/agent actions audit-proof |
+| RBAC/Permissions | `RoleBasedToolGuard`, `SecurityContext` (via `QuadSecurity`) | role-based tool scopes (deny by absence) |
+| Saga/compensation | `SagaAgentInterceptor`, `CompensatingAction` (+ Temporal `SagaWorkflow`) | compensation forward/backward, durable |
+| Structured Output | `StructuredOutputConfig`, `Agent.executeStructured` | typed outputs |
+| Memory | `PersistentMemoryStore`, `MemoryEntry`, `MemoryCategory` | long-term memory per scope |
+| Provenance | `ProvenanceTracker`, `ProvenanceEntry` | origin/source per tool |
+| MCP | `SseMcpProxy`, `McpToolMethod`, `McpToolClient` | external MCP servers as tools |
+| Sub-agents | `SubAgentTool`, `DynamicSubAgentTool` | hierarchy/handoff via registered tool |
+| Metrics/OTel | `MetricsHook`, `AgentMetrics`, `TracingHook`, `OTelAgentTracer` | Micrometer counters (Prometheus) + OTel spans |
+| Capability search/RAG | `CapabilitySearch`, `CapabilityIndex`, `CapabilitySearchTool`, `CapabilitySearchRouter` | tool/skill retrieval (HNSW or PgVector) |
+| Events/Logging | `AgentEventPublisher` + `LoggingHook` | token/tool/lifecycle events |
+| Workspace/Session | `WorkspaceResolver`, `CurrentSession` | path confinement, session binding |
+| Model | `ModelFactory` (+ `ModelHeaders`) | OpenAI-compatible incl. OpenCode Go headers |
 
-**Verfügbar, noch nicht verdrahtet** (nächste Ausbaustufe)
+**Available, not yet wired** (next expansion stage)
 
-| Baustein | quad-core-Klasse | Idee |
+| Building block | quad-core class | Idea |
 |---|---|---|
-| Skill-/Tool-Discovery | `ToolActivatorTool`, `CapabilityRegistry` | dynamische Tool-Aktivierung aus dem Retrieval |
+| Skill/tool discovery | `ToolActivatorTool`, `CapabilityRegistry` | dynamic tool activation from retrieval |
 
-> Prinzip: **Temporal** = Durability, **LangGraph4j** = Graph/HITL, **quad-core** = Agent-Fähigkeiten
-> (Tools/Skills/Guardrails/PII/Memory/Saga). Jede Fähigkeit wird als Activity gekapselt.
+> Principle: **Temporal** = durability, **LangGraph4j** = graph/HITL, **quad-core** = agent capabilities
+> (tools/skills/guardrails/PII/memory/saga). Every capability is encapsulated as an activity.
 
 ---
 
-## 2. Komplexe Use Cases
+## 2. Complex use cases
 
-### UC-1 — „Deep Research & Editorial" (mehrstufig, Tools, HITL)
-Der aus `quad` bekannte News-Workflow, aber durabel und mit Freigabe.
+### UC-1 — "Deep Research & Editorial" (multi-stage, tools, HITL)
+The news workflow known from `quad`, but durable and with approval.
 ```
 start → planner → researcher(tools: webSearch, webfetch) → analyst → writer
                          │                                   │
@@ -104,53 +104,53 @@ start → planner → researcher(tools: webSearch, webfetch) → analyst → wri
                                         │ approve
                                      publish
 ```
-- **Nutzt:** LangGraph4j-Knoten + Sub-Agenten, quad-core `ToolRegistry`/MCP, HITL-Interrupt,
-  Temporal-Retries (Flaky Web-Fetches), persistente Checkpoints.
-- **Warum temporal:** Dauer Minuten–Stunden, externe Quellen, Freigabe asynchron.
+- **Uses:** LangGraph4j nodes + sub-agents, quad-core `ToolRegistry`/MCP, HITL interrupt,
+  Temporal retries (flaky web fetches), persistent checkpoints.
+- **Why Temporal:** duration minutes–hours, external sources, asynchronous approval.
 
-### UC-2 — Regulatorischer Freigabeprozess (Tage, Audit, Saga)
-Ein Antrag durchläuft Prüfungen; bei Ablehnung werden Seiteneffekte kompensiert.
-- **Nutzt:** Temporal `Workflow.await` mit Timern (SLA-Eskalation), HITL-Signale, quad-core
-  `SagaAgent`/`CompensatingAction` in Activities, Audit-Events.
-- **UI:** HITL-Inbox, Fristen, Audit-Trail.
+### UC-2 — Regulatory approval process (days, audit, saga)
+An application goes through reviews; on rejection, side effects are compensated.
+- **Uses:** Temporal `Workflow.await` with timers (SLA escalation), HITL signals, quad-core
+  `SagaAgent`/`CompensatingAction` in activities, audit events.
+- **UI:** HITL inbox, deadlines, audit trail.
 
-### UC-3 — RAG-gestützte Fallprüfung (strukturierte Ausgabe)
-Retrieval → Bewertung → Entscheidung mit typisiertem Ergebnis.
-- **Nutzt:** Spring AI VectorStore/Embeddings, Structured Output (JSON-Schema), Reviewer-Node.
-- **Graph:** `retrieve → assess → decide`; bei niedriger Konfidenz → zurück zu `retrieve` (Cycle).
+### UC-3 — RAG-assisted case review (structured output)
+Retrieval → assessment → decision with a typed result.
+- **Uses:** Spring AI VectorStore/embeddings, Structured Output (JSON schema), reviewer node.
+- **Graph:** `retrieve → assess → decide`; on low confidence → back to `retrieve` (cycle).
 
-### UC-4 — Parallele Content-Pipeline (Fan-out/Fan-in)
-Ein Input → vier Kanäle (LinkedIn/X/Blog/Newsletter) parallel → Join → Packaging.
-- **Nutzt:** LangGraph4j Parallel-Branch/Join, je Kanal eigener Subgraph.
-- **Durability:** jeder Zweig ein Temporal-Activity; Join wartet deterministisch.
+### UC-4 — Parallel content pipeline (fan-out/fan-in)
+One input → four channels (LinkedIn/X/blog/newsletter) in parallel → join → packaging.
+- **Uses:** LangGraph4j parallel branch/join, its own subgraph per channel.
+- **Durability:** each branch a Temporal activity; join waits deterministically.
 
-### UC-5 — Overnight-Batch / Scheduled (Neustart-fest)
-Nächtliche Massenverarbeitung, Worker darf neu starten.
-- **Nutzt:** Temporal Cron/`Workflow.await(Duration)`, persistente Checkpoints, Worker-Restart-Test.
-- **UI:** Schedule-Ansicht, letzte/nächste Läufe, Erfolgsquote.
+### UC-5 — Overnight batch / scheduled (restart-safe)
+Nightly bulk processing, the worker may restart.
+- **Uses:** Temporal Cron/`Workflow.await(Duration)`, persistent checkpoints, worker restart test.
+- **UI:** schedule view, last/next runs, success rate.
 
-### UC-6 — Multi-Agent-Handoff mit Skills
-Spezialisierte Agenten (Skills) übergeben Kontext; Supervisor routet.
-- **Nutzt:** quad-core `SkillRegistry`/`load_skill`, `SubAgentTool`, LangGraph4j-Handoff,
-  Spring AI Agent-Skills-Ideen (Todo/Task-Isolation).
+### UC-6 — Multi-agent handoff with skills
+Specialized agents (skills) hand over context; a supervisor routes.
+- **Uses:** quad-core `SkillRegistry`/`load_skill`, `SubAgentTool`, LangGraph4j handoff,
+  Spring AI agent-skills ideas (todo/task isolation).
 
 ### UC-7 — What-if / Replay / Time-Travel
-Lauf anhalten, State inspizieren, mit geändertem Input fortsetzen (Vergleich).
-- **Nutzt:** LangGraph4j `getStateHistory`/`stateOf` + `GraphInput.resume`, Temporal-Replay.
+Pause a run, inspect state, resume with changed input (comparison).
+- **Uses:** LangGraph4j `getStateHistory`/`stateOf` + `GraphInput.resume`, Temporal replay.
 
 ---
 
-## 3. UI-Konzept
+## 3. UI concept
 
-**Leitprinzipien**
-1. **Durability sichtbar** — nicht „läuft grad", sondern „pausiert seit 2 h auf Signal X".
-2. **Graph = Navigationsobjekt** — Knoten sind anklickbar, State/IO je Knoten sichtbar.
-3. **Zwei Ebenen** — Orchestrierung (Temporal: Timeline, Retries, Signals) + Reasoning
-   (LangGraph4j: State, Checkpoints, Interrupts).
-4. **HITL ist eine Inbox**, kein Dialog.
-5. **Alles erklärt sich aus Events** — Log/Event/LLM-IO pro Lauf konsistent.
+**Guiding principles**
+1. **Durability visible** — not "currently running", but "paused for 2 h waiting for signal X".
+2. **Graph = navigation object** — nodes are clickable, state/IO per node visible.
+3. **Two levels** — orchestration (Temporal: timeline, retries, signals) + reasoning
+   (LangGraph4j: state, checkpoints, interrupts).
+4. **HITL is an inbox**, not a dialog.
+5. **Everything is explained by events** — log/event/LLM-IO consistent per run.
 
-### 3.1 Informationsarchitektur
+### 3.1 Information architecture
 ```
 ┌ QUAD / AgentFlow Studio ─────────────────────────────────────────────┐
 │  Overview   Runs   Start   HITL   Logs   Config   Models   Settings   │
@@ -161,10 +161,10 @@ Lauf anhalten, State inspizieren, mit geändertem Input fortsetzen (Vergleich).
 ```
 ┌ Overview ────────────────────────────────────────────────────────────┐
 │ Running 12   Waiting HITL 3   Failed 2   Completed 148   p95 41s      │
-│ ┌ Durchsatz (24h) ───────────┐  ┌ HITL-Warteschlange ──────────────┐ │
-│ │      ▂▄▆█▆▄▂               │  │ 2× UC-2 Freigabe (SLA 4h)        │ │
-│ └────────────────────────────┘  │ 1× UC-1 Redaktion                │ │
-│ ┌ Letzte Fehler ─────────────┐  └──────────────────────────────────┘ │
+│ ┌ Throughput (24h) ──────────┐  ┌ HITL queue ──────────────────────┐ │
+│ │      ▂▄▆█▆▄▂               │  │ 2× UC-2 approval (SLA 4h)        │ │
+│ └────────────────────────────┘  │ 1× UC-1 editorial                │ │
+│ ┌ Latest errors ─────────────┐  └──────────────────────────────────┘ │
 │ │ run-…  NODE_FAILED writer  │                                        │
 │ └────────────────────────────┘                                        │
 └───────────────────────────────────────────────────────────────────────┘
@@ -189,53 +189,53 @@ Lauf anhalten, State inspizieren, mit geändertem Input fortsetzen (Vergleich).
 │ [ Approve ]  [ Reject with reason ]                                 │
 └──────────────────────────────────────────────────────────────────────┘
 ```
-- **Daten:** Temporal Describe/History (Timeline, Signals), LangGraph4j `getStateHistory`
-  (State/Checkpoint je Knoten), Activity-Outputs (Node-IO), quad-core `AgentEvent` (Token/Tool).
-- **Live:** SSE/WebSocket pusht `RUN_STARTED/NODE_*/WAITING_HITL/APPROVED/FAILED`.
+- **Data:** Temporal Describe/History (timeline, signals), LangGraph4j `getStateHistory`
+  (state/checkpoint per node), activity outputs (node IO), quad-core `AgentEvent` (token/tool).
+- **Live:** SSE/WebSocket pushes `RUN_STARTED/NODE_*/WAITING_HITL/APPROVED/FAILED`.
 
 ### 3.4 Screen: Start (Task-Start)
 ```
 ┌ Start a workflow ───────────────────────────────────────────────────┐
-│ Workflow  [ UC-1 Editorial ▾ ]   Variante [ Standard ▾ ]            │
+│ Workflow  [ UC-1 Editorial ▾ ]   Variant [ Standard ▾ ]             │
 │ Input     ┌────────────────────────────────────────────┐            │
-│           │ Nachrichtenlage KI heute zusammenfassen…   │            │
+│           │ Summarise today's AI news situation…       │            │
 │           └────────────────────────────────────────────┘            │
 │ Overrides Model [ deepseek-v4.1-flash ▾ ]  Temp [0.2]  MaxTok [4096]│
 │           Tools [☑ webSearch ☑ webfetch ☐ writeFile]               │
-│ HITL      [✔ vor dem Reviewer freigeben]  Assignee [redaktion]       │
-│ Schedule  ( ) jetzt   ( ) Cron [ 0 7 * * * ]   ( ) Webhook           │
+│ HITL      [✔ approve before the reviewer]  Assignee [editorial]      │
+│ Schedule  ( ) now   ( ) Cron [ 0 7 * * * ]   ( ) Webhook             │
 │                              [ Start ]                              │
 └──────────────────────────────────────────────────────────────────────┘
 ```
-- **Daten:** `POST /agentflow/runs` (bzw. `/runs/hitl`), Graph-/Agent-Auswahl aus Config,
-  Overrides als Parameter. Session-Id (OpenCode Go) pro Lauf anzeigen.
+- **Data:** `POST /agentflow/runs` (or `/runs/hitl`), graph/agent selection from config,
+  overrides as parameters. Show the session ID (OpenCode Go) per run.
 
 ### 3.5 Screen: HITL-Inbox
 ```
 ┌ HITL Inbox ─────────────────────────────────────────────────────────┐
-│ ⏰ SLA        Lauf            Schritt   Assignee     Erstellt         │
-│ ▸ 00:42  hitl-8f3a        reviewer  redaktion   14:02               │
-│ ▸ 02:10  uc2-gesuch-77    approval  compliance 12:30   ⚠ SLA bald   │
+│ ⏰ SLA        Run             Step      Assignee     Created          │
+│ ▸ 00:42  hitl-8f3a        reviewer  editorial   14:02               │
+│ ▸ 02:10  uc2-gesuch-77    approval  compliance 12:30   ⚠ SLA soon   │
 ├─────────────────────────────────────────────────────────────────────┤
-│ Detail: Schritt reviewer — Vorschlag (Plan/Ergebnis), Guardrails,   │
-│ Tool-Aufrufe, Kosten.  [ Approve ]  [ Reject+Reason ]  [ Reassign ]  │
+│ Detail: Step reviewer — proposal (Plan/result), Guardrails,         │
+│ Tool calls, costs.  [ Approve ]  [ Reject+Reason ]  [ Reassign ]     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
-- **Daten:** `POST /runs/hitl/{id}/decide?approved=…` (Temporal-Signal). Liste = Temporal-Visibility
-  Query `ExecutionStatus=Running AND Waiting`.
+- **Data:** `POST /runs/hitl/{id}/decide?approved=…` (Temporal signal). List = Temporal visibility
+  query `ExecutionStatus=Running AND Waiting`.
 
 ### 3.6 Screen: Logs
 ```
 ┌ Logs ───────────────────────────────────────────────────────────────┐
-│ Lauf [hitl-8f3a ▾] Level [INFO ▾] Node [alle ▾] Suche [          ]  │
+│ Run [hitl-8f3a ▾] Level [INFO ▾] Node [all ▾] Search [          ]   │
 │ 14:02:03 INFO  planner  LLM req 412 tok → resp 88 tok (0.9s)        │
-│ 14:02:11 INFO  executor tool webSearch(query="KI News") → 8 hits    │
+│ 14:02:11 INFO  executor tool webSearch(query="AI News") → 8 hits    │
 │ 14:02:11 WARN  executor context 9.8k > 8k → summarised              │
 │ 14:02:12 INFO  reviewer WAITING_HITL (signal x-opencode-session=…)  │
 └─────────────────────────────────────────────────────────────────────┘
 ```
-- **Daten:** Strukturierte Logs je Run/Node; Korrelation über `runId`/`workflowId`/`activityId`.
-  Zusätzlich quad-core `LoggingHook`/`AgentEvent` und Temporal-History.
+- **Data:** structured logs per run/node; correlation via `runId`/`workflowId`/`activityId`.
+  Additionally quad-core `LoggingHook`/`AgentEvent` and Temporal history.
 
 ### 3.7 Screen: Config
 ```
@@ -249,69 +249,69 @@ Lauf anhalten, State inspizieren, mit geändertem Input fortsetzen (Vergleich).
 │ [ Validate ]  [ Publish version ]  [ Diff ]                         │
 └─────────────────────────────────────────────────────────────────────┘
 ```
-- **Daten:** Config-CRUD (neue API nötig). Provider-Header (optional) hier sichtbar/steuerbar.
-  Versionierung wie im `docs/WORKFLOW_FORMAT_PROPOSAL.md` (immutable, `contentHash`).
+- **Data:** config CRUD (new API needed). Provider headers (optional) visible/controllable here.
+  Versioning as in `docs/WORKFLOW_FORMAT_PROPOSAL.md` (immutable, `contentHash`).
 
 ---
 
-## 4. Datenfluss & API-Bedarf (Lücken)
+## 4. Data flow & API needs (gaps)
 
-| UI-Bedarf | Heute | Nötige API |
+| UI need | Today | Required API |
 |---|---|---|
-| Run-Liste | — | `GET /runs?status=&workflow=` (Temporal Visibility) |
-| Run-Detail | — | `GET /runs/{id}` (Describe + History + State) |
-| Live-Update | — | `GET /runs/{id}/events` (SSE/WS) |
-| HITL-Queue | nur Signal-Endpoint | `GET /hitl` + `POST /hitl/{id}/decide` |
+| Run list | — | `GET /runs?status=&workflow=` (Temporal visibility) |
+| Run detail | — | `GET /runs/{id}` (Describe + history + state) |
+| Live update | — | `GET /runs/{id}/events` (SSE/WS) |
+| HITL queue | only signal endpoint | `GET /hitl` + `POST /hitl/{id}/decide` |
 | Node-IO/LLM-IO | — | `GET /runs/{id}/nodes/{nodeId}` |
 | Logs | — | `GET /runs/{id}/logs` |
-| Config | `GET /info` | Graph/Agent/Provider CRUD + Validate |
-| Start | ✅ `/runs*` | + Graph-Auswahl/Schedule/Overrides |
+| Config | `GET /info` | Graph/agent/provider CRUD + validate |
+| Start | ✅ `/runs*` | + graph selection/schedule/overrides |
 
-**Abbildung auf die Engines**
+**Mapping to the engines**
 - **Temporal:** `WorkflowClient.newWorkflowStub(...).describe()`, `getResult`, `Query`,
-  History via `WorkflowServiceStubs`, Visibility (`ListWorkflowExecutions`).
-- **LangGraph4j:** `CompiledGraph.getStateHistory(config)`, `stateOf/ lastStateOf` → Checkpoint/State.
-- **quad-core:** `AgentEventPublisher`/`AgentEvent` (Token, ToolCall, BeforeInvocation…) als
-  Event-Quelle; `LoggingHook` für Logs.
-- **Anbindung:** UI ↔ AgentFlow REST + SSE. Für Graphen gibt es zusätzlich **LangGraph4j Studio**
-  (einbettbar) und **AG-UI** — als Inspect/Dev-Tool nutzbar statt Eigenbau.
+  history via `WorkflowServiceStubs`, visibility (`ListWorkflowExecutions`).
+- **LangGraph4j:** `CompiledGraph.getStateHistory(config)`, `stateOf/ lastStateOf` → checkpoint/state.
+- **quad-core:** `AgentEventPublisher`/`AgentEvent` (token, ToolCall, BeforeInvocation…) as
+  event source; `LoggingHook` for logs.
+- **Integration:** UI ↔ AgentFlow REST + SSE. For graphs there is additionally **LangGraph4j Studio**
+  (embeddable) and **AG-UI** — usable as an inspect/dev tool instead of a custom build.
 
 ---
 
-## 5. Nicht-funktionale Aspekte
+## 5. Non-functional aspects
 
-- **Security:** OIDC/Keycloak (wie quad), Rollen für HITL (`approver`, `admin`), Secrets nie im UI.
-- **Multi-Tenancy:** Temporal **Namespaces** je Tenant; Checkpoint-DB/WorkflowIds getrennt.
-- **GDPR/PII:** Checkpoints enthalten Prompts/Outputs → Maskierung + Retention; Audit-Trail.
-- **Kosten:** Token/Cost je Node aggregieren; Budgets pro Workflow.
-- **Observability:** OTel-Traces (Activity↔Node), Metriken (Micrometer) → Prometheus/Grafana.
-- **Reliability:** idempotente Activities, Idempotency-Keys für externe Effekte, DLQ.
+- **Security:** OIDC/Keycloak (like quad), roles for HITL (`approver`, `admin`), secrets never in the UI.
+- **Multi-Tenancy:** Temporal **namespaces** per tenant; checkpoint DB/workflow IDs separated.
+- **GDPR/PII:** checkpoints contain prompts/outputs → masking + retention; audit trail.
+- **Costs:** aggregate token/cost per node; budgets per workflow.
+- **Observability:** OTel traces (activity↔node), metrics (Micrometer) → Prometheus/Grafana.
+- **Reliability:** idempotent activities, idempotency keys for external effects, DLQ.
 
 ---
 
-## 6. Roadmap (Phasen)
+## 6. Roadmap (phases)
 
-| Phase | Inhalt | Nutzen |
+| Phase | Content | Benefit |
 |---|---|---|
-| P1 | Run-Liste + Detail (Describe/History), SSE-Events | Observe-Basis |
-| P2 | HITL-Inbox + Approve/Reject (UI) | echte Freigaben |
-| P3 | Logs/Node-IO + Kosten | Diagnose |
-| P4 | Start-Formular (Graph-Auswahl, Overrides, Schedule) | Self-Service |
-| P5 | Config-CRUD + Versionierung (v2-Format) | Governance |
-| P6 | Replay/What-if (Checkpoints) | Debug/Experiment |
-| P7 | Multi-Tenant/RBAC/Audit | Enterprise |
+| P1 | Run list + detail (Describe/History), SSE events | Observe basis |
+| P2 | HITL inbox + approve/reject (UI) | real approvals |
+| P3 | Logs/node IO + costs | Diagnosis |
+| P4 | Start form (graph selection, overrides, schedule) | Self-service |
+| P5 | Config CRUD + versioning (v2 format) | Governance |
+| P6 | Replay/what-if (checkpoints) | Debug/experiment |
+| P7 | Multi-tenant/RBAC/audit | Enterprise |
 
 ---
 
-## 7. Offene Fragen
+## 7. Open questions
 
-1. **Eigene UI oder LangGraph4j Studio/AG-UI einbetten?** (Studio spart Graph-Viz.)
-2. **Temporal-UI vs. eigene Observe-Ansicht** — kombinieren oder ersetzen?
-3. **quad-ui wiederverwenden** (Win98-React) oder eigenes modernes Frontend?
-4. **Config-Wahrheit** — v2/OWS als kanonisches Format (siehe `docs/WORKFLOW_FORMAT_PROPOSAL.md`)?
-5. **HITL-Routing** — Rollen/Assignees/SLA; Eskalation via Temporal-Timer?
+1. **Own UI or embed LangGraph4j Studio/AG-UI?** (Studio saves graph viz.)
+2. **Temporal UI vs. own observe view** — combine or replace?
+3. **Reuse quad-ui** (Win98 React) or an own modern frontend?
+4. **Config truth** — v2/OWS as the canonical format (see `docs/WORKFLOW_FORMAT_PROPOSAL.md`)?
+5. **HITL routing** — roles/assignees/SLA; escalation via Temporal timer?
 
 ---
 
-*Bezug:* `docs/AGENT_STACK_EVOLUTION.md` (§7 Evolutionspfad, §10 Risiken) und
-`docs/WORKFLOW_FORMAT_PROPOSAL.md` (Definition/Versionierung).
+*Reference:* `docs/AGENT_STACK_EVOLUTION.md` (§7 evolution path, §10 risks) and
+`docs/WORKFLOW_FORMAT_PROPOSAL.md` (definition/versioning).

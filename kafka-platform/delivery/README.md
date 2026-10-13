@@ -1,7 +1,7 @@
 # Delivery
 
-Auslieferungsordner für beide Plattformen. Die Gliederung folgt der Laufzeit, die
-tatsächlich deployed wird, und der Anwendung dahinter.
+Delivery folder for both platforms. The layout follows the runtime that is
+actually deployed, and the application behind it.
 
 ```
 delivery/
@@ -22,85 +22,84 @@ delivery/
         └── config/              Helm-Overlay, Prometheus, OTel, Grafana
 ```
 
-## Zuordnung
+## Mapping
 
-| Ordner | Deployt | Quelle |
+| Folder | Deploys | Source |
 |---|---|---|
-| `quarkus/quad` | quad-backend, quad-ui, MCP-Server | `quad-quarkus/docker`, `quad-quarkus/deploy`, `quad-quarkus/scripts` |
-| `quarkus/kafka` | Kafka, Postgres-pgvector, Redis für den Quarkus-Stack | `quad-quarkus/deploy/01-infrastructure.yml`, `kafka-platform/kafka`, `kafka-platform/scripts` |
+| `quarkus/quad` | quad-backend, quad-ui, MCP server | `quad-quarkus/docker`, `quad-quarkus/deploy`, `quad-quarkus/scripts` |
+| `quarkus/kafka` | Kafka, Postgres-pgvector, Redis for the Quarkus stack | `quad-quarkus/deploy/01-infrastructure.yml`, `kafka-platform/kafka`, `kafka-platform/scripts` |
 | `spring/quad` | quad-workflow-worker | `kafka-platform/docker/Dockerfile-quad-workflow-worker*` |
-| `spring/kafka` | agent-orchestrator, agent-worker, kompletter Stack | `kafka-platform/docker`, `docker-compose*.yml`, `helm`, `grafana`, `prometheus` |
+| `spring/kafka` | agent-orchestrator, agent-worker, complete stack | `kafka-platform/docker`, `docker-compose*.yml`, `helm`, `grafana`, `prometheus` |
 
-## Zwei Wege, ein Ziel
+## Two paths, one goal
 
-Ein Workflow, der in quad entworfen wurde, wird auf der Kafka-Plattform
-ausgeführt. Dafür werden beide Laufzeiten gebraucht, aber nicht zwingend beide
-installiert:
+A workflow designed in quad is executed on the Kafka platform. This requires
+both runtimes, but not necessarily both installed:
 
-**Nur Kafka-Plattform** — die eigenständige Variante. `spring/kafka` plus
-`spring/quad` für den Worker. Der Workflow wird über
-`POST /api/v1/unified/workflows/from-quad` übernommen, die Agenten über
-`POST /api/v1/unified/agents/convert`. Das ausführbare Beispiel liegt in
-`kafka-platform/examples/quad-to-kafka/` mit README.
+**Kafka platform only** — the standalone variant. `spring/kafka` plus
+`spring/quad` for the worker. The workflow is taken over via
+`POST /api/v1/unified/workflows/from-quad`, the agents via
+`POST /api/v1/unified/agents/convert`. The runnable example is in
+`kafka-platform/examples/quad-to-kafka/` with a README.
 
-**Quad plus Plattform** — wenn quad selbst auch laufen soll (eigene Workflows,
-quad-ui, MCP). Dann zusätzlich `quarkus/quad` und `quarkus/kafka`.
+**Quad plus platform** — when quad itself should also run (own workflows,
+quad-ui, MCP). Then additionally `quarkus/quad` and `quarkus/kafka`.
 
-## Erzeugen und erneuern
+## Generating and renewing
 
-Die Ordner werden nicht von Hand gepflegt, sondern erzeugt:
+The folders are not maintained by hand, but generated:
 
 ```bash
 cd delivery && ./sync-from-source.sh              # erneuert die Kopien
 cd delivery && ./sync-from-source.sh --clean      # leert vorher deployment/ und config/
 ```
 
-Das Mapping steht vollständig im Skript. Nach einer Änderung an einem Dockerfile,
-Compose-File oder Chart genügt ein Lauf — Ordner und Skript können nicht
-auseinanderlaufen, weil es nur eine Quelle für das Mapping gibt.
+The mapping is fully contained in the script. After a change to a Dockerfile,
+compose file or chart, one run is enough — folders and script cannot drift apart,
+because there is only one source for the mapping.
 
-**Welche Ordner generiert sind und welche nicht:**
+**Which folders are generated and which are not:**
 
-| Pfad | Herkunft |
+| Path | Origin |
 |---|---|
-| `*/deployment/`, `*/config/` | generiert — vollständig aus `sync-from-source.sh`, nicht von Hand ändern |
-| `README.md` (alle Ebenen) | von Hand gepflegt, nicht Teil des Mappings |
+| `*/deployment/`, `*/config/` | generated — entirely from `sync-from-source.sh`, do not change by hand |
+| `README.md` (all levels) | maintained by hand, not part of the mapping |
 
-Deshalb **kein `rm -rf quarkus spring`**. Das Skript schreibt additiv und lässt
-die README-Dateien stehen; `--clean` entfernt gezielt nur die generierten
-Ordner. `--clean` behebt zugleich das Drift-Problem eines additiven Laufs: eine
-im Quell-Repo gelöschte Datei bleibt sonst als veraltete Kopie stehen.
+Therefore **no `rm -rf quarkus spring`**. The script writes additively and leaves
+the README files in place; `--clean` specifically removes only the generated
+folders. `--clean` also fixes the drift problem of an additive run: a file
+deleted in the source repo would otherwise remain as an outdated copy.
 
-Das Skript kopiert **ausschließlich git-getrackte Dateien**. In beiden Repos sind
-`.env`, `.env.prod`, `.env.secrets.cloud` und `docker/secrets/` ignoriert und
-werden deshalb übersprungen — mit Absicht: eine Delivery wird weitergegeben, und
-ein einmal mitgelieferter Schlüssel ist aus dem Working Tree nicht mehr zu
-entfernen. Für Konfiguration liefern die `config`-Ordner deshalb Templates mit
-Variablenverweisen (`${PROD_DB_PASSWORD}`), die beim Zielsystem zu setzen sind.
+The script copies **exclusively git-tracked files**. In both repos, `.env`,
+`.env.prod`, `.env.secrets.cloud` and `docker/secrets/` are ignored and
+are therefore skipped — deliberately: a delivery is handed over, and
+a key once delivered can no longer be removed from the working tree. For
+configuration, the `config` folders therefore provide templates with
+variable references (`${PROD_DB_PASSWORD}`), which must be set on the target system.
 
-Vor dem ersten Deployment zu setzen:
+To be set before the first deployment:
 
-| Variable | Wo | Warum |
+| Variable | Where | Why |
 |---|---|---|
-| `WORKER_QUAD_AGENT_SOURCE=db` | `spring/quad` | Ohne das kennt der Worker nur die statische YAML-Liste und meldet `Unknown agent type` für jeden über `/agents/convert` importierten Agenten. |
-| `OPENAI_API_KEY` | `spring/quad` | Ohne Key fällt der Worker auf ein Mock-Modell zurück. |
-| `modelId` der Agenten | `spring/quad` | Muss `simple` sein — der Worker registriert genau diesen einen Key. |
-| `EXTERNAL_KAFKA_BOOTSTRAP_SERVERS`, `POSTGRES_URL` | `spring/kafka` | Pflicht für `docker-compose.minimal.yml`, wird beim Start geprüft. |
-| `postgresqlPassword` | `spring/kafka/config/helm` | Chart-Default ist ein fester Wert und gehört ersetzt. |
+| `WORKER_QUAD_AGENT_SOURCE=db` | `spring/quad` | Without this the worker only knows the static YAML list and reports `Unknown agent type` for every agent imported via `/agents/convert`. |
+| `OPENAI_API_KEY` | `spring/quad` | Without a key the worker falls back to a mock model. |
+| the agents' `modelId` | `spring/quad` | Must be `simple` — the worker registers exactly this one key. |
+| `EXTERNAL_KAFKA_BOOTSTRAP_SERVERS`, `POSTGRES_URL` | `spring/kafka` | Mandatory for `docker-compose.minimal.yml`, checked at startup. |
+| `postgresqlPassword` | `spring/kafka/config/helm` | Chart default is a fixed value and should be replaced. |
 
-## Bekannte Grenzen
+## Known limits
 
-- **Geteilte Dateien.** `docker-compose.minimal.yml` und `start-minimal.sh`
-  starten Orchestrator *und* Worker und liegen deshalb vollständig unter
-  `spring/kafka`. Für den Worker alone sind in `spring/quad/deployment/docker`
-  die Dockerfiles hinterlegt.
-- **Verweise auf Quell-Repos.** Compose-Overlays und Skripte erwarten Pfade
-  innerhalb des jeweiligen Repos (`../quad-core`, Maven-Module). Sie sind als
-  Referenz kopiert, nicht als eigenständiges Build-Artefakt — der Build läuft im
-  jeweiligen Repo.
-- **Helm-Charts sind kopiert, nicht angepasst.** `deployment/helm` ist der
-  Chart-Stand aus dem Quell-Repo. Anpassungen für das Zielsystem gehören in ein
-  Overlay unter `config/helm`, nicht in den Chart.
-- **Sicherheit nicht enthalten.** Authentifizierung ist in beiden Plattformen
-  per Default aus (`app.security.enabled=false`). Vor einer Auslieferung mit
-  Netzzugang ist das zu entscheiden — siehe Repo-Root von `kafka-platform`.
+- **Shared files.** `docker-compose.minimal.yml` and `start-minimal.sh`
+  start the orchestrator *and* the worker and therefore live entirely under
+  `spring/kafka`. For the worker alone, the Dockerfiles are stored in
+  `spring/quad/deployment/docker`.
+- **References to source repos.** Compose overlays and scripts expect paths
+  within the respective repo (`../quad-core`, Maven modules). They are copied as
+  a reference, not as a standalone build artifact — the build runs in the
+  respective repo.
+- **Helm charts are copied, not adapted.** `deployment/helm` is the
+  chart state from the source repo. Adjustments for the target system belong in an
+  overlay under `config/helm`, not in the chart.
+- **Security not included.** Authentication is off by default in both platforms
+  (`app.security.enabled=false`). Before a delivery with network access, this must
+  be decided — see the repo root of `kafka-platform`.

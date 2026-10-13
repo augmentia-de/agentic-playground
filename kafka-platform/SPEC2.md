@@ -3,7 +3,7 @@
 > **Version**: 2.0  
 > **Status**: Draft  
 > **Last Updated**: 2026-09-16  
-> **Decisions Incorporated**: Orchestrator-zentrale DAG Engine, Kafka Delayed Messages, Confluent Schema Registry, Hybrid DLQ Recovery, HashiCorp Vault, Redis single-node, Deterministic Routing (Loops, Conditions, Fork/Join), STEP-Guards, Branch-Failure-Semantik, REST-API, HITL-Expiry
+> **Decisions Incorporated**: Orchestrator-Central DAG Engine, Kafka Delayed Messages, Confluent Schema Registry, Hybrid DLQ Recovery, HashiCorp Vault, Redis single-node, Deterministic Routing (Loops, Conditions, Fork/Join), STEP-Guards, Branch-Failure Semantics, REST API, HITL Expiry
 
 ---
 
@@ -671,31 +671,31 @@ app:
     batch-size: 50
 ```
 
-### 9.5 Error Taxonomy & Routing-Decision (Worker-Seite)
+### 9.5 Error Taxonomy & Routing Decision (Worker Side)
 
-Jeder Fehler im Worker wird eindeutig klassifiziert, bevor er auf `agent.execution.results`, `agent.execution.dlq` oder `agent.control.hitl` weitergeleitet wird:
+Every error in the worker is classified unambiguously before it is forwarded to `agent.execution.results`, `agent.execution.dlq`, or `agent.control.hitl`:
 
-| Fehlerklasse | Beispiele | Kafka-Routing | Retry im Worker |
+| Error Class | Examples | Kafka Routing | Retry in Worker |
 | :--- | :--- | :--- | :--- |
-| `TRANSIENT` | LLM Timeout, 429/Rate-Limit, 5xx Provider, `IOException`, DB-Conn-Peak | Retry mit Backoff (max. `maxRetryAttempts` aus AgentConfig) | ja |
-| `FATAL` | Provider 4xx (InvalidRequest/Auth), ungültiges Eingabeformat, Guardrail-Verstoß | **direkt** `agent.execution.dlq` (kein Retry sinnvoll) | nein |
-| `BUSINESS` | Logikfehler im Task (falsche Antwort, Validation) | `FAILED_RETRYABLE` mit max. N Versuchen, danach `NEEDS_HITL` | ja (begrenzt) |
+| `TRANSIENT` | LLM timeout, 429/rate limit, 5xx provider, `IOException`, DB connection peak | Retry with backoff (max. `maxRetryAttempts` from AgentConfig) | yes |
+| `FATAL` | Provider 4xx (InvalidRequest/Auth), invalid input format, guardrail violation | **directly** `agent.execution.dlq` (no retry makes sense) | no |
+| `BUSINESS` | Logic error in the task (wrong answer, validation) | `FAILED_RETRYABLE` with max. N attempts, then `NEEDS_HITL` | yes (bounded) |
 
-**Klassifikationsregel (implementiert im `ErrorClassifier`):**
-1. `FATAL` gewinnt immer (4xx-Providerfehler, Schema-/Payload-Fehler).
-2. `BUSINESS`, wenn der Fehler in der Task-Logik/Validation liegt.
-3. sonst `TRANSIENT`.
+**Classification rule (implemented in `ErrorClassifier`):**
+1. `FATAL` always wins (4xx provider errors, schema/payload errors).
+2. `BUSINESS` if the error lies in the task logic/validation.
+3. otherwise `TRANSIENT`.
 
-**Status-Mapping auf Result-Events:**
+**Status mapping to result events:**
 
-| Worker-Entscheidung | `status` in `agent.execution.results` | Routing des Orchestrators |
+| Worker Decision | `status` in `agent.execution.results` | Orchestrator Routing |
 | :--- | :--- | :--- |
-| Erfolg | `COMPLETED` | `evaluateRouting` (next steps) |
-| Retry möglich | `FAILED_RETRYABLE` | Retry-Counter, Backoff, Re-Dispatch |
-| Retry nicht sinnvoll | `FAILED_FATAL` | DLQ + HITL-Eskalation |
-| Validierung / HITL | `NEEDS_HITL` | `agent.control.hitl` + Ticket |
+| Success | `COMPLETED` | `evaluateRouting` (next steps) |
+| Retry possible | `FAILED_RETRYABLE` | Retry counter, backoff, re-dispatch |
+| Retry not worthwhile | `FAILED_FATAL` | DLQ + HITL escalation |
+| Validation / HITL | `NEEDS_HITL` | `agent.control.hitl` + ticket |
 
-**Single-Writer-Warnung (RQ §15.6):** Die Fehlerklassifikation passiert im Worker (Producer-Seite), die **Zustandsänderung** (Checkpoint/Retry/HITL) ausschließlich im `DagAdvanceHandler` bzw. `SweepReaperHandler` — der Worker schreibt selbst nie Routing-State.
+**Single-writer warning (RQ §15.6):** Error classification happens in the worker (producer side), while the **state change** (checkpoint/retry/HITL) happens exclusively in the `DagAdvanceHandler` or `SweepReaperHandler` — the worker itself never writes routing state.
 
 ---
 
@@ -775,28 +775,28 @@ A workflow transitions to `PAUSED_HITL` when:
 
 Roles are enforced via Vault JWT/OIDC tokens validated by the HITL API.
 
-### 10.5 HITL-Ticket-Lifecycle & Expiry
+### 10.5 HITL Ticket Lifecycle & Expiry
 
-Jedes Ticket durchläuft einen expliziten, deterministischen Zustandsautomaten:
+Every ticket goes through an explicit, deterministic state machine:
 
 ```
-       created: OPEN ──────────► APPROVED (→ Re-Dispatch) 
+       created: OPEN ──────────► APPROVED (→ Re-dispatch) 
             │                       │
-            ├── retry ──► APPROVED  ├── skip   ──► SKIPPED (→ nächster Step)
+            ├── retry ──► APPROVED  ├── skip   ──► SKIPPED (→ next step)
             ├── skip  ──► SKIPPED   ├── abort  ──► ABORTED (→ workflow CANCELLED)
-            └── abort ─► ABORTED    └── timeout ─► EXPIRED (→ Re-Eskalation)
+            └── abort ─► ABORTED    └── timeout ─► EXPIRED (→ re-escalation)
                         ▲                              │
-                        └──────── ESKALATIONSLEVEL ────┘
+                        └──────── ESCALATION LEVEL ────┘
 ```
 
-| Übergang | Auslöser | Wirkung |
+| Transition | Trigger | Effect |
 | :--- | :--- | :--- |
-| `OPEN → APPROVED` | Operator klickt `Retry Step` | Checkpoint wieder `IN_PROGRESS`, Task wird re-dispatched |
-| `OPEN → SKIPPED` | Operator klickt `Skip & Continue` | Checkpoint `SKIPPED`, `evaluateRouting` läuft weiter |
-| `OPEN → ABORTED` | Operator klickt `Abort Workflow` | Alle offenen Checkpoints `CANCELLED`, Execution `CANCELLED` |
-| `OPEN → EXPIRED` | `ttl` erreicht (Default 24h, konfigurierbar) | Neue Eskalation mit höherer Dringlichkeit (PagerDuty hoch) |
+| `OPEN → APPROVED` | Operator clicks `Retry Step` | Checkpoint back to `IN_PROGRESS`, task is re-dispatched |
+| `OPEN → SKIPPED` | Operator clicks `Skip & Continue` | Checkpoint `SKIPPED`, `evaluateRouting` continues |
+| `OPEN → ABORTED` | Operator clicks `Abort Workflow` | All open checkpoints `CANCELLED`, execution `CANCELLED` |
+| `OPEN → EXPIRED` | `ttl` reached (default 24h, configurable) | New escalation with higher urgency (PagerDuty high) |
 
-**Expiry-Mechanismus (deterministisch):** Der `SweepReaperHandler` vergleicht bei jedem Tick `now() - created_at > ttl` für `OPEN`-Tickets (Wall-Clock nur hier erlaubt, §15.6). Nach `maxEscalationsPerTicket` (Default 3) auf `EXPIRED` wird das Ticket `RESOLVED` (humane Endentscheidung) und der Workflow bleibt in `PAUSED_HITL`, bis ein Admin manuell eingreift.
+**Expiry mechanism (deterministic):** On every tick, the `SweepReaperHandler` compares `now() - created_at > ttl` for `OPEN` tickets (wall-clock allowed only here, §15.6). After `maxEscalationsPerTicket` (default 3) on `EXPIRED`, the ticket becomes `RESOLVED` (human final decision) and the workflow remains in `PAUSED_HITL` until an admin intervenes manually.
 
 ---
 
@@ -1663,43 +1663,43 @@ public class DlqReplayService {
 
 ## 15. Deterministic Workflow Routing: Loops, Conditions, Fork/Join
 
-### 15.1 Ziel & Determinismus-Garantien
+### 15.1 Goal & Determinism Guarantees
 
-Alle Routing-Entscheidungen (welche Steps feuern als Nächstes, welche Branches werden gewählt, welche Schleifen laufen weiter) werden über eine **einzige pure Funktion** berechnet:
+All routing decisions (which steps fire next, which branches are chosen, which loops continue) are computed via a **single pure function**:
 
 ```
 fireableSteps = evaluateRouting(persistedCheckpointState, dagDefinitionVersion)
 ```
 
-Die Funktion ist frei von Nebeneffekten: Sie liest ausschließlich das persistierte Zustandsbild (`workflow_checkpoints`) und die zum Start gepinnte DAG-Definition. Identische Eingabezustände ergeben **immer** identische Mengen an zu dispatchenden Steps.
+The function is free of side effects: it reads exclusively the persisted state snapshot (`workflow_checkpoints`) and the DAG definition pinned at start. Identical input states **always** yield identical sets of steps to dispatch.
 
-| # | Garantie | Mechanismus |
+| # | Guarantee | Mechanism |
 | :--- | :--- | :--- |
-| G1 | **Single-Writer pro Workflow** | Alle Routing-Topics sind mit `workflow_id` keyed → pro Workflow immer dieselbe Partition. Genau ein aktiver Orchestrator besitzt die Partition (K8s-Lease / Spring JDBC-Lock). |
-| G2 | **Atomare Übergänge** | Zustandsübergang + Bestimmung der nächsten Steps + Dispatch-Send in **einer** DB-Transaktion. Kafka-Offset wird erst nach `COMMIT` committet. |
-| G3 | **Idempotentes Re-Execute** | Der Evaluator über den selben persistenten Zustand liefert dieselben Fireable-Steps. Doppelte/erneut gelieferte Events sind No-Ops dank `uq_execution_step_iteration` (Unique-Constraint der Dispatch-Ops). |
-| G4 | **Keine Nicht-Determinismus-Quellen im Routing-Pfad** | Keine Wanduhr, kein `random()`, kein externes HTTP in Bedingungs-/Schleifen-/Join-Auswertung. Zeit taucht nur in Timeout- und Sweep-Events auf (dort als Grenzwert, nicht als Routing-Input). |
-| G5 | **Gepingte DAG-Version** | Routing nutzt immer die `workflow_definitions`-Version, mit der die Execution gestartet wurde. Laufende Definitionen ändern sich nicht unter einer Execution. |
-| G6 | **Termination** | Loops sind durch `maxIterations` beschränkt. Nicht-LOOP-Zyklen werden beim Upload durch den Workflow-Validator abgelehnt. |
+| G1 | **Single writer per workflow** | All routing topics are keyed with `workflow_id` → always the same partition per workflow. Exactly one active orchestrator owns the partition (K8s lease / Spring JDBC lock). |
+| G2 | **Atomic transitions** | State transition + determination of the next steps + dispatch send in **one** DB transaction. The Kafka offset is committed only after `COMMIT`. |
+| G3 | **Idempotent re-execute** | The evaluator over the same persistent state yields the same fireable steps. Duplicate/re-delivered events are no-ops thanks to `uq_execution_step_iteration` (unique constraint of the dispatch ops). |
+| G4 | **No non-determinism sources in the routing path** | No wall clock, no `random()`, no external HTTP in condition/loop/join evaluation. Time appears only in timeout and sweep events (there as a threshold, not as routing input). |
+| G5 | **Pinned DAG version** | Routing always uses the `workflow_definitions` version with which the execution was started. Running definitions do not change under an execution. |
+| G6 | **Termination** | Loops are bounded by `maxIterations`. Non-LOOP cycles are rejected at upload by the workflow validator. |
 
-### 15.2 Zustandsmodell der Knoten
+### 15.2 State Model of the Nodes
 
-Jeder Schritt im DAG hat genau **eine** Checkpoint-Zeile pro Iteration in `workflow_checkpoints` (erweitert um `iteration`, `node_type`, `decision_branch`).
+Every step in the DAG has exactly **one** checkpoint row per iteration in `workflow_checkpoints` (extended by `iteration`, `node_type`, `decision_branch`).
 
-| Status | Bedeutung | Kann von Evaluator gesetzt werden |
+| Status | Meaning | Can be set by evaluator |
 | :--- | :--- | :--- |
-| `PENDING` | Noch nicht dispatched | nein — Verbleibt bis `evaluateRouting` feuert |
-| `IN_PROGRESS` | Task ist an Worker ausgegangen | ja (beim Dispatch) |
-| `COMPLETED` | Step erfolgreich | ja |
-| `FAILED` | Nicht mehr retrybar (fatal) | ja |
-| `WAITING_HITL` | Menschliche Entscheidung nötig | ja |
-| `SKIPPED` | Durch DECISION-Pruning abgewählt | ja (deterministisch kaskadierend) |
-| `PRUNED` | Fork-Branch verworfen (XOR) | ja |
-| `CANCELLED` | Workflow abgebrochen / Join nicht mehr erreichbar | ja |
+| `PENDING` | Not yet dispatched | no — remains until `evaluateRouting` fires |
+| `IN_PROGRESS` | Task has been dispatched to a worker | yes (at dispatch) |
+| `COMPLETED` | Step successful | yes |
+| `FAILED` | No longer retryable (fatal) | yes |
+| `WAITING_HITL` | Human decision required | yes |
+| `SKIPPED` | Deselected via DECISION pruning | yes (deterministically cascading) |
+| `PRUNED` | Fork branch discarded (XOR) | yes |
+| `CANCELLED` | Workflow aborted / join no longer reachable | yes |
 
-Ordnungsregel für Zustandsübergänge: `PENDING → IN_PROGRESS → {COMPLETED, FAILED, WAITING_HITL}`, danach optional `→ SKIPPED/PRUNED/CANCELLED` nur durch den Evaluator. Kein Handler außer `evaluateRouting` darf Routing-Status schreiben.
+Ordering rule for state transitions: `PENDING → IN_PROGRESS → {COMPLETED, FAILED, WAITING_HITL}`, thereafter optionally `→ SKIPPED/PRUNED/CANCELLED` only by the evaluator. No handler except `evaluateRouting` may write routing status.
 
-### 15.3 Der Deterministic Routing Evaluator (Kern)
+### 15.3 The Deterministic Routing Evaluator (Core)
 
 ```
 level(s) = 1 + max( level(s') for s' in s.dependsOn )        // 0 für Wurzeln
@@ -1737,7 +1737,7 @@ edgeCompleted(d → s):
   return true
 ```
 
-**STEP-Guards (bedingtes Ausführen eines Schrittes):** Ein `STEP` kann optional `guardCondition` besitzen (`{condition}`). Die Auswertung erfolgt **pur in `evaluateRouting`**, direkt vor dem Feuern, gegen den persistierten Kontext (`input_params`, `context:workflow:{id}`, Completed-Outputs):
+**STEP guards (conditional execution of a step):** A `STEP` may optionally have a `guardCondition` (`{condition}`). The evaluation takes place **purely in `evaluateRouting`**, directly before firing, against the persisted context (`input_params`, `context:workflow:{id}`, completed outputs):
 
 ```
 STEP:  all(edgeCompleted(d → s) ...)
@@ -1747,87 +1747,87 @@ STEP:  all(edgeCompleted(d → s) ...)
              wenn guardErfüllt == false  →  mark(s, SKIPPED)   // Skip-durch, kein Task
 ```
 
-Ein `SKIPPED`-Guard-Step zählt downstream wie ein `PRUNED`-Step als „effektiv erfüllt" (§15.5 AND-JOIN): Er wird übersprungen, ohne den Fluss zu blockieren. Die **Entscheidung wird persistiert** (`status=SKIPPED`, Grund in `decision_branch` = `guard:false`) → Replay-durchgänge identisch.
+A `SKIPPED` guard step counts downstream like a `PRUNED` step as "effectively satisfied" (§15.5 AND-JOIN): it is skipped without blocking the flow. The **decision is persisted** (`status=SKIPPED`, reason in `decision_branch` = `guard:false`) → replay runs identical.
 
-**Guards sind deterministisch geschrieben:** Es gelten dieselben Purity-Regeln wie bei DECISION (G4): nur persisted Context, kein `now()`, kein `random()`, keine externen Calls.
+**Guards are written deterministically:** The same purity rules apply as for DECISION (G4): only persisted context, no `now()`, no `random()`, no external calls.
 
-**Kernpunkte für Determinismus:**
-- **Reihenfolge ist fixiert**: Sortierung nach `(level, stepId)` — kein Parallelismus im Evaluator selbst, keine Thread-timing-Abhängigkeit.
-- **Kanten-Aktivierung bei DECISION**: Ein `DECISION` persistiert `decision_branch` (den gewählten Target-Step). Nur die Kante zu diesem Target ist „aktiv“ — alle anderen ausgehenden Kanten erfüllen `edgeCompleted` nie. Loop-Back (DECISION → LOOP) ist dadurch syntaxfrei modellierbar, ohne dass der nicht gewählte Pfad feuert (vgl. Trace §15.7).
-- **Pruning ist kaskadierend und deterministisch**: Wenn eine DECISION Branch X wählt, werden die nicht gewählten Branch-Köpfe (`PRUNED`) und deren Nachfolger rekursiv `SKIPPED` markiert — gleiche Sortierung, gleiche Reihenfolge.
-- **Skips zählen für JOIN als „effektiv erfüllt“**: Ein durch Pruning geprunter Skip zählt als Completed-Äquivalent („keine echte Arbeit mehr“), zählt aber **nicht** als erfolgreiche Arbeit bei AND.
-- **Entscheidungen werden persistent**: `decision_branch` und `iteration` auf der Checkpoint-Zeile → Replay nach Crash liefert identische Ergebnisse.
+**Key points for determinism:**
+- **Order is fixed**: sorting by `(level, stepId)` — no parallelism in the evaluator itself, no thread-timing dependency.
+- **Edge activation at DECISION**: A `DECISION` persists `decision_branch` (the chosen target step). Only the edge to this target is "active" — all other outgoing edges never satisfy `edgeCompleted`. Loop-back (DECISION → LOOP) can thereby be modeled without syntax, without the non-chosen path firing (cf. trace §15.7).
+- **Pruning is cascading and deterministic**: If a DECISION chooses branch X, the non-chosen branch heads (`PRUNED`) and their successors are recursively marked `SKIPPED` — same sorting, same order.
+- **Skips count for JOIN as "effectively satisfied"**: A skip pruned via pruning counts as a completed equivalent ("no real work left"), but does **not** count as successful work for AND.
+- **Decisions are persistent**: `decision_branch` and `iteration` on the checkpoint row → replay after a crash yields identical results.
 
 ### 15.4 Loops (bounded)
 
-- Der `LOOP`-Knoten in der DAG-Definition ist **zustandslos**: Pro Iteration existiert genau eine Checkpoint-Zeile `(execution_id, step_id, iteration=i)`, `node_type='LOOP'`, `agent_type=bodyAgentType`.
-- Nach Abschluss von Iteration i (COMPLETED) schreibt der **LoopIterationHandler** den Zustand, dann:
-  1. Wird `exitCondition` gegen `context['LOOP-stepId'].resultData` ausgewertet — **pur**, nur auf bereits persistierten Output-Daten.
-  2. `true` → Checkpoint LOOP mit `iteration=i` → `COMPLETED`; `evaluateRouting` läuft danach normal weiter (Successor des LOOP feuert).
-  3. `false` und `i < maxIterations` → nächster Dispatch als Iteration `i+1` (neue Zeile, neue taskId).
-  4. `false` und `i == maxIterations` → `WAITING_HITL` (menschliche Entscheidung: Abbruch oder manuelles Weiterführen der Arbeit).
-- **Terminationsbeweis**: Der Zähler `iteration` ist nur in der DB (nie im RAM), der Evaluator kann höchstens um 1 hochzählen bis `maxIterations` → G6.
-- **Dispatch-Event**: Loop-Advance läuft über `agent.control.loop` (Partition-Key `workflow_id`); im Payload stehen `stepId` und `iteration`. Der Handler ignoriert Iterationen, deren Checkpoint bereits einen anderen Status als `PENDING/IN_PROGRESS` hat (Idempotenz).
+- The `LOOP` node in the DAG definition is **stateless**: per iteration there is exactly one checkpoint row `(execution_id, step_id, iteration=i)`, `node_type='LOOP'`, `agent_type=bodyAgentType`.
+- After completion of iteration i (COMPLETED), the **LoopIterationHandler** writes the state, then:
+  1. `exitCondition` is evaluated against `context['LOOP-stepId'].resultData` — **purely**, only on already persisted output data.
+  2. `true` → checkpoint LOOP with `iteration=i` → `COMPLETED`; `evaluateRouting` then continues normally (the LOOP's successor fires).
+  3. `false` and `i < maxIterations` → next dispatch as iteration `i+1` (new row, new taskId).
+  4. `false` and `i == maxIterations` → `WAITING_HITL` (human decision: abort or manually continue the work).
+- **Termination proof**: The `iteration` counter exists only in the DB (never in RAM); the evaluator can increment by at most 1 up to `maxIterations` → G6.
+- **Dispatch event**: Loop advance runs via `agent.control.loop` (partition key `workflow_id`); the payload contains `stepId` and `iteration`. The handler ignores iterations whose checkpoint already has a status other than `PENDING/IN_PROGRESS` (idempotency).
 
 ### 15.5 Fork / Join
 
-- **FORK**: Beim Feuern wird jeder Branch-Kopf (`firstStep`) als `PENDING` belassen und in der nächsten `evaluateRouting`-Runde dispatched — die Partitions-Ordnung serialisiert die Dispatches, die Worker führen aber parallel aus.
-- **AND-JOIN**: Feuert erst, wenn alle Nicht-`PRUNED`-Dependencies `COMPLETED` (oder durch Pruning `SKIPPED`) sind. Ein Join, dessen alle Dependencies gepruned/cancelled wurden, wird selbst `SKIPPED` (nie hängen bleiben).
-- **XOR-JOIN (race)**: Wird der Stand erfüllt, wenn **irgendeine** Branch completed ist; die übrigen Branches werden deterministisch `PRUNED`.
-- **N_OF-JOIN**: Feuert bei `joinN` abgeschlossenen Branches; restliche In-Flight-Branches werden nach Abschluss ebenfalls `PRUNED`.
-- **Branch-Failure-Semantik** (falls eine eingehende Branch nicht COMPLETED/SKIPPED/PRUNED endet):
-  - **`FAILED` (fatal)**: Die Branch gilt als **blockierend**. AND/N_OF/JOIN wird NICHT erfüllt → `evaluateRouting` feuert nie; der SweepReaperHandler (`agent.control.sweep`) erkennt den hängenden JOIN nach Ablauf des Join-Deadlines und setzt ihn `WAITING_HITL`. Der Workflow wartet auf eine menschliche Entscheidung (Retry der Branch / Skip-Join / Abort).
-  - **`WAITING_HITL`**: Blockiert ebenfalls; erst nach Auflösung durch `HitlResumeHandler` wird `evaluateRouting` neu ausgewertet.
-  - **Alternative Sicht**: `joinOnAny` (`XOR`) ist das einzige Muster, das Verzweigungsfehler „weiterleitet" (die erste erfolgreiche Branch gewinnt, Fehler-Branches werden `PRUNED`).
-- Kein Broadcast, kein Join-Probe-Topic nötig: Join-Readiness wird **immer** beim Verarbeiten eines Result-Events im DagAdvanceHandler nachgerechnet — derselbe Handler, gleiche Reihenfolge ⇒ deterministisch.
+- **FORK**: When firing, each branch head (`firstStep`) is left as `PENDING` and dispatched in the next `evaluateRouting` round — the partition order serializes the dispatches, but the workers execute in parallel.
+- **AND-JOIN**: Fires only when all non-`PRUNED` dependencies are `COMPLETED` (or, via pruning, `SKIPPED`). A join whose dependencies were all pruned/cancelled itself becomes `SKIPPED` (never gets stuck).
+- **XOR-JOIN (race)**: The state is satisfied when **any** branch is completed; the remaining branches are deterministically `PRUNED`.
+- **N_OF-JOIN**: Fires when `joinN` branches are completed; the remaining in-flight branches are likewise `PRUNED` after completion.
+- **Branch failure semantics** (if an incoming branch does not end COMPLETED/SKIPPED/PRUNED):
+  - **`FAILED` (fatal)**: The branch counts as **blocking**. AND/N_OF/JOIN is NOT satisfied → `evaluateRouting` never fires; the SweepReaperHandler (`agent.control.sweep`) detects the hanging JOIN after the join deadline has elapsed and sets it to `WAITING_HITL`. The workflow waits for a human decision (retry the branch / skip join / abort).
+  - **`WAITING_HITL`**: Also blocks; only after resolution by `HitlResumeHandler` is `evaluateRouting` re-evaluated.
+  - **Alternative view**: `joinOnAny` (`XOR`) is the only pattern that "forwards" branch failures (the first successful branch wins, failing branches become `PRUNED`).
+- No broadcast, no join-probe topic needed: join readiness is **always** recomputed when processing a result event in the DagAdvanceHandler — the same handler, the same order ⇒ deterministic.
 
-### 15.6 Nötige Nicht-Agent-Kafka-Message-Handler
+### 15.6 Required Non-Agent Kafka Message Handlers
 
-Zusätzlich zu den bereits definierten (Timeout-Monitor, Config-Update, DLQ-Replay) sind für resiliente deterministische Routing-Logik folgende Handler nötig:
+In addition to those already defined (timeout monitor, config update, DLQ replay), the following handlers are required for resilient deterministic routing logic:
 
-| Handler | Consumer-Gruppe | Topics (in) | Aufgabe | Determinismus-Rolle |
+| Handler | Consumer Group | Topics (in) | Task | Determinism Role |
 | :--- | :--- | :--- | :--- | :--- |
-| **DagAdvanceHandler** (Result Finalizer) | `orchestrator-dag-group` | `agent.execution.results` | **Einziger** Schreibpfad für Routing: Transition + `evaluateRouting` + Dispatch, alles in einer DB-Transaktion (G2, G3) | Kern — G1–G6 |
-| **LoopIterationHandler** | `orchestrator-dag-group` | `agent.control.loop` | Zählt Iterationen, prüft `exitCondition`, dispatcht weiter oder schließt den LOOP | G6 (Termination) + Idempotenz |
-| **JoinEvaluator** (Teil des DagAdvance, kein eigenes Topic) | — | `agent.execution.results` | Berechnet Join-Readiness bei jedem Branch-Result deterministisch | Deterministische Join-Semantik (AND/XOR/N_OF) |
-| **SweepReaperHandler** | `orchestrator-reaper-group` | `agent.control.sweep` | Periodische Ticks: finde stale `IN_PROGRESS` (Crash-Recovery), hängengebliebene JOIN/LOOP, entscheide retry/HITL — **nur hier** darf Wall-Clock in die Logik einfließen | G4-Begrenzung der Zeitabhängigkeit |
-| **CancellationHandler** | `orchestrator-dag-group` | `agent.control.cancellation` | Bricht Workflow deterministisch ab: markiert alle `PENDING`-Steps in Level-/ID-Reihenfolge `CANCELLED`, pruned Forks, schließt JOIN | Deterministisches Pruning |
-| **HitlResumeHandler** | `alerting-hitl-group` | `agent.control.hitl` + REST-Callback von Slack/PD | Setzt Retry-/Skip-/Abort-Entscheidungen in Routing-Schritte um und ruft `evaluateRouting` erneut auf | Deterministische Entscheidungskette nach menschlichem Input |
-| **DecisionEvaluator (optional, async)** | `orchestrator-condition-group` | `agent.control.condition` | Alternative asynchrone Condition-Auswertung (Default: **aus**, siehe Warnung) | Nur deterministisch, wenn der Evaluator pur ist **und** Antwort-Events pro `workflow_id` geordnet ankommen |
+| **DagAdvanceHandler** (result finalizer) | `orchestrator-dag-group` | `agent.execution.results` | **Only** write path for routing: transition + `evaluateRouting` + dispatch, all in one DB transaction (G2, G3) | Core — G1–G6 |
+| **LoopIterationHandler** | `orchestrator-dag-group` | `agent.control.loop` | Counts iterations, checks `exitCondition`, dispatches onward or closes the LOOP | G6 (termination) + idempotency |
+| **JoinEvaluator** (part of DagAdvance, no separate topic) | — | `agent.execution.results` | Computes join readiness deterministically on every branch result | Deterministic join semantics (AND/XOR/N_OF) |
+| **SweepReaperHandler** | `orchestrator-reaper-group` | `agent.control.sweep` | Periodic ticks: find stale `IN_PROGRESS` (crash recovery), stuck JOIN/LOOP, decide retry/HITL — **only here** may wall-clock enter the logic | G4 limitation of time dependency |
+| **CancellationHandler** | `orchestrator-dag-group` | `agent.control.cancellation` | Aborts the workflow deterministically: marks all `PENDING` steps `CANCELLED` in level/ID order, prunes forks, closes JOIN | Deterministic pruning |
+| **HitlResumeHandler** | `alerting-hitl-group` | `agent.control.hitl` + REST callback from Slack/PD | Turns retry/skip/abort decisions into routing steps and calls `evaluateRouting` again | Deterministic decision chain after human input |
+| **DecisionEvaluator (optional, async)** | `orchestrator-condition-group` | `agent.control.condition` | Alternative asynchronous condition evaluation (default: **off**, see warning) | Deterministic only if the evaluator is pure **and** response events for `workflow_id` arrive in order |
 
-**Wichtige Design-Regel (Single-Writer):** Der Timeout-Monitor darf **selbst kein** Routing-State schreiben. Er erzeugt lediglich Direktiven (z.B. Nachricht auf `agent.execution.results` mit `FAILED_RETRYABLE` oder auf `agent.control.loop`/`sweep`). Jede Zustandsänderung läuft über `DagAdvanceHandler` bzw. `SweepReaperHandler`. Das verhindert zwei konkurrierende Schreiber auf denselben Workflow.
+**Important design rule (single writer):** The timeout monitor must **itself not** write routing state. It merely creates directives (e.g., a message on `agent.execution.results` with `FAILED_RETRYABLE` or on `agent.control.loop`/`sweep`). Every state change runs via `DagAdvanceHandler` or `SweepReaperHandler`. This prevents two competing writers on the same workflow.
 
-**Entscheidung über `DecisionEvaluator`:** Als Default ist die Decision-Auswertung **synchron im Orchestrator** (im Fireable-Bestimmungs-Schritt der Transaktion). Das ist die einzige Variante, die G4 hart garantiert. Ein asynchroner Handler (`agent.control.condition`) wird nur angeboten, um rechen- oder wartungsintensive Auswertungen auszulasten — dann gelten zusätzliche Bedingungen: Auswertung muss pur sein (kein `now()`, `random()`, externe Calls), Antwort-Events werden mit `workflow_id` keyed und die Zustandsübernahme erfolgt nur durch `DagAdvanceHandler`.
+**Decision on `DecisionEvaluator`:** By default, decision evaluation is **synchronous in the orchestrator** (in the fireable-determination step of the transaction). This is the only variant that hard-guarantees G4. An asynchronous handler (`agent.control.condition`) is offered only to offload compute- or maintenance-intensive evaluations — in that case additional conditions apply: evaluation must be pure (no `now()`, `random()`, external calls), response events are keyed with `workflow_id`, and state adoption occurs only via `DagAdvanceHandler`.
 
-### 15.7 Ablauf-Trace (Beispiel aus §5.3)
+### 15.7 Flow Trace (Example from §5.3)
 
 ```
 1. intake → DagAdvance: research_step PENDING → IN_PROGRESS → dispatch + timeout
 2. result COMPLETED(research_step) → evaluateRouting:
-     quality_gate feuert → dispatch (kein Agent, interne pur Berechnung)
-3. quality_gate: condition ausgewertet, z.B. confidence=0.72 < 0.8 → decision_branch = "refinement_loop"
-   Kante quality_gate → parallel_fork ist NICHT aktiv → parallel_fork bleibt PENDING
+     quality_gate fires → dispatch (no agent, internal pure computation)
+3. quality_gate: condition evaluated, e.g. confidence=0.72 < 0.8 → decision_branch = "refinement_loop"
+   edge quality_gate → parallel_fork is NOT active → parallel_fork remains PENDING
 4. LoopIterationHandler: refinement_loop iteration=1 → dispatch refiner
-5. result COMPLETED(refinement_loop#1) → exitCondition prüfen:
+5. result COMPLETED(refinement_loop#1) → check exitCondition:
    false → LoopIterationHandler dispatch iteration=2
 6. result COMPLETED(refinement_loop#2, confidence=0.83) → exitCondition true → LOOP#2 = COMPLETED
-7. evaluateRouting: Kante refinement_loop → parallel_fork ist erfüllt (FORK = OR) → parallel_fork feuert
-8. dispatch b.code.gen UND b.test.prep (Level identisch, stepId-Sortierung) → Worker parallel
-9. result COMPLETED(b.test.prep) → DagAdvance: join-Readiness prüfen → b.code.gen fehlt → warten
-10. result COMPLETED(b.code.gen) → JOIN merge_gate (AND) voll → dispatch final_review (HITL requires approval)
+7. evaluateRouting: edge refinement_loop → parallel_fork is satisfied (FORK = OR) → parallel_fork fires
+8. dispatch b.code.gen AND b.test.prep (same level, stepId sorting) → workers parallel
+9. result COMPLETED(b.test.prep) → DagAdvance: check join readiness → b.code.gen missing → wait
+10. result COMPLETED(b.code.gen) → JOIN merge_gate (AND) full → dispatch final_review (HITL requires approval)
 11. HitlResume: APPROVED → final_review IN_PROGRESS → dispatch
-12. result COMPLETED(final_review) → END feuert → workflow_executions.status = COMPLETED
+12. result COMPLETED(final_review) → END fires → workflow_executions.status = COMPLETED
 ```
 
-Wird der Orchestrator bei Schritt 6 gecrasht, bevor der LOOP-COMPLETED committen ist, wiederholt er bei Restart/Erzeugung des nächsten Sweep-Tick `evaluateRouting` auf dem persistierten Stand (LOOP#2=COMPLETED fehlt) ⇒ er würde den Schritt 6 identisch re-executieren (idempotent, G3). Ein Duplikat-Dispatch wird durch `uq_execution_step_iteration` verhindert.
+If the orchestrator crashes at step 6 before the LOOP-COMPLETED has been committed, on restart/creation of the next sweep tick it repeats `evaluateRouting` on the persisted state (LOOP#2=COMPLETED missing) ⇒ it would re-execute step 6 identically (idempotent, G3). A duplicate dispatch is prevented by `uq_execution_step_iteration`.
 
-### 15.8 Routing-Diagramme (konsistent mit §4.1, §4.3, §14, §15.6)
+### 15.8 Routing Diagrams (consistent with §4.1, §4.3, §14, §15.6)
 
-**Konventionen (gelten in allen Diagrammen):**
-- Alle `workflow`-skopierten Topics (`agent.tasks.<type>`, `agent.execution.results`, `agent.control.loop`, `agent.control.hitl`, `agent.control.cancellation`) werden mit **`workflow_id`** keyed → ein Workflow landet immer auf derselben Partition (G1, Reihenfolge-Garantie).
-- `agent.control.timeouts` keyed mit `task_id`, `agent.control.sweep` keyed mit `sweep_id` (keine Routing-Schreiber, vgl. Single-Writer-Regel §15.6).
-- `[Handler]` = Name aus §15.6; Consumer-Gruppen in Klammern. `[R]` = Root-Starter (API-Gateway), `[W]` = Agent Worker.
-- Payload-Beispiele folgen den Schemas aus §4.3. Deterministische Node-Auswertung (DECISION/FORK/JOIN) erfolgt **synchron in der Orchestrator-Transaktion** und erzeugt kein eigenes Kafka-Topic, außer sie wird explizit asynchron angehängt (§15.6, `agent.control.condition`).
+**Conventions (apply to all diagrams):**
+- All `workflow`-scoped topics (`agent.tasks.<type>`, `agent.execution.results`, `agent.control.loop`, `agent.control.hitl`, `agent.control.cancellation`) are keyed with **`workflow_id`** → a workflow always lands on the same partition (G1, ordering guarantee).
+- `agent.control.timeouts` keyed with `task_id`, `agent.control.sweep` keyed with `sweep_id` (no routing writers, cf. single-writer rule §15.6).
+- `[Handler]` = name from §15.6; consumer groups in parentheses. `[R]` = root starter (API gateway), `[W]` = agent worker.
+- Payload examples follow the schemas from §4.3. Deterministic node evaluation (DECISION/FORK/JOIN) takes place **synchronously in the orchestrator transaction** and produces no separate Kafka topic, unless it is explicitly attached asynchronously (§15.6, `agent.control.condition`).
 
 #### Diagram 1 — DECISION (Condition) routing
 
@@ -1854,10 +1854,10 @@ Wird der Orchestrator bei Schritt 6 gecrasht, bevor der LOOP-COMPLETED committen
       research_step -> COMPLETED
       evaluateRouting() -> FIRE quality_gate (DECISION)
         |
-        |  Condition synchron ausgewertet (pur):
+        |  Condition evaluated synchronously (pure):
         |  context['research_step'].confidence < 0.8  -> TRUE
         v
-   decision_branch = "refinement_loop"   (persistiert auf der Checkpoint-Zeile)
+   decision_branch = "refinement_loop"   (persisted on the checkpoint row)
         |
         v
    agent.tasks.refiner                key: wf-9876   (next node in chosen branch)
@@ -1865,13 +1865,13 @@ Wird der Orchestrator bei Schritt 6 gecrasht, bevor der LOOP-COMPLETED committen
         |
         v
    [W] refiner worker  ===>  LOOP-Phase, siehe Diagramm 2
-   (alternative: condition FALSE -> decision_branch="parallel_fork" -> Fork-Phase, Diagramm 3)
+   (alternative: condition FALSE -> decision_branch="parallel_fork" -> fork phase, Diagram 3)
 ```
 
 #### Diagram 2 — LOOP routing
 
 ```
-   [W] refiner worker beendet Iteration 1
+   [W] refiner worker finishes iteration 1
         |
         v
    agent.execution.results           key: wf-9876
@@ -1897,19 +1897,19 @@ Wird der Orchestrator bei Schritt 6 gecrasht, bevor der LOOP-COMPLETED committen
    {header:{...taskId:ta-3, attempt:1,...}}
         |
         v
-   [W] refiner worker  (Iteration 2)  ->  zurück an den Start => Schleife bis:
+   [W] refiner worker  (iteration 2)  ->  back to the start => loop until:
         +-- exitCondition TRUE  -> refinement_loop COMPLETED -> evaluateRouting
-        +-- maxIterations erreicht & exit FALSE -> WAITING_HITL (agent.control.hitl)
+        +-- maxIterations reached & exit FALSE -> WAITING_HITL (agent.control.hitl)
 ```
 
 #### Diagram 3 — FORK / JOIN routing
 
 ```
-   Decision/Fork-Kante erfüllt (quality_gate decision_branch="parallel_fork" ODER LOOP-Exit)
+   Decision/fork edge satisfied (quality_gate decision_branch="parallel_fork" OR LOOP exit)
         |
         v
-   [DagAdvanceHandler] -> FIRE parallel_fork (FORK) -> mark COMPLETED (kein Task),
-                           evaluateRouting => FIRABLE b.code.gen UND b.test.prep
+   [DagAdvanceHandler] -> FIRE parallel_fork (FORK) -> mark COMPLETED (no task),
+                           evaluateRouting => FIRABLE b.code.gen AND b.test.prep
         |
         +---------------+---------------+
         v                               v
@@ -1924,25 +1924,25 @@ Wird der Orchestrator bei Schritt 6 gecrasht, bevor der LOOP-COMPLETED committen
         +---------------+---------------+
                         |
                         v
-   agent.execution.results  (2 COMPLETED-Nachrichten, Reihenfolge egal)
+   agent.execution.results  (2 COMPLETED messages, order irrelevant)
    key: wf-9876  {taskId:ta-4,...}   {taskId:ta-5,...}
                         |
         +---------------+---------------+
         v                               v
-   [DagAdvanceHandler]  ←-- joinReadiness nach JEDER Ergebnis-Nachricht
+   [DagAdvanceHandler]  ←-- joinReadiness after EVERY result message
      b.code.gen COMPLETED, b.test.prep COMPLETED
                                     |
                                     v
-   JOIN merge_gate (AND) erfüllt  ->  dispatch final_review
+   JOIN merge_gate (AND) satisfied  ->  dispatch final_review
         |
         v
-   agent.tasks.reviewer  ->  [W] reviewer worker  ->  HITL ggf. agent.control.hitl
+   agent.tasks.reviewer  ->  [W] reviewer worker  ->  HITL if applicable agent.control.hitl
 ```
 
-#### Diagram 4 — Alle Node-Typen im Gesamtfluss (STEP / DECISION / LOOP / FORK / JOIN / END)
+#### Diagram 4 — All Node Types in the Overall Flow (STEP / DECISION / LOOP / FORK / JOIN / END)
 
 ```
- wf-9876   (eine Partition, alle Topics keyed workflow_id)
+ wf-9876   (one partition, all topics keyed workflow_id)
 
   [R] intake (agent.execution.intake)
       |
@@ -1957,20 +1957,20 @@ Wird der Orchestrator bei Schritt 6 gecrasht, bevor der LOOP-COMPLETED committen
       +---------------------+
       |                     |
       v                     v
- refinement_loop LoopIterationHandler        parallel_fork FORK (default-Zweig,
-  LOOP (iter 1..3)        (orchestrator-dag-group)  wenn decision_branch=nicht gewaehlt)
+ refinement_loop LoopIterationHandler        parallel_fork FORK (default branch,
+  LOOP (iter 1..3)        (orchestrator-dag-group)  if decision_branch=not chosen)
       |                     |                    |                     |
-      |  agent.tasks.refiner (je iter)           +----------+----------+
+      |  agent.tasks.refiner (per iter)           +----------+----------+
       |  [W] refiner worker                      |          |
       |  agent.execution.results                v          v
       |  agent.control.loop                   b.code.gen  b.test.prep
-      |  (iter+1 oder exit, s. Diagramm 2)     STEP         STEP
+      |  (iter+1 or exit, see Diagram 2)     STEP         STEP
       |                                       agent.tasks.coder  agent.tasks.test_writer
       |                                       [W] coder    [W] test_writer
       |  exit TRUE -> LOOP COMPLETED (iter=2)           |      |
       |      +------------------------------------------+------+
       |      v                                          v
-      +--> merge_gate  JOIN (AND, in_edges: code,tests) | beide COMPLETED
+      +--> merge_gate  JOIN (AND, in_edges: code,tests) | both COMPLETED
             |
             v
       final_review STEP (requiresHumanApproval) --- agent.tasks.reviewer --- [W] reviewer
@@ -1984,22 +1984,22 @@ Wird der Orchestrator bei Schritt 6 gecrasht, bevor der LOOP-COMPLETED committen
             v
       end  END  -> workflow_executions.status='COMPLETED'
 
-  Nebenpfade (nicht im Hauptfluss):
-      agent.control.timeouts  key: task_id  -> TimeoutMonitor (nur Direktiven)
+  Side paths (not in the main flow):
+      agent.control.timeouts  key: task_id  -> TimeoutMonitor (directives only)
       agent.control.sweep     key: sweep_id -> SweepReaperHandler (Recovery/Reaper)
       agent.control.cancellation key: wf-id -> CancellationHandler (Pruning)
 ```
 
-**Lesehinweis zu Diagramm 4:** Die fünf Pfeile in Richtung `merge_gate` illustrieren, dass `refinement_loop` und `parallel_fork` zwei **alternative** Pfade sind (FORK hat OR-Eingangskanten). In der Ausführung wird je nach `decision_branch` entweder der Loop-Zweig (Diagramm 2) oder der Fork/Join-Zweig (Diagramm 3) durchlaufen — nie beide gleichzeitig im selben Zweig, dank Kanten-Aktivierung §15.3.
+**Reading note on Diagram 4:** The five arrows toward `merge_gate` illustrate that `refinement_loop` and `parallel_fork` are two **alternative** paths (FORK has OR incoming edges). At execution time, depending on `decision_branch`, either the loop branch (Diagram 2) or the fork/join branch (Diagram 3) is traversed — never both simultaneously in the same branch, thanks to edge activation §15.3.
 
 ---
 
 ## 16. REST API Contract
 
-Die API wird vom **API-Gateway / Orchestrator** (Modul `agent-orchestrator`) exponiert. Alle Antworten laufen prinzipiell asynchron über Kafka; das REST-API dient Synchron-Punkten (Start, Status, Definition-Management, HITL-Aktionen).
+The API is exposed by the **API gateway / orchestrator** (module `agent-orchestrator`). All responses are in principle asynchronous via Kafka; the REST API serves synchronous points (start, status, definition management, HITL actions).
 
-Basis: `/api/v1`, Auth via JWT/OIDC (Vault-verifiziert), `Content-Type: application/json`.
-Fehlerformat (einheitlich):
+Base: `/api/v1`, auth via JWT/OIDC (Vault-verified), `Content-Type: application/json`.
+Error format (uniform):
 
 ```json
 { "error": { "code": "WORKFLOW_NOT_FOUND", "message": "...", "workflowId": "..." } }
@@ -2007,68 +2007,68 @@ Fehlerformat (einheitlich):
 
 | Method | Path | Body / Query | Response | Sender |
 | :--- | :--- | :--- | :--- | :--- |
-| `POST` | `/workflows/start` | `{workflowName, version?, inputParams, idempotencyKey}` | `202 {workflowExecutionId}` | API-Gateway |
-| `GET` | `/workflows/{executionId}` | — | `200 {status, definitionId, startedAt, completedAt, checkpoints[]}` | API-Gateway |
-| `GET` | `/workflows/{executionId}/checkpoints` | `?stepId=&iteration=` | `200 {checkpoints[]}` | API-Gateway |
-| `POST` | `/workflows/{executionId}/cancel` | — | `202` → `agent.control.cancellation` | API-Gateway |
-| `GET` | `/workflow-definitions` | `?active=true` | `200 {definitions[]}` | Definition-Store |
-| `POST` | `/workflow-definitions` | `{name, version, dag_structure}` | `201 {definitionId}` (validiert) | Definition-Store |
-| `GET` | `/hitl/tickets` | `?status=OPEN` | `200 {tickets[]}` | HITL-Service |
-| `POST` | `/hitl/tickets/{ticketId}/{action}` | `body {userId, note?}`; `action ∈ {retry, skip, abort}` | `202` → `agent.control.hitl` | HITL-Service |
+| `POST` | `/workflows/start` | `{workflowName, version?, inputParams, idempotencyKey}` | `202 {workflowExecutionId}` | API gateway |
+| `GET` | `/workflows/{executionId}` | — | `200 {status, definitionId, startedAt, completedAt, checkpoints[]}` | API gateway |
+| `GET` | `/workflows/{executionId}/checkpoints` | `?stepId=&iteration=` | `200 {checkpoints[]}` | API gateway |
+| `POST` | `/workflows/{executionId}/cancel` | — | `202` → `agent.control.cancellation` | API gateway |
+| `GET` | `/workflow-definitions` | `?active=true` | `200 {definitions[]}` | Definition store |
+| `POST` | `/workflow-definitions` | `{name, version, dag_structure}` | `201 {definitionId}` (validated) | Definition store |
+| `GET` | `/hitl/tickets` | `?status=OPEN` | `200 {tickets[]}` | HITL service |
+| `POST` | `/hitl/tickets/{ticketId}/{action}` | `body {userId, note?}`; `action ∈ {retry, skip, abort}` | `202` → `agent.control.hitl` | HITL service |
 
-**Start-Endpoint-Semantik (idempotent):**
-- Client sendet `idempotencyKey` (UUID) → dedupliziert über `dedup:workflow:start:{key}` in Redis (TTL 24h).
-- Bei Duplikat: `200` mit bereits existierendem `workflowExecutionId` (kein neuer Workflow).
-- Wirkung: schreibt Execution `PENDING` + DAG-Checkpoints, publiziert Init auf `agent.execution.intake`.
+**Start endpoint semantics (idempotent):**
+- Client sends `idempotencyKey` (UUID) → deduplicated via `dedup:workflow:start:{key}` in Redis (TTL 24h).
+- On duplicate: `200` with the already existing `workflowExecutionId` (no new workflow).
+- Effect: writes execution `PENDING` + DAG checkpoints, publishes init to `agent.execution.intake`.
 
-**Definition-Endpoint-Semantik (`POST /workflow-definitions`):**
-- `dag_structure` wird **vor dem INSERT validiert** (§17.1): Node-Typ-Vokabular, Azyklizität, DECISION→LOOP→defaultTarget-Regel, FORK/JOIN-Paarung, edge-activation-irreführende Kanten.
-- Neue Versionen sind append-only (`UNIQUE (name, version)`); `is_active` bestimmt, welche Version neue Starts verwenden (G5-Pinning).
+**Definition endpoint semantics (`POST /workflow-definitions`):**
+- `dag_structure` is **validated before the INSERT** (§17.1): node type vocabulary, acyclicity, DECISION→LOOP→defaultTarget rule, FORK/JOIN pairing, edge activation (misleading edges).
+- New versions are append-only (`UNIQUE (name, version)`); `is_active` determines which version new starts use (G5 pinning).
 
-### 16.1 Event-Mapping (REST ↔ Kafka)
+### 16.1 Event Mapping (REST ↔ Kafka)
 
 ```
 POST /workflows/start ─────────► agent.execution.intake      (key: workflow_id)
-GET  /workflows/{id} ◄───────── Orchestator quert DB           (kein Kafka)
+GET  /workflows/{id} ◄───────── Orchestrator queries DB           (no Kafka)
 POST /workflows/{id}/cancel ───► agent.control.cancellation   (key: workflow_id)
 POST /hitl/tickets/{id}/retry ─► agent.control.hitl           (key: workflow_id)
-GET  /hitl/tickets ◄─────────── HitlTicket-Query (DB)
+GET  /hitl/tickets ◄─────────── HitlTicket query (DB)
 ```
 
-Synchron-Antworten erfolgen unmittelbar und bestätigen nur die Annahme (`202`). Der tatsächliche Fortschritt wird über `GET /workflows/{id}` (Polling) bezogen; ein optionaler Webhook-Notifier kann pro Status-Übergang posten.
+Synchronous responses occur immediately and merely confirm acceptance (`202`). Actual progress is obtained via `GET /workflows/{id}` (polling); an optional webhook notifier can post on each status transition.
 
 ---
 
-## 17. Test- & Verifikationsstrategie (Determinismus-bezogen)
+## 17. Test & Verification Strategy (Determinism-Related)
 
-Angesichts der G1–G6-Garantien ist das Testkorsett integraler Bestandteil der Spezifikation.
+Given the G1–G6 guarantees, the test harness is an integral part of the specification.
 
-### 17.1 Workflow-Validator (Unit + Komponente)
+### 17.1 Workflow Validator (Unit + Component)
 
-| Regel | Verifikation |
+| Rule | Verification |
 | :--- | :--- |
-| Node-Typ ∈ {STEP, DECISION, LOOP, FORK, JOIN, END} | Schema-Validierung |
-| Kein Zyklus zwischen Nicht-LOOP-Nodes | Topo-Sort (Kahn) |
-| DECISION-Ziel nur ein LOOP; LOOP-Exit ⇒ `defaultTarget` der DECISION | Kanten-Validierung |
-| FORK-Branch-Köpfe existieren; Jeder FORK hat genau ein paariges JOIN | Paarungs-Validierung |
-| `step_id` Konvention `b.<branchId>.<name>` | Regex |
+| Node type ∈ {STEP, DECISION, LOOP, FORK, JOIN, END} | Schema validation |
+| No cycle between non-LOOP nodes | Topo sort (Kahn) |
+| DECISION target only one LOOP; LOOP exit ⇒ `defaultTarget` of the DECISION | Edge validation |
+| FORK branch heads exist; every FORK has exactly one paired JOIN | Pairing validation |
+| `step_id` convention `b.<branchId>.<name>` | Regex |
 
-### 17.2 Deterministische Routing-Tests (Golden-File Test)
+### 17.2 Deterministic Routing Tests (Golden-File Test)
 
-Zentrale Metapher: **jeder Zustandsübergang wird als Golden-File-Szenario abgebildet** — Input: Checkpoint-Zustand + DAG-Definition; Output: erwartete `fireableSteps`-Menge, `decision_branch`, gesetzte Status. Diese Tests sind **purity-frei** (kein Fake, kein Timing):
-- Einer Zeile beschreibt `(checkpointState, dag)`, erwartete Ausgabe-Spalte wird bei Regression verglichen.
-- Wiederholung desselben Szenarios (Replay nach Crash) MUSS identische Ergebnisse liefern → Abbildung von G3.
+Central metaphor: **every state transition is mapped as a golden-file scenario** — input: checkpoint state + DAG definition; output: expected `fireableSteps` set, `decision_branch`, statuses set. These tests are **impurity-free** (no fake, no timing):
+- One line describes `(checkpointState, dag)`; the expected output column is compared on regression.
+- Repetition of the same scenario (replay after crash) MUST yield identical results → mapping of G3.
 
-### 17.3 Chaos-/Recovery-Tests
+### 17.3 Chaos/Recovery Tests
 
-- Kill des Orchestrators mid-DAG → nach Sweep-Tick wird er idempotent fortgesetzt (kein verlorenes/doppeltes Dispatch).
-- Doppelte `COMPLETED`-Messages (At-Least-Once) → `uq_execution_step_iteration` blockiert zweiten Dispatch, Retry-Counter bleibt korrekt.
-- Ein JOIN mit Fehler-Branch bleibt `PENDING`-frei und eskaliert via Sweep → `WAITING_HITL` (kein Deadlock).
+- Kill the orchestrator mid-DAG → after a sweep tick it resumes idempotently (no lost/duplicate dispatch).
+- Duplicate `COMPLETED` messages (at-least-once) → `uq_execution_step_iteration` blocks the second dispatch, the retry counter stays correct.
+- A JOIN with a failing branch does not remain `PENDING` and escalates via sweep → `WAITING_HITL` (no deadlock).
 
-### 17.4 System-/E2E-Tests (Determinismus über Kafka-Ebenen)
+### 17.4 System/E2E Tests (Determinism Across Kafka Layers)
 
-- Indem `workflow_id` auf dieselbe Partition fällt, müssen zwei aufeinanderfolgend ausgeführte Starts desselben DAGs exakt dieselbe Step-Reihenfolge / decision_trace zeigen (Determinismus-Hauptkriterium).
-- Abweichendes Retry/Timeout-**Timing** wird durch Backoff-Parameter variiert; die Routing-Ergebnisabfolge MUSS identisch bleiben.
+- Because `workflow_id` falls on the same partition, two consecutively executed starts of the same DAG must show exactly the same step order / decision trace (main determinism criterion).
+- Deviating retry/timeout **timing** is varied via backoff parameters; the routing result sequence MUST remain identical.
 
 ---
 

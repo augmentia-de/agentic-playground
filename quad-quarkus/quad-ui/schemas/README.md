@@ -1,41 +1,41 @@
-# QUAD UI – API-Definitionen
+# QUAD UI – API Definitions
 
-Dieser Ordner enthält die **JSON-Schema-Kontrakte** für alle Daten, die zwischen QUAD UI
-und dem QUAD-Backend ausgetauscht werden. Die TypeScript-Typen in
-`src/services/types.ts` sind die 1:1-Übersetzung dieser Schemas.
+This folder contains the **JSON schema contracts** for all data that is exchanged between QUAD UI
+and the QUAD backend. The TypeScript types in
+`src/services/types.ts` are the 1:1 translation of these schemas.
 
 ## Schemas
 
-| Datei | Inhalt | Backend-Endpoints |
+| File | Content | Backend endpoints |
 |-------|--------|-------------------|
-| `agent.schema.json` | Agent-Definition (Request/Response) | `/api/ui/agents` (GET/POST/PUT/DELETE) |
-| `workflow.schema.json` | Workflow-Definition inkl. Nodes/Edges | `/api/ui/workflows` (GET/POST) |
-| `execute.schema.json` | Task- und Workflow-Ausführung | `/api/ui/execute`, `/api/ui/workflows/{id}/execute` |
-| `monitor.schema.json` | Metrics, Audit, HITL | `/api/ui/metrics`, `/audit/logs`, `/hitl/approvals` |
+| `agent.schema.json` | Agent definition (request/response) | `/api/ui/agents` (GET/POST/PUT/DELETE) |
+| `workflow.schema.json` | Workflow definition incl. nodes/edges | `/api/ui/workflows` (GET/POST) |
+| `execute.schema.json` | Task and workflow execution | `/api/ui/execute`, `/api/ui/workflows/{id}/execute` |
+| `monitor.schema.json` | Metrics, audit, HITL | `/api/ui/metrics`, `/audit/logs`, `/hitl/approvals` |
 
-## Validierung (Beispiel)
+## Validation (Example)
 
 ```bash
 npx ajv-cli validate -s schemas/workflow.schema.json -d beispiele/workflow.json
 ```
 
-## Workflow-Datenfluss
+## Workflow Data Flow
 
 ```
 [Node n1: research] ──edge e1──▶ [Node n2: review]
         │                                  ▲
-        └── Output wird als Kontext ───────┘
+        └── Output becomes context ────────┘
              ("Input from upstream node")
 ```
 
-- Die Ausführungsreihenfolge wird durch die **gerichteteten Kanten** bestimmt
-  (topologische Sortierung im Backend).
-- Jeder Knoten liefert einen LLM-Output (`output` in `WorkflowNodeResult`).
-- Outputs vorgelagerter Knoten werden dem Prompt nachfolgender Knoten als
-  `Input from upstream node: <output>` hinzugefügt.
-- Knoten ohne Vorgänger werden zuerst ausgeführt.
+- The execution order is determined by the **directed edges**
+  (topological sorting in the backend).
+- Each node produces an LLM output (`output` in `WorkflowNodeResult`).
+- Outputs of upstream nodes are added to the prompt of downstream nodes as
+  `Input from upstream node: <output>`.
+- Nodes without predecessors are executed first.
 
-## Beispiel: Mini-Workflow
+## Example: Mini Workflow
 
 ```json
 {
@@ -50,5 +50,5 @@ npx ajv-cli validate -s schemas/workflow.schema.json -d beispiele/workflow.json
 }
 ```
 
-POST auf `/api/ui/workflows` → `{ "id": "workflow-..." }` → anschließend
+POST to `/api/ui/workflows` → `{ "id": "workflow-..." }` → then
 `POST /api/ui/workflows/{id}/execute`.

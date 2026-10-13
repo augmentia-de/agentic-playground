@@ -1,9 +1,9 @@
-# quad-Anwendung (Quarkus)
+# quad application (Quarkus)
 
-quad selbst: quad-core, die Quarkus-Anwendung, quad-ui, MCP-Server und der
-Workflow-Engine.
+quad itself: quad-core, the Quarkus application, quad-ui, MCP server and the
+workflow engine.
 
-## Inhalt
+## Contents
 
 ```
 deployment/
@@ -22,13 +22,13 @@ config/
 └── mcp-config.json
 ```
 
-## Compose-Overlays sind Teil einer Serie
+## Compose overlays are part of a series
 
-`05-app-quarkus.yml` und `05-app-minimal.yml` sind Overlays auf eine
-nummerierte Serie; die Nummer gibt die Reihenfolge an. Sie erwarten die
-vorherigen Overlays, insbesondere `01-infrastructure.yml` — das liegt in
-`../kafka/deployment/compose/`. Ein einzelnes Overlay ist deshalb nicht
-lauffähig:
+`05-app-quarkus.yml` and `05-app-minimal.yml` are overlays on a
+numbered series; the number specifies the order. They expect the
+previous overlays, in particular `01-infrastructure.yml` — which lives in
+`../kafka/deployment/compose/`. A single overlay is therefore not
+runnable:
 
 ```bash
 cd delivery/quarkus
@@ -38,22 +38,22 @@ docker compose \
   up -d --build
 ```
 
-## Konfiguration
+## Configuration
 
-Die Dateien unter `config/env` enthalten Variablenverweise, keine Werte. Für
-jeden ist am Zielsystem ein echter Wert zu setzen:
+The files under `config/env` contain variable references, not values. For
+each one, a real value must be set on the target system:
 
-| Variable | Bedeutung |
+| Variable | Meaning |
 |---|---|
-| `POSTGRES_PASSWORD` / `${PROD_DB_PASSWORD}` | Passwort für die quad-Datenbank |
-| `OPENAI_API_KEY` / `${PROD_OPENAI_API_KEY}` | Modellzugang |
-| `KEYCLOAK_ADMIN_PASSWORD` | nur bei `OIDC_ENABLED=true` |
-| `QUARKUS_DATASOURCE_JDBC_URL` | zeigt im Default auf den Compose-Service `postgres-pgvector` |
-| `QUAD_MESSAGING_KAFKA_INBOUND_BOOTSTRAP_SERVERS` | zeigt auf `kafka:9092` |
+| `POSTGRES_PASSWORD` / `${PROD_DB_PASSWORD}` | Password for the quad database |
+| `OPENAI_API_KEY` / `${PROD_OPENAI_API_KEY}` | Model access |
+| `KEYCLOAK_ADMIN_PASSWORD` | only with `OIDC_ENABLED=true` |
+| `QUARKUS_DATASOURCE_JDBC_URL` | points to the Compose service `postgres-pgvector` by default |
+| `QUAD_MESSAGING_KAFKA_INBOUND_BOOTSTRAP_SERVERS` | points to `kafka:9092` |
 
 ## Build
 
-`deployment/scripts/build.sh` und `start.sh` sind die Skripte aus
-`quad-quarkus/scripts`. Sie erwarten den Maven-Modulbaum des Quell-Repos
-(`quad-core`, `quad-quarkus`, `quad-ui`, …) und laufen nicht aus der Delivery
-allein. Bauen daher im Repo, kopieren ist nur die Übergabe der Artefakte.
+`deployment/scripts/build.sh` and `start.sh` are the scripts from
+`quad-quarkus/scripts`. They expect the Maven module tree of the source repo
+(`quad-core`, `quad-quarkus`, `quad-ui`, …) and do not run from the delivery
+alone. Build in the repo instead; copying is only the handover of the artifacts.

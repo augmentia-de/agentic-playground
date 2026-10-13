@@ -1,67 +1,67 @@
-# UI.md – UI-Architektur & Integrationsanalyse
+# UI.md – UI Architecture & Integration Analysis
 
-## 0. Übersicht
+## 0. Overview
 
-| Ebene | Quad-Quarkus (nooa/quad) | Kafka-Workflow (kafka_workflow) | Kompatibel? |
+| Layer | Quad-Quarkus (nooa/quad) | Kafka Workflow (kafka_workflow) | Compatible? |
 |-------|-------------------------|--------------------------------|-------------|
-| **Frontend** | React SPA (`quad-ui`) | ❌ Nicht vorhanden | ✅ Frontend portierbar |
-| **Backend** | Quarkus REST API (`@Path("/api/ui")`) | Spring Boot 4 (`@RestController`) | ⚠️ Adapter nötig |
-| **Workflows** | Flat `{name, nodes[], edges[]}` mit impliziten Abhängigkeiten | Nested `{dag_structure: {nodes[]}}` mit explizitem `dependsOn` | ⚠️ Bridge-Konverter |
-| **Agenten** | `AgentDefinition` (rich: tools, skills, hooks, memory, grantedDirs) | `WorkerProperties.AgentConfig` (flach: modelKey, temperature, allowedTools) | ⚠️ Mapping-Tabelle |
-| **Messaging** | Kafka in-process + MessagingRouter | External via topics (`agent.tasks.*`, `agent.execution.results`) | ✅ Gleiches Event-Schema |
-| **Monitoring** | `/api/ui/metrics`, `/runs`, OTel + Prometheus, Grafana | `/actuator/prometheus` (Spring) + WorkerMetrics | 🔄 Integration nötig |
+| **Frontend** | React SPA (`quad-ui`) | ❌ Not available | ✅ Frontend portable |
+| **Backend** | Quarkus REST API (`@Path("/api/ui")`) | Spring Boot 4 (`@RestController`) | ⚠️ Adapter needed |
+| **Workflows** | Flat `{name, nodes[], edges[]}` with implicit dependencies | Nested `{dag_structure: {nodes[]}}` with explicit `dependsOn` | ⚠️ Bridge converter |
+| **Agents** | `AgentDefinition` (rich: tools, skills, hooks, memory, grantedDirs) | `WorkerProperties.AgentConfig` (flat: modelKey, temperature, allowedTools) | ⚠️ Mapping table |
+| **Messaging** | Kafka in-process + MessagingRouter | External via topics (`agent.tasks.*`, `agent.execution.results`) | ✅ Same event schema |
+| **Monitoring** | `/api/ui/metrics`, `/runs`, OTel + Prometheus, Grafana | `/actuator/prometheus` (Spring) + WorkerMetrics | 🔄 Integration needed |
 
 ---
 
-## 1. quad-ui Architektur
+## 1. quad-ui Architecture
 
-### 1.1 Projektstruktur
+### 1.1 Project Structure
 
 ```
 nooa/quad/quad-ui/
 ├── package.json          # Vite 8.x, React 19.2, TypeScript 6.0
 ├── vite.config.ts        # Proxy: /api → localhost:8086
 ├── src/main.tsx          # React Root
-├── src/App.tsx           # Shell mit Tab-Navigation (conditional rendering)
+├── src/App.tsx           # Shell with tab navigation (conditional rendering)
 ├── src/services/
-│   ├── api.ts            # Single API client – alle Calls gehen über "/api/ui/..."
-│   └── types.ts          # Alle TypeScript Interfaces
-├── src/components/       # 30+ Komponenten (Tab-getrieben)
+│   ├── api.ts            # Single API client – all calls go via "/api/ui/..."
+│   └── types.ts          # All TypeScript interfaces
+├── src/components/       # 30+ components (tab-driven)
 │   ├── Dashboard.tsx
-│   ├── Monitor.tsx       # Echtzeit-Monitoring (Polling 5s)
-│   ├── Sessions.tsx      # Session-Management, GDPR Export/Delete
-│   ├── Runs.tsx          # Ausführungsverlauf mit Step-Level-Detail
-│   ├── AgentManager.tsx  # Agent CRUD + Playground-Test
-│   ├── WorkflowComposer.tsx  # Drag-and-Drop Canvas (@xyflow/react)
-│   ├── DynamicWorkflow.tsx # AI-generierte Workflows (Mermaid)
-│   ├── HitlOverlay.tsx   # Global HITL-Billigungspopup (SSE + Polling)
-│   ├── SecurityCenter.tsx    # Guardrails + Audit-Log
-│   ├── ProvenanceView.tsx    # Token-Herkunftstracing
-│   ├── DebugView.tsx         # Tool-Call-Debugger
+│   ├── Monitor.tsx       # Real-time monitoring (5s polling)
+│   ├── Sessions.tsx      # Session management, GDPR export/delete
+│   ├── Runs.tsx          # Execution history with step-level detail
+│   ├── AgentManager.tsx  # Agent CRUD + playground test
+│   ├── WorkflowComposer.tsx  # Drag-and-drop canvas (@xyflow/react)
+│   ├── DynamicWorkflow.tsx # AI-generated workflows (Mermaid)
+│   ├── HitlOverlay.tsx   # Global HITL approval popup (SSE + polling)
+│   ├── SecurityCenter.tsx    # Guardrails + audit log
+│   ├── ProvenanceView.tsx    # Token provenance tracing
+│   ├── DebugView.tsx         # Tool call debugger
 │   └── ...                   # MemoryManager, Automation, Skills, etc.
-└── index.html           # 98.css Win98 Retro-Styling via CDN
+└── index.html           # 98.css Win98 retro styling via CDN
 ```
 
-### 1.2 Navigationsmodell
+### 1.2 Navigation Model
 
-Es wird **kein React Router** verwendet. Stattdessen ein State-driven Tab-System in `App.tsx`:
+**No React Router** is used. Instead, a state-driven tab system in `App.tsx`:
 
-| Tab-Wert | Komponente | Funktion |
+| Tab Value | Component | Function |
 |----------|------------|----------|
-| `'dashboard'` | `<Dashboard />` | Quickstart, Backend-Status, Task-Ausführung |
-| `'agents'` | `<AgentManager />` | Agent CRUD, Test-Playground |
-| `'workflows'` | `<WorkflowComposer />` | Visuelle DAG-Erstellung, Nodes/Edges |
-| `'dynamic'` | `<DynamicWorkflow />` | LLM-generierte Workflows |
-| `'runs'` | `<Runs />` | Historische Ausführungen |
-| `'messaging'` | `<Messaging />` | Channel-Status, Topic-Agent-Mapping |
-| `'memory'` | `<MemoryManager />` | Session-Speicherung CRUD |
-| `'security'` | `<SecurityCenter />` | Guardrails, HITL, Audit-Log |
-| `'sessions'` | `<Sessions />` | Session-Übersicht, Details, GDPR |
-| `'monitor'` | `<Monitor />` | Token-Verbrauch, Errors, Latenz |
-| `'audit'` | `<Audit />` | Audit-Events Browsen |
-| `'debug'` | `<DebugView />` | Journal/Trace-Explorer |
+| `'dashboard'` | `<Dashboard />` | Quickstart, backend status, task execution |
+| `'agents'` | `<AgentManager />` | Agent CRUD, test playground |
+| `'workflows'` | `<WorkflowComposer />` | Visual DAG creation, nodes/edges |
+| `'dynamic'` | `<DynamicWorkflow />` | LLM-generated workflows |
+| `'runs'` | `<Runs />` | Historical executions |
+| `'messaging'` | `<Messaging />` | Channel status, topic-agent mapping |
+| `'memory'` | `<MemoryManager />` | Session storage CRUD |
+| `'security'` | `<SecurityCenter />` | Guardrails, HITL, audit log |
+| `'sessions'` | `<Sessions />` | Session overview, details, GDPR |
+| `'monitor'` | `<Monitor />` | Token usage, errors, latency |
+| `'audit'` | `<Audit />` | Browse audit events |
+| `'debug'` | `<DebugView />` | Journal/trace explorer |
 
-### 1.3 API-Client
+### 1.3 API Client
 
 ```typescript
 // services/api.ts
@@ -73,13 +73,13 @@ async request(method, path, body?) {
 }
 ```
 
-Alle 79 Endpunkte im System verwenden diesen Base-Prefix. Bei Portierung auf Spring Boot muss entweder:
-- Der Vite-Proxy angepasst werden (`vite.config.ts` → `localhost:8080`), ODER
-- Die `API_BASE_URL` per Environment-Variable konfiguriert werden
+All 79 endpoints in the system use this base prefix. When porting to Spring Boot, either:
+- The Vite proxy must be adjusted (`vite.config.ts` → `localhost:8080`), OR
+- The `API_BASE_URL` must be configured via environment variable
 
-### 1.4 Typisierung
+### 1.4 Typing
 
-Key-Interfaces aus `types.ts`:
+Key interfaces from `types.ts`:
 
 ```typescript
 interface WorkflowRun { runId: string; status: 'running'|'completed'|'failed'; nodeResults: NodeRunResult[] }
@@ -89,27 +89,27 @@ interface StatusResponse { ready: boolean; model: string; costLimit: number }
 interface SessionSummary { id: string; task: string; result: string }
 ```
 
-→ Diese Interfaces müssen an die Spring Boot Response-Shape angepasst werden.
+→ These interfaces must be adapted to the Spring Boot response shape.
 
 ---
 
-## 2. Format-Analyse & Bridge-Design
+## 2. Format Analysis & Bridge Design
 
-### 2.1 Workflow-Definitionen: Vergleich
+### 2.1 Workflow Definitions: Comparison
 
-| Merkmal | Quad-Quarkus Format | Kafka-Orchestrator Format | Konvertierbar? |
+| Feature | Quad-Quarkus Format | Kafka-Orchestrator Format | Convertible? |
 |---------|---------------------|---------------------------|---------------|
-| **Envelope** | `{name, nodes[], edges[]}` | `{name, version, dag_structure: {nodes[]}}` | Ja → Nesting hinzufügen |
-| **Abhängigkeiten** | Implizit durch `edges[{source,target}]` | Explizit `dependsOn: [nodeA, nodeB]` | Ja → Edge-Array auflösen |
-| **Node Types** | `agent`, `fork`, `join`, `conditional`, `loop`, `nested-workflow`, `async` | `STEP`, `FORK`, `JOIN`, `DECISION`, `LOOP`, `END` | Ja → String-Map |
-| **Branch Routing** | Auf `conditional` Node implizit (via edges) | Explizit `branches: [{branchId, condition, target}]` pro DECISION | Ja → Branchdaten extrahieren |
-| **Join Strategie** | Edge-level `joinPolicy: "any"/"all"` | `joinType: "AND"/"XOR"/"N_OF"` + `joinBranches` | Ja → `all→AND`, `any→N_OF(1)` |
-| **Guard Conditions** | Separates `conditional` Node mit Config | Inline `guardCondition` String auf STEP Nodes | Ja → Extrahieren und inline setzen |
-| **HITL Support** | Separate Service (`requiresHumanApproval`) | Explizit im Node `requiresHumanApproval: true` | Direkt übernehmen |
-| **Loops** | Implicit entire downstream; optional `loopTargetId` | `bodyAgentType` + `exitCondition`; step refs | Ja → Body ermitteln |
-| **Nested Workflows** | `nested-workflow` referencing ID | Nicht unterstützt in Beispielen | ❌ Feature-Lücke |
+| **Envelope** | `{name, nodes[], edges[]}` | `{name, version, dag_structure: {nodes[]}}` | Yes → add nesting |
+| **Dependencies** | Implicit via `edges[{source,target}]` | Explicit `dependsOn: [nodeA, nodeB]` | Yes → resolve edge array |
+| **Node Types** | `agent`, `fork`, `join`, `conditional`, `loop`, `nested-workflow`, `async` | `STEP`, `FORK`, `JOIN`, `DECISION`, `LOOP`, `END` | Yes → string map |
+| **Branch Routing** | Implicit on the `conditional` node (via edges) | Explicit `branches: [{branchId, condition, target}]` per DECISION | Yes → extract branch data |
+| **Join Strategy** | Edge-level `joinPolicy: "any"/"all"` | `joinType: "AND"/"XOR"/"N_OF"` + `joinBranches` | Yes → `all→AND`, `any→N_OF(1)` |
+| **Guard Conditions** | Separate `conditional` node with config | Inline `guardCondition` string on STEP nodes | Yes → extract and set inline |
+| **HITL Support** | Separate service (`requiresHumanApproval`) | Explicit in the node `requiresHumanApproval: true` | Take over directly |
+| **Loops** | Implicit entire downstream; optional `loopTargetId` | `bodyAgentType` + `exitCondition`; step refs | Yes → determine body |
+| **Nested Workflows** | `nested-workflow` referencing ID | Not supported in examples | ❌ Feature gap |
 
-### 2.2 Empfohlene Bridge-Konverter
+### 2.2 Recommended Bridge Converter
 
 ```java
 public class WorkflowDefinitionBridge {
@@ -147,26 +147,26 @@ public class WorkflowDefinitionBridge {
 }
 ```
 
-**Empfehlung:** Bridge als separaten Spring Bean implementieren, der von einem eigenen Controller endpoint bedient wird:
+**Recommendation:** Implement the bridge as a separate Spring bean served by its own controller endpoint:
 ```
 POST /api/v1/workflow-definitions/from-quad   → nimmt Quad-Format entgegen, speichert als Kafka-DAG
 ```
 
-### 2.3 Agent-Definitionen: Vergleich
+### 2.3 Agent Definitions: Comparison
 
-| Merkmal | Quad-Quarkus `AgentDefinition` | Kafka-Worker `AgentConfig` | Konvertierbar? |
+| Feature | Quad-Quarkus `AgentDefinition` | Kafka Worker `AgentConfig` | Convertible? |
 |---------|-------------------------------|---------------------------|---------------|
-| **ID/Name** | `id`, `name`, `category` | `agent-id` (optional) | ✅ Feldmapping |
-| **LLM Config** | `modelId`, `temperature`, `maxTokens` | `model-key`, `temperature`, `maxReActIterations` | ✅ Direktes Mapping |
-| **Tools** | Rich config: tool names, parameters, file permissions | `allowedTools: Set<String>` | ⚠️ Tools nur Namen ohne Config |
-| **Skills** | Skill registry integration, dynamic loading | ❌ Nicht vorhanden | ❌ Feature-Lücke |
-| **Hooks** | Named hook registration (pre/post agent/tool calls) | ❌ Nicht existent | ❌ Feature-Lücke |
-| **Context/Prompt** | Full system prompt, templates | Optional `systemPrompt` in YAML | ✅ Übernahme möglich |
-| **Memory** | Session memory with compression config | Simple memory (in AgentState) | ⚠️ Reduziert |
-| **Permissions** | Granted directories with read/write levels | No workspace config | ❌ Feature-Lücke |
-| **MCP/Sandbox** | MCP tool client, Docker sandbox support | ❌ Nicht existent | ❌ Feature-Lücke |
+| **ID/Name** | `id`, `name`, `category` | `agent-id` (optional) | ✅ Field mapping |
+| **LLM Config** | `modelId`, `temperature`, `maxTokens` | `model-key`, `temperature`, `maxReActIterations` | ✅ Direct mapping |
+| **Tools** | Rich config: tool names, parameters, file permissions | `allowedTools: Set<String>` | ⚠️ Tools as names only, without config |
+| **Skills** | Skill registry integration, dynamic loading | ❌ Not available | ❌ Feature gap |
+| **Hooks** | Named hook registration (pre/post agent/tool calls) | ❌ Not present | ❌ Feature gap |
+| **Context/Prompt** | Full system prompt, templates | Optional `systemPrompt` in YAML | ✅ Adoption possible |
+| **Memory** | Session memory with compression config | Simple memory (in AgentState) | ⚠️ Reduced |
+| **Permissions** | Granted directories with read/write levels | No workspace config | ❌ Feature gap |
+| **MCP/Sandbox** | MCP tool client, Docker sandbox support | ❌ Not present | ❌ Feature gap |
 
-**Empfehlung für Agent-Bridge:**
+**Recommendation for the agent bridge:**
 ```java
 public class AgentDefinitionBridge {
     
@@ -184,13 +184,13 @@ public class AgentDefinitionBridge {
 }
 ```
 
-**Strategie:** Beide Systeme können nebeneinander existieren. Im Worker werden reduzierte Configs genutzt, während das volle Quad-Framework im Quarkus-Backend bleibt.
+**Strategy:** Both systems can coexist. The worker uses reduced configs, while the full Quad framework remains in the Quarkus backend.
 
 ---
 
-## 3. Integrationsoptionen: quad-ui ↔ Kafka-Orchestrator
+## 3. Integration Options: quad-ui ↔ Kafka Orchestrator
 
-### 3.1 Option A: Parallelbetrieb (empfohlen für Start)
+### 3.1 Option A: Parallel Operation (recommended for the start)
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -212,20 +212,20 @@ public class AgentDefinitionBridge {
 └─────────────────────────────────────────────┘
 ```
 
-**Vorteile:**
-- Sofortige Inbetriebnahme möglich
-- Keine Risiko bei bestehendem Quad-Quarkus-Stack
-- Nutzer können beide Backends parallel testen
-- Graduelle Migration (zuerst neue Workflows über Kafka)
+**Advantages:**
+- Immediate commissioning possible
+- No risk with the existing Quad-Quarkus stack
+- Users can test both backends in parallel
+- Gradual migration (new workflows via Kafka first)
 
-**Nachteile:**
-- Zwei verschiedene Workflow-Formate verwaltet
-- Monitoring getrennt (Quad Metrics vs Spring Actuator)
-- Double Maintenance für Tabs/Views
+**Disadvantages:**
+- Two different workflow formats maintained
+- Monitoring separate (Quad Metrics vs Spring Actuator)
+- Double maintenance for tabs/views
 
-### 3.2 Option B: Unified Backend mit Plugin-Architektur
+### 3.2 Option B: Unified Backend with Plugin Architecture
 
-Ein neuer "Gateway"-Controller im Kafka-Orchestrator, der sowohl Quad- als auch Kafka-APIs unterstützt:
+A new "gateway" controller in the Kafka orchestrator that supports both Quad and Kafka APIs:
 
 ```java
 @RestController
@@ -256,56 +256,56 @@ public class UnifiedApiGateway {
 }
 ```
 
-**Vorteile:**
-- Single Point of Truth für frontend calls
-- Keine Bridge-Konverter außerhalb nötig
-- Einheitliches Monitoring-Dashboard
+**Advantages:**
+- Single point of truth for frontend calls
+- No bridge converters needed outside
+- Unified monitoring dashboard
 
-**Nachteile:**
-- Große Codebasis-Verschmelzung
-- Langfristige Wartung beider Stack-Versionen
-- Technische Schulden durch Abstraktions-Layer
+**Disadvantages:**
+- Large codebase merger
+- Long-term maintenance of both stack versions
+- Technical debt from the abstraction layer
 
-### 3.3 Option C: Vollständiger Ersatz (langfristig)
+### 3.3 Option C: Complete Replacement (long-term)
 
-Kafka-Orchestrator ersetzt vollständig Quad-Quarkus als Backend.
+The Kafka orchestrator completely replaces Quad-Quarkus as the backend.
 
-**Schritte:**
-1. quad-ui gegen Spring Boot APIs anpassen (Base URL, Endpoint-Pfade)
-2. Java Bridges schreiben für Workflow- und Agent-Definitionen
-3. Missing Features nachimplementieren (Skills, Hooks, MCP)
-4. Quad-Quarkus deprecated, dann entfernt
+**Steps:**
+1. Adapt quad-ui to the Spring Boot APIs (base URL, endpoint paths)
+2. Write Java bridges for workflow and agent definitions
+3. Re-implement missing features (skills, hooks, MCP)
+4. Deprecate Quad-Quarkus, then remove it
 
-**Zeithorizont:** 3-6 Monate bis produktionsreif.
+**Time horizon:** 3-6 months to production-ready.
 
 ---
 
-## 4. Tab-Rollenverteilung: Welcher Tab für welchen Backend?
+## 4. Tab Role Distribution: Which Tab for Which Backend?
 
-### Analyse der bestehenden quad-ui Tabs
+### Analysis of the Existing quad-ui Tabs
 
-| Tab | Datenquelle | Kafka-Äquivalent | Empfehlung |
+| Tab | Data Source | Kafka Equivalent | Recommendation |
 |-----|-------------|------------------|------------|
-| **Dashboard** | Backend Status, Quick Execute | Kafka Health Check, Task Publish | ✅ Erhalten, aber erweitern |
-| **Agents** | Quad Agent CRUD | Kafka Agent Registry (YAML Config) | ✅ Erhalten, aber reduced view |
-| **Workflows** | Quad DAG (nodes/edges) | Kafka DAG (dag_structure) | 🔀 **Zwei Tabs oder unified view** |
-| **Dynamic** | AI-generated via DALL-E/Mermaid | ❌ Nicht verfügbar | ⏸️ Defer until AI Gateway exists |
-| **Runs** | Quad Run History | Kafka Execution Log (DB + Kafka Topics) | ✅ Ersetzen durch Kafka Views |
-| **Messaging** | Internal Channels | Kafka Topic Status, Consumer Groups | ✅ Erweitern um Kafka-native Infos |
-| **Memory** | Local session storage | Redis Persistence (spring-data-redis) | ✅ Erhalten, aber neu connecten |
-| **Security** | Guardrails, HITL, Audit | Kafka HITL Service, Audit Logger | ✅ Erhalten, Kafka-audit integrieren |
-| **Sessions** | Session DB | Redis Cache (Session IDs) | ✅ Erhalten, aber Kafka-sessions anzeigen |
-| **Monitor** | Quad Metrics (token usage) | Prometheus Metrics (worker tasks) | ✅ Erweitern um Kafka-Metriken |
-| **Audit** | Audit DB | Kafka Event Log + Spring Audit | ✅ Zusammenführen |
-| **Debug** | Tool Call Journals | Kafka Record Inspection (Consumer Offsets) | ✅ Erweitern um Kafka-debugging |
+| **Dashboard** | Backend Status, Quick Execute | Kafka Health Check, Task Publish | ✅ Keep, but extend |
+| **Agents** | Quad Agent CRUD | Kafka Agent Registry (YAML Config) | ✅ Keep, but reduced view |
+| **Workflows** | Quad DAG (nodes/edges) | Kafka DAG (dag_structure) | 🔀 **Two tabs or unified view** |
+| **Dynamic** | AI-generated via DALL-E/Mermaid | ❌ Not available | ⏸️ Defer until AI Gateway exists |
+| **Runs** | Quad Run History | Kafka Execution Log (DB + Kafka Topics) | ✅ Replace with Kafka views |
+| **Messaging** | Internal Channels | Kafka Topic Status, Consumer Groups | ✅ Extend with Kafka-native info |
+| **Memory** | Local session storage | Redis Persistence (spring-data-redis) | ✅ Keep, but reconnect |
+| **Security** | Guardrails, HITL, Audit | Kafka HITL Service, Audit Logger | ✅ Keep, integrate Kafka audit |
+| **Sessions** | Session DB | Redis Cache (Session IDs) | ✅ Keep, but show Kafka sessions |
+| **Monitor** | Quad Metrics (token usage) | Prometheus Metrics (worker tasks) | ✅ Extend with Kafka metrics |
+| **Audit** | Audit DB | Kafka Event Log + Spring Audit | ✅ Merge |
+| **Debug** | Tool Call Journals | Kafka Record Inspection (Consumer Offsets) | ✅ Extend with Kafka debugging |
 
-### Empfohlene Tab-Struktur
+### Recommended Tab Structure
 
-**Phase 1 (Parallel):** Doppelte Tabs für Workflow-fokus:
-- `Workflows (Quad)` — bestehende View für Quarkus-Workflows
-- `Workflows (Kafka)` — neue View für Kafka-DAGs
+**Phase 1 (Parallel):** Duplicate tabs for the workflow focus:
+- `Workflows (Quad)` — existing view for Quarkus workflows
+- `Workflows (Kafka)` — new view for Kafka DAGs
 
-**Phase 2 (Unified):** Ein Tab mit Backend-Auswahl:
+**Phase 2 (Unified):** One tab with backend selection:
 ```tsx
 // New: Backend Selector im WorkflowTab
 <select value={backend} onChange={setBackend}>
@@ -316,38 +316,38 @@ Kafka-Orchestrator ersetzt vollständig Quad-Quarkus als Backend.
 <WorkflowCanvas backend={backend} />  // Uses different API endpoint
 ```
 
-**Phase 3 (Replace):** Alte Quad-Tab komplett entfernen, Kafka als einzige Quelle.
+**Phase 3 (Replace):** Completely remove the old Quad tab, Kafka as the only source.
 
 ---
 
-## 5. Email als zweiter Input-Kanal
+## 5. Email as a Second Input Channel
 
-### Design-Vorschlag: Email Transformer Pattern
+### Design Proposal: Email Transformer Pattern
 
 ```
-Email-Input (SMTP/Mailgun/SendGrid)
+Email input (SMTP/Mailgun/SendGrid)
     │
     ├─► MailHandler (Spring Boot Component)
-    │     - Empfängt eingehende Emails an tasks@quad.local
-    │     - Extrahiert: Subject → Trigger-Key, Body → initialTask
+    │     - Receives incoming emails at tasks@quad.local
+    │     - Extracts: subject → trigger key, body → initialTask
     │     - Attachments → artifact references
     │     
     │     ↓
-    │     EventConverter: erzeugt identisches TaskEvent wie REST
+    │     EventConverter: creates the same TaskEvent as REST
     │     {"workflowName": "...", "initialTask": "...", initiaData: "..."}
     │     
     │     ↓
-    │     Publisher: publiziert auf "agent.execution.intake" (gleicher Topic!)
+    │     Publisher: publishes to "agent.execution.intake" (same topic!)
     │     Header: X-Source=EMAIL (vs X-Source=REST)
     │     
     │     ↓
-    │     Orchestrator verarbeitet wie normaler Rest-API-Aufruf
+    │     Orchestrator processes it like a normal REST API call
     │     
     │     ↓
-    │     MailResponder (optional): sendet Ergebnis-Email zurück
+    │     MailResponder (optional): sends the result email back
     │     - Completed → "Workflow finished: summary"
-    │     - NeedsHITL → "Bitte billigen: link zu approval"
-    │     - Error/DLQ   → "Fehleraufzeichnung: details"
+    │     - NeedsHITL → "Please approve: link to approval"
+    │     - Error/DLQ   → "Error record: details"
 ```
 
 ### Implementation Steps
@@ -398,58 +398,58 @@ public class MailResponseHandler implements ApplicationListener<WorkflowExecutio
 }
 ```
 
-**Feature-Phasen:**
-1. **Phase 1:** Nur Input-Transformer (Email → Kafka), keine Response-Emails
-2. **Phase 2:** Response-Emails für Completed/Error, simple Textnachrichten
-3. **Phase 3:** Rich Response (PDF Attachments, HTML Templates), HITL Approval Links
+**Feature Phases:**
+1. **Phase 1:** Input transformer only (email → Kafka), no response emails
+2. **Phase 2:** Response emails for Completed/Error, simple text messages
+3. **Phase 3:** Rich response (PDF attachments, HTML templates), HITL approval links
 
 ---
 
 ## 6. Observability Stack
 
-### 6.1 Prometheus Metrics (bereits vorhanden)
+### 6.1 Prometheus Metrics (already present)
 
-Spring Boot Actuator + micrometer-registry-prometheus bereits integriert:
+Spring Boot Actuator + micrometer-registry-prometheus already integrated:
 ```yaml
 management:
   endpoints:
     web.exposure.include: health,metrics,prometheus
 ```
 
-Aktive Metric-Beans:
+Active metric beans:
 - `tasks_received_total` (Counter)
-- `tasks_completed_total` (Counter mit Tags)
+- `tasks_completed_total` (Counter with tags)
 - `task_duration_seconds` (Timer)
 - `dlq_total` (Counter)
 - `tool_errors_total` (Counter)
 
-### 6.2 Grafana Dashboards (zu erstellen)
+### 6.2 Grafana Dashboards (to be created)
 
-Empfohlene Panels:
+Recommended panels:
 
-| Panel Name | Query | Visualisierung |
+| Panel Name | Query | Visualization |
 |------------|-------|----------------|
 | Tasks Received | `sum(increase(tasks_received_total[5m])) by (agentType)` | Bar Chart |
-| P95 Task Duration | `histogram_quantile(0.95, rate(task_duration_seconds_bucket[5m]))` | Time Series mit P50/P99 Linien |
+| P95 Task Duration | `histogram_quantile(0.95, rate(task_duration_seconds_bucket[5m]))` | Time series with P50/P99 lines |
 | DLQ Events | `increase(dlq_total[1h])` | Line Graph |
 | Kafka Lag | `lkm_consumer_lag_max{group="quad-worker"}` | Gauge |
 | Error Breakdown | `rate(errors_total[5m]) by (errorClass)` | Pie Chart |
 
-Dashboards als JSON-Dateien versionierbar im Repo:
+Dashboards versionable as JSON files in the repo:
 ```
 grafana/dashboards/workers-overview.json
 grafana/dashboards/llm-performance.json
 grafana/dashboards/queue-health.json
 ```
 
-### 6.3 OpenTelemetry + Jaeger (optional zuschaltbar)
+### 6.3 OpenTelemetry + Jaeger (optionally enablable)
 
-Quad-core bringt OTel-Integration mit:
-- `OTelAgentTracer` → Span builder für Tool Calls
+Quad-core brings OTel integration:
+- `OTelAgentTracer` → span builder for tool calls
 - `AgentTracing` → parent/child span hierarchy (agent → llm call → tool exec)
 - `TracingHook` → event-to-span bridge
 
-Aktivierung im Worker:
+Activation in the worker:
 ```yaml
 management:
   zipkin:
@@ -459,14 +459,14 @@ management:
       probability: 0.1  # nur 10% sampled in Prod
 ```
 
-Jaeger-Deployment in docker-compose:
+Jaeger deployment in docker-compose:
 ```yaml
 jaeger:
   image: jaegertracing/all-in-one:latest
   ports: ["16686:16686", "14268:14268"]
 ```
 
-**Komplette Pipeline (optional):**
+**Complete pipeline (optional):**
 ```
 OTel Collector ←┬──── Prometheus Scrape (Metrics)
                ├──── HTTP gRPC (Logs/Traces)
@@ -479,66 +479,66 @@ OTel Collector ←┬──── Prometheus Scrape (Metrics)
 
 ---
 
-## 7. Gesamtkonsept: Architekturempfehlung
+## 7. Overall Concept: Architecture Recommendation
 
-### Kurzfristig (Monat 1-2)
-1. **Workflow-Bridge implementieren** — JSON-Format-Konverter zwischen Quad und Kafka
-2. **Email-Transformer entwickeln** — SMTP Listener → Kafka Intake Topic
-3. **Grafana Dashboards erstellen** — Prometheus Queries als JSON files
-4. **quad-ui parallel betreiben** — Mit zwei Workflow-Tabs (Quad vs Kafka)
+### Short-Term (Month 1-2)
+1. **Implement workflow bridge** — JSON format converter between Quad and Kafka
+2. **Develop email transformer** — SMTP listener → Kafka intake topic
+3. **Create Grafana dashboards** — Prometheus queries as JSON files
+4. **Operate quad-ui in parallel** — with two workflow tabs (Quad vs Kafka)
 
-### Mittelfristig (Monat 3-4)
-5. **Unified API Gateway** — Quad und Kafka APIs unter统一em Prefix vereinen
-6. **OTel Collector deployen** — Jaeger für Distributed Tracing aktivieren
-7. **Advanced Context Prefix caching** — Implementieren im Worker für repeated Prompts
-8. **GDPR Compliance endpoints** — Export/Delete APIs für Sessions implementieren
+### Medium-Term (Month 3-4)
+5. **Unified API Gateway** — unite Quad and Kafka APIs under a unified prefix
+6. **Deploy OTel Collector** — enable Jaeger for distributed tracing
+7. **Advanced context prefix caching** — implement in the worker for repeated prompts
+8. **GDPR compliance endpoints** — implement export/delete APIs for sessions
 
-### Langfristig (Monat 5-6)
-9. **Full quad-ui Port** — Alpine.js oder Vue statt React? Oder einfach React beibehalten?
-10. **Migration vom Quarkus-Backend** — Kafka-Orchestrator als primäres Backend etablieren
-11. **Multi-Tenant Support** — Tenant-Isolation über Redis Keyspace
-12. **Skill-Cache Layer** — Redis-basiertes Caching für wiederholte Skill-Lookups
-13. **Auto-scaling Worker** — Basierend auf Kafka-Partition-Offset-Delta
+### Long-Term (Month 5-6)
+9. **Full quad-ui port** — Alpine.js or Vue instead of React? Or simply keep React?
+10. **Migration from the Quarkus backend** — establish the Kafka orchestrator as the primary backend
+11. **Multi-Tenant Support** — tenant isolation via Redis keyspace
+12. **Skill-Cache Layer** — Redis-based caching for repeated skill lookups
+13. **Auto-scaling Worker** — based on Kafka partition offset delta
 
 ---
 
-## 8. Risikobewertung
+## 8. Risk Assessment
 
-| Risiko | Wahrscheinlichkeit | Auswirkung | Gegenmaßnahmen |
+| Risk | Probability | Impact | Countermeasures |
 |--------|-------------------|------------|---------------|
-| **API-Inkompatibilität** | Hoch | Medium | Bridge-Schicht implementieren; Tests gegen beide Backends |
-| **Workflow-Type-Loss** | Mittel | Hoch | Lost features dokumentieren; Priorisieren welche migriert werden |
-| **Email-Processing-Failure** | Hoch | Niedrig | Fallback auf REST API; Retry-Queue für fehlgeschlagene Emails |
-| **Metric-Consistency-Gap** | Mittel | Mittel | Unified metric naming convention definieren |
-| **Tech-Debt accumulation** | Hoch | Hoch | Klare Deprecation-Zeitplan für Quarkus-Features制定 |
-| **Performance Bottleneck** | Mittel | Hoch | Load Testing mit realen Emails und parallelen Workflows durchführen |
+| **API incompatibility** | High | Medium | Implement bridge layer; tests against both backends |
+| **Workflow-Type-Loss** | Medium | High | Document lost features; prioritize which ones get migrated |
+| **Email-Processing-Failure** | High | Low | Fallback to REST API; retry queue for failed emails |
+| **Metric-Consistency-Gap** | Medium | Medium | Define a unified metric naming convention |
+| **Tech-Debt accumulation** | High | High | Clear deprecation schedule for Quarkus features |
+| **Performance Bottleneck** | Medium | High | Perform load testing with real emails and parallel workflows |
 
 ---
 
-## 9. Checklist für nächsten Sprint
+## 9. Checklist for the Next Sprint
 
 ### ✅ Done
-- [x] `quad-ui` Architektur analysiert (30+ Components, 79 API Endpoints)
-- [x] Format-Kompatibilität geprüft (Workflow: bridge nötig; Agent: reduced mapping)
-- [x] Integrationsoptionen definiert (Parallel → Unified → Replace)
-- [x] Email-Transformer Design erstellt
-- [x] Observability-Stack geplante erweitert
+- [x] `quad-ui` architecture analyzed (30+ Components, 79 API Endpoints)
+- [x] Format compatibility checked (workflow: bridge needed; agent: reduced mapping)
+- [x] Integration options defined (Parallel → Unified → Replace)
+- [x] Email transformer design created
+- [x] Observability stack planned/extended
 
-### 🔲 To Do (Priorisiert)
-- [ ] **P0:** Workflow-Bridge-Konverter implementieren (`WorkflowDefinitionBridge.java`)
-- [ ] **P1:** Grafana Dashboard JSON Files erstellen (`grafana/*.json`)
-- [ ] **P1:** Email-Transformer als Spring Component (`EmailInputTransformer.java`)
-- [ ] **P2:** Unified API Gateway Controller (`UnifiedApiGateway.java`)
-- [ ] **P2:** Advanced Context Prefix caching im Worker implementieren
-- [ ] **P3:** OTel Collector Deployment konfigurieren (`otel-collector-config.yaml`)
-- [ ] **P3:** GDPR Export/Delete API implementieren
+### 🔲 To Do (Prioritized)
+- [ ] **P0:** Implement workflow bridge converter (`WorkflowDefinitionBridge.java`)
+- [ ] **P1:** Create Grafana dashboard JSON files (`grafana/*.json`)
+- [ ] **P1:** Email transformer as a Spring Component (`EmailInputTransformer.java`)
+- [ ] **P2:** Unified API Gateway controller (`UnifiedApiGateway.java`)
+- [ ] **P2:** Implement advanced context prefix caching in the worker
+- [ ] **P3:** Configure OTel Collector deployment (`otel-collector-config.yaml`)
+- [ ] **P3:** Implement GDPR export/delete API
 
 ### 💡 Ideas for Future
-- AI-generative UI: "Erstelle einen Workflow für meine E-Mail" → Mermaid Diagramm → Konvertiert zu Kafka-DAG
-- Multi-cloud deployment: Worker Instanzen auf verschiedenen Clouds mit regionalem Kafka Cluster
-- Webhook-Integration neben Email: GitHub, Jira, Slack als alternative Trigger
+- AI-generative UI: "Create a workflow for my email" → Mermaid diagram → converted to Kafka DAG
+- Multi-cloud deployment: worker instances on different clouds with a regional Kafka cluster
+- Webhook integration alongside email: GitHub, Jira, Slack as alternative triggers
 
 ---
 
-*Stand: 2026-09-17*  
-*Nächster Schritt: Sprint Planning für P0–P2 Items*
+*As of: 2026-09-17*  
+*Next step: sprint planning for P0–P2 items*

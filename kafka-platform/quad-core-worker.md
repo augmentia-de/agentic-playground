@@ -1,21 +1,21 @@
-# quad-core-worker: Implementationsplan & Fortschritt
+# quad-core-worker: Implementation Plan & Progress
 
 ## ⚡ Status: PHASE 1 - Skeleton COMPLETED ✅
 
-**Datum:** 2026-09-17  
-**Projekt:** `/home/torsten/dev/my-projects/kafka_workflow/quad-workflow-worker`  
+**Date:** 2026-09-17  
+**Project:** `/home/torsten/dev/my-projects/kafka_workflow/quad-workflow-worker`  
 **Build:** `mvn compile` → SUCCESS | Tests: `mvn test` → 22/22 PASSED
 
-### Was implementiert wurde (Phase 1)
+### What Was Implemented (Phase 1)
 
-| Komponente | Status | Datei(en) |
+| Component | Status | File(s) |
 |---|---|---|
 | Maven POM (Boot 4 + Quad deps) | ✅ Done | `pom.xml` |
-| Contract-Klassen (TaskEvent, ResultEvent, WorkerJson) | ✅ Done | `contract/*.java` |
+| Contract classes (TaskEvent, ResultEvent, WorkerJson) | ✅ Done | `contract/*.java` |
 | Config: WorkerProperties, KafkaConfig, ChatModelRegistry | ✅ Done | `config/*.java` |
 | QuadCoreConfig (CurrentSession, WorkspaceResolver, ObjectMapper) | ✅ Done | `config/QuadCoreConfig.java` |
 | ToolCatalog (global immutable) | ✅ Done | `tool/ToolCatalog.java` |
-| AgentToolRegistryFactory (per-task Registry-Kopie) | ✅ Done | `tool/AgentToolRegistryFactory.java` |
+| AgentToolRegistryFactory (per-task registry copy) | ✅ Done | `tool/AgentToolRegistryFactory.java` |
 | WorkerAgent (extends Agent, no CDI) | ✅ Done | `agent/WorkerAgent.java` |
 | WorkerAgentDefinition (record) | ✅ Done | `agent/WorkerAgentDefinition.java` |
 | WorkerAgentFactory (creates per-task Agents) | ✅ Done | `agent/WorkerAgentFactory.java` |
@@ -31,12 +31,12 @@
 | application.yml + Dockerfile | ✅ Done | `resources/application.yml`, `Dockerfile` |
 | Unit Tests | ✅ Done | `src/test/**/*Test.java` (22 tests) |
 | Mock-ChatModel (deterministic JSON output) | ✅ Done | `config/ChatModelRegistry.MockChatModel` |
-| **Echter OpenAI/OpenRouter ChatModel** | ✅ Done | `QuadWorkerConfig.chatModelRegistry()` |
-| **API Key aus .env geladen** | ✅ Done | `.env`: OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL |
+| **Real OpenAI/OpenRouter ChatModel** | ✅ Done | `QuadWorkerConfig.chatModelRegistry()` |
+| **API key loaded from .env** | ✅ Done | `.env`: OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL |
 
 ### LLM Configuration
 
-**.env Datei:** `/home/torsten/dev/my-projects/kafka_workflow/quad-workflow-worker/.env`
+**.env file:** `/home/torsten/dev/my-projects/kafka_workflow/quad-workflow-worker/.env`
 
 ```bash
 OPENAI_API_KEY="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"
@@ -44,12 +44,12 @@ OPENAI_BASE_URL="${OPENAI_BASE_URL:-https://openrouter.ai/api/v1}"
 OPENAI_MODEL="${OPENAI_MODEL:-deepseek/deepseek-v4-flash-0731}"
 ```
 
-**Verhalten:**
-- Wenn API key gesetzt → echter OpenAiChatModel über OpenRouter (DeepSeek V4 Flash)
-- Fallback auf Mock wenn keine API keys gefunden werden (warn log)
-- Custom headers für OpenRouter (`HTTP-Referer`, `X-Title`)
+**Behavior:**
+- If API key set → real OpenAiChatModel via OpenRouter (DeepSeek V4 Flash)
+- Fallback to mock if no API keys are found (warn log)
+- Custom headers for OpenRouter (`HTTP-Referer`, `X-Title`)
 
-### Bisherige Architektur im Code
+### Current Architecture in Code
 
 ```text
 quad-workflow-worker/
@@ -58,7 +58,7 @@ quad-workflow-worker/
 ├── src/main/java/de/augmentia/quad/worker/
 │   ├── QuadWorkflowWorkerApplication.java
 │   ├── config/
-│   │   ├── WorkerProperties.java          (record mit agent configs)
+│   │   ├── WorkerProperties.java          (record with agent configs)
 │   │   ├── QuadCoreConfig.java            (CurrentSession etc.)
 │   │   ├── ChatModelRegistry.java         (mock + placeholder real)
 │   │   ├── KafkaConfig.java               (consumer factory)
@@ -72,7 +72,7 @@ quad-workflow-worker/
 │   │   ├── WorkflowResultPublisher.java   (→ agent.execution.results)
 │   │   └── WorkflowDlqPublisher.java      (→ agent.execution.dlq)
 │   ├── agent/
-│   │   ├── WorkerAgent.java               (extends Agent, wire() ohne CDI)
+│   │   ├── WorkerAgent.java               (extends Agent, wire() without CDI)
 │   │   ├── WorkerAgentDefinition.java     (record)
 │   │   ├── WorkerAgentFactory.java        (creates per-task Agent)
 │   │   ├── TaskPromptBuilder.java         (Workflow+Step+Input+Context)
@@ -81,7 +81,7 @@ quad-workflow-worker/
 │   │   ├── ToolCatalog.java               (immutable global catalog)
 │   │   └── AgentToolRegistryFactory.java  (per-task registry copy)
 │   ├── session/
-│   │   ├── TaskSessionContext.java        (AgentSessionState pro task)
+│   │   ├── TaskSessionContext.java        (AgentSessionState per task)
 │   │   └── WorkerSecurityContext.java     (implements SecurityContext)
 │   ├── result/
 │   │   └── ResultMapper.java              (mapSuccess/mapFailure/classifyError)
@@ -93,131 +93,131 @@ quad-workflow-worker/
     └── tool/ToolCatalogTest.java              (5 tests)
 ```
 
-**Spring Boot mit LangChain4j aus `quad-core` geht.** Quarkus ist keine harte Voraussetzung.
+**Using Spring Boot with LangChain4j from `quad-core` works.** Quarkus is not a hard requirement.
 
-Empfehlung:
+Recommendation:
 
-- **Kein Kopieren von `quad-core`.**
-- **Kein einzelnes Herauskopieren von Klassen.**
-- **Neuer, schlanker Worker-Service**, der `quad-core` als Maven-Dependency nutzt.
-- Für das bestehende Kafka-Projekt ist ein **Spring-Boot-Worker** sinnvoll, wenn die Plattform weiterhin im Spring-Stack betrieben werden soll.
-- Ein **Quarkus-Worker** ist sinnvoll, wenn der Worker im `nooa/quad`-Ökosystem bleibt und CDI/Quarkus-Features nativ genutzt werden sollen.
+- **Do not copy `quad-core`.**
+- **Do not copy out individual classes.**
+- **New, lean worker service** that uses `quad-core` as a Maven dependency.
+- For the existing Kafka project, a **Spring Boot worker** makes sense if the platform is to continue running on the Spring stack.
+- A **Quarkus worker** makes sense if the worker stays within the `nooa/quad` ecosystem and CDI/Quarkus features are to be used natively.
 
-Der bestehende `agent-orchestrator` bleibt die einzige Routing-Autorität. Der Quad-Worker ist ausschließlich ein Agent-Executor über Kafka.
+The existing `agent-orchestrator` remains the only routing authority. The Quad worker is exclusively an agent executor via Kafka.
 
 ---
 
-## 1. Warum ursprünglich Quarkus?
+## 1. Why Quarkus Originally?
 
-Quarkus wurde als Option empfohlen, weil:
+Quarkus was recommended as an option because:
 
-1. `quad-core` CDI-Annotationen nutzt:
+1. `quad-core` uses CDI annotations:
    - `@ApplicationScoped`
    - `@Inject`
    - `jakarta.enterprise.inject.Instance`
-2. `quad-tool-builtin` seine Tools über CDI-Provider bereitstellt.
-3. `quad-quarkus` bereits Agent-Factories, Kafka-Channels, Workflow-Executor, SSE, Persistence und Virtual-Thread-Muster enthält.
-4. Quarkus + LangChain4j im Quad-Projekt schon zusammengedacht sind.
+2. `quad-tool-builtin` provides its tools via CDI providers.
+3. `quad-quarkus` already contains agent factories, Kafka channels, workflow executors, SSE, persistence, and virtual thread patterns.
+4. Quarkus + LangChain4j are already conceived together in the Quad project.
 
-Aber:
+But:
 
-- LangChain4j ist framework-agnostic.
-- `quad-core` ist auch plain Java nutzbar; die Tests instanziieren Agents ohne laufenden CDI-Container.
-- Spring Kafka kann denselben Kafka-Contract konsumieren.
-- Der bestehende `KafkaInboundChannel` aus `quad-quarkus` ist für einen zuverlässigen Workflow-Worker ohnehin nicht direkt geeignet, weil er `enable.auto.commit=true` nutzt.
+- LangChain4j is framework-agnostic.
+- `quad-core` can also be used as plain Java; the tests instantiate agents without a running CDI container.
+- Spring Kafka can consume the same Kafka contract.
+- The existing `KafkaInboundChannel` from `quad-quarkus` is not directly suitable for a reliable workflow worker anyway, because it uses `enable.auto.commit=true`.
 
-Deshalb: **Quarkus ist bequem, aber nicht zwingend.**
-
----
-
-## 2. Spring-Variante: Ja, mit klaren Regeln
-
-Ein Spring-Boot-Worker kann `quad-core` verwenden, wenn man CDI nicht als Runtime voraussetzt.
-
-### Was in Spring funktioniert
-
-- `Agent` subclassen und plain instanziieren
-- `AgentSessionState` pro Task erzeugen
-- `CurrentSession` als ThreadLocal nutzen
-- `QuadToolRegistry` pro Agent/Task erzeugen
-- `ToolExecutor`, `HookRegistry`, `AgentEventPublisher` manuell verdrahten
-- `ReflectiveToolMethod` für Built-in-Tools verwenden
-- LangChain4j `ChatModel` als Spring-Bean bauen
-- Spring Kafka für Task-Input und Result-Output nutzen
-
-### Was in Spring nicht unverändert funktioniert
-
-- `StandardToolProvider` basiert auf CDI-`Instance<BuiltInToolProvider>`
-- `BuiltinToolsProvider` erwartet CDI-Injection
-- `WorkspaceResolver` nutzt MicroProfile `@ConfigProperty`
-- `QuadToolRegistry` ist als `@ApplicationScoped` gedacht, darf im Worker aber nicht als globale mutable Singleton-Registry verwendet werden
-- `ToolActivatorTool` mutiert eine Registry und ist nur mit per-task Registry sicher
-
-Lösung: **eigenen Spring-ToolCatalog bauen** und die Built-in-Tools manuell registrieren.
+Therefore: **Quarkus is convenient, but not mandatory.**
 
 ---
 
-## 3. Repo-/Modul-Entscheidung
+## 2. Spring Variant: Yes, with Clear Rules
 
-### Empfehlung
+A Spring Boot worker can use `quad-core` if CDI is not required as a runtime.
 
-Neues eigenständiges Projekt:
+### What Works in Spring
+
+- Subclass `Agent` and instantiate it plainly
+- Create `AgentSessionState` per task
+- Use `CurrentSession` as ThreadLocal
+- Create `QuadToolRegistry` per agent/task
+- Wire `ToolExecutor`, `HookRegistry`, `AgentEventPublisher` manually
+- Use `ReflectiveToolMethod` for built-in tools
+- Build a LangChain4j `ChatModel` as a Spring bean
+- Use Spring Kafka for task input and result output
+
+### What Does Not Work Unchanged in Spring
+
+- `StandardToolProvider` is based on CDI `Instance<BuiltInToolProvider>`
+- `BuiltinToolsProvider` expects CDI injection
+- `WorkspaceResolver` uses MicroProfile `@ConfigProperty`
+- `QuadToolRegistry` is intended as `@ApplicationScoped`, but must not be used in the worker as a global mutable singleton registry
+- `ToolActivatorTool` mutates a registry and is only safe with a per-task registry
+
+Solution: **build your own Spring tool catalog** and register the built-in tools manually.
+
+---
+
+## 3. Repo/Module Decision
+
+### Recommendation
+
+New standalone project:
 
 ```text
 quad-workflow-worker/
 ```
 
-Mögliche Orte:
+Possible locations:
 
-1. **Bevorzugt für Quad-Nähe:**
+1. **Preferred for Quad proximity:**
    ```text
    /home/torsten/dev/my-projects/nooa/quad/quad-workflow-worker
    ```
 
-2. **Bevorzugt für Kafka-Plattform-Nähe:**
+2. **Preferred for Kafka platform proximity:**
    ```text
    /home/torsten/dev/my-projects/quad-workflow-worker
    ```
 
-3. **Nicht empfohlen:** als festes Kindmodul im bestehenden `agent-platform`-Parent, weil das deterministische Kafka-Projekt bewusst LLM-frei bleiben soll und `quad-core` LangChain4j/OpenAI-Abhängigkeiten mitbringt.
+3. **Not recommended:** as a fixed child module in the existing `agent-platform` parent, because the deterministic Kafka project is intentionally meant to remain LLM-free and `quad-core` brings LangChain4j/OpenAI dependencies.
 
-Der Worker kann trotzdem im `docker-compose.yml` des Kafka-Projekts als zusätzlicher Service betrieben werden.
+The worker can nevertheless be run as an additional service in the Kafka project's `docker-compose.yml`.
 
 ---
 
-## 4. Zielarchitektur
+## 4. Target Architecture
 
 ```text
 agent-orchestrator
   ├── DAG / Checkpoints / Routing / HITL / Retries / Sweep
-  ├── publiziert agent.tasks.<agentType>
-  └── konsumiert agent.execution.results
+  ├── publishes agent.tasks.<agentType>
+  └── consumes agent.execution.results
 
 quad-workflow-worker
-  ├── konsumiert agent.tasks.<agentType>
-  ├── parsed TaskEvent
-  ├── resolved WorkerAgentDefinition
-  ├── erzeugt ToolRegistry-Kopie
-  ├── erzeugt Agent pro Task
-  ├── erzeugt AgentSessionState pro Task
-  ├── bindet CurrentSession pro Thread
-  ├── führt quad-core ReAct-Run aus
-  ├── mapped AgentResult auf ResultEvent
-  └── publiziert agent.execution.results
+  ├── consumes agent.tasks.<agentType>
+  ├── parses TaskEvent
+  ├── resolves WorkerAgentDefinition
+  ├── creates ToolRegistry copy
+  ├── creates Agent per task
+  ├── creates AgentSessionState per task
+  ├── binds CurrentSession per thread
+  ├── runs quad-core ReAct run
+  ├── maps AgentResult to ResultEvent
+  └── publishes agent.execution.results
 ```
 
-Wichtig:
+Important:
 
-- Worker schreibt **nicht** in die Orchestrator-Datenbank.
-- Worker trifft **kein Routing**.
-- Worker entscheidet nur, wie ein einzelner Task ausgeführt wird.
-- Orchestrator bleibt Single Writer.
+- The worker does **not** write to the orchestrator database.
+- The worker makes **no routing** decisions.
+- The worker only decides how a single task is executed.
+- The orchestrator remains the single writer.
 
 ---
 
-## 5. Maven-Setup
+## 5. Maven Setup
 
-### 5.1 Quad-Artefakte installieren
+### 5.1 Install Quad Artifacts
 
 ```bash
 cd /home/torsten/dev/my-projects/nooa/quad
@@ -227,7 +227,7 @@ mvn -q -DskipTests install \
   -am
 ```
 
-Optional, wenn Sandbox/MCP gebraucht werden:
+Optional, if sandbox/MCP are needed:
 
 ```bash
 mvn -q -DskipTests install \
@@ -235,9 +235,9 @@ mvn -q -DskipTests install \
   -am
 ```
 
-Für CI/Team sollten die Artefakte nach Nexus/GitHub Packages deployt werden.
+For CI/team use, the artifacts should be deployed to Nexus/GitHub Packages.
 
-### 5.2 Spring-Boot-Worker-POM
+### 5.2 Spring Boot Worker POM
 
 ```xml
 <project>
@@ -324,17 +324,17 @@ Für CI/Team sollten die Artefakte nach Nexus/GitHub Packages deployt werden.
 </project>
 ```
 
-Hinweis:
+Note:
 
-- `quad-core` bringt LangChain4j transitiv mit.
-- Jackson 2 und Jackson 3 können koexistieren, weil sie unterschiedliche Paketnamen haben:
+- `quad-core` brings LangChain4j in transitively.
+- Jackson 2 and Jackson 3 can coexist because they have different package names:
   - Jackson 2: `com.fasterxml.jackson`
   - Jackson 3: `tools.jackson`
-- Der Worker sollte für Quad-Verträge Jackson 2 verwenden, passend zu `quad-core`.
+- For Quad contracts, the worker should use Jackson 2, matching `quad-core`.
 
 ---
 
-## 6. Paketstruktur
+## 6. Package Structure
 
 ```text
 de.augmentia.quad.worker
@@ -374,9 +374,9 @@ de.augmentia.quad.worker
 
 ---
 
-## 7. CDI-Abhängigkeiten in Spring ersetzen
+## 7. Replacing CDI Dependencies in Spring
 
-### 7.1 Basis-Beans
+### 7.1 Base Beans
 
 ```java
 @Configuration
@@ -417,13 +417,13 @@ public class QuadCoreConfig {
 }
 ```
 
-Wichtig:
+Important:
 
-- `WorkspaceResolver` hat ein MicroProfile-Config-Feld. Ohne CDI bleibt es null.
-- `WorkspaceResolver` fällt dann auf `WORKSPACE_BASE` zurück.
-- `QUAD_WORKSPACE` oder `quad.workspace` sollte deshalb früh gesetzt werden.
+- `WorkspaceResolver` has a MicroProfile config field. Without CDI it remains null.
+- `WorkspaceResolver` then falls back to `WORKSPACE_BASE`.
+- `QUAD_WORKSPACE` or `quad.workspace` should therefore be set early.
 
-### 7.2 Built-in-Tools manuell bauen
+### 7.2 Build Built-in Tools Manually
 
 ```java
 @Configuration
@@ -455,31 +455,31 @@ public class BuiltinToolConfig {
 }
 ```
 
-Die Tools haben einen Fallback auf die statische `CurrentSession`, wenn das injizierte Feld null ist. Zusätzlich setzt `ReflectiveToolMethod.execute(...)` die Session vor dem Tool-Aufruf.
+The tools fall back to the static `CurrentSession` if the injected field is null. In addition, `ReflectiveToolMethod.execute(...)` sets the session before the tool call.
 
 ---
 
-## 8. ToolCatalog: alle Tools global, Registry-Kopie pro Agent
+## 8. ToolCatalog: All Tools Global, Registry Copy per Agent
 
-### 8.1 Prinzip
+### 8.1 Principle
 
 ```text
 ToolCatalog
-  ├── enthält alle verfügbaren ToolMethod-Instanzen
-  ├── wird einmal beim Startup gebaut
-  └── ist danach immutable
+  ├── contains all available ToolMethod instances
+  ├── is built once at startup
+  └── is immutable thereafter
 
 AgentToolRegistryFactory
-  ├── erzeugt pro Task eine neue QuadToolRegistry
-  ├── kopiert nur freigegebene Tools aus dem Catalog
-  └── übergibt die Registry an den Agent
+  ├── creates a new QuadToolRegistry per task
+  ├── copies only approved tools from the catalog
+  └── passes the registry to the agent
 ```
 
-Das entspricht dem gewünschten Modell:
+This corresponds to the desired model:
 
-> Alle Tools liegen zentral im System; jeder Agent bekommt eine Kopie mit freigegebenen Tools.
+> All tools are stored centrally in the system; each agent receives a copy with approved tools.
 
-Genauer: Es wird die **Registry kopiert**, nicht jede Tool-Instanz. `ToolMethod`-Instanzen werden geteilt. Das ist okay, solange Tools zustandslos sind und Session-State per Parameter oder `CurrentSession` erhalten.
+More precisely: the **registry is copied**, not each tool instance. `ToolMethod` instances are shared. This is fine as long as tools are stateless and receive session state via parameters or `CurrentSession`.
 
 ### 8.2 ToolCatalog
 
@@ -520,7 +520,7 @@ public class ToolCatalog {
 }
 ```
 
-### 8.3 Registry pro Agent
+### 8.3 Registry per Agent
 
 ```java
 @Component
@@ -542,17 +542,17 @@ public class AgentToolRegistryFactory {
 }
 ```
 
-Regeln:
+Rules:
 
-- keine globale `QuadToolRegistry` als Agent-Registry
-- keine parallele Mutation derselben Registry
-- `ToolActivatorTool` in Phase 1 deaktivieren
-- unbekannte Tool-Namen beim Config-Load fail-fast prüfen
-- optional spätere Upstream-Erweiterung: `QuadToolRegistry.freeze()`
+- no global `QuadToolRegistry` as an agent registry
+- no parallel mutation of the same registry
+- disable `ToolActivatorTool` in Phase 1
+- check unknown tool names fail-fast at config load
+- optional later upstream extension: `QuadToolRegistry.freeze()`
 
 ---
 
-## 9. Agent pro Task
+## 9. Agent per Task
 
 ### 9.1 WorkerAgent
 
@@ -571,7 +571,7 @@ public class WorkerAgent extends Agent {
 }
 ```
 
-### 9.2 Agent-Definition
+### 9.2 Agent Definition
 
 ```java
 public record WorkerAgentDefinition(
@@ -640,20 +640,20 @@ public class WorkerAgentFactory {
 }
 ```
 
-Regeln:
+Rules:
 
-- **kein Agent-Singleton**
-- pro Task neue Agent-Instanz
-- pro Task neue `QuadToolRegistry`
-- pro Task neue `AgentSessionState`
-- `HookRegistry` pro Task, wenn Hooks task-spezifisch sind
-- `AgentEventPublisher` pro Task oder bewusst shared, dann aber nicht zur Laufzeit mutieren
+- **no agent singleton**
+- new agent instance per task
+- new `QuadToolRegistry` per task
+- new `AgentSessionState` per task
+- `HookRegistry` per task if hooks are task-specific
+- `AgentEventPublisher` per task or deliberately shared, but then do not mutate it at runtime
 
 ---
 
-## 10. Session, Workspace und Thread-Isolation
+## 10. Session, Workspace, and Thread Isolation
 
-### 10.1 Session-ID
+### 10.1 Session ID
 
 ```java
 String sessionId = String.join(":",
@@ -665,7 +665,7 @@ String sessionId = String.join(":",
 );
 ```
 
-### 10.2 Session-State
+### 10.2 Session State
 
 ```java
 AgentSessionState state = AgentSessionState.create(sessionId);
@@ -693,14 +693,14 @@ ${QUAD_WORKSPACE}
     └── <stepId>-<iteration>-<attempt>/
 ```
 
-Empfehlung:
+Recommendation:
 
-- Session-Workspace pro Task
-- optional shared Workflow-Verzeichnis mit explizitem Grant
-- parallele Fork/Join-Branches nicht ungehindert in dieselben Dateien schreiben lassen
-- Sandbox/Datei-Tools nur mit session-scoped Workspace
+- session workspace per task
+- optional shared workflow directory with an explicit grant
+- do not let parallel fork/join branches write to the same files unchecked
+- sandbox/file tools only with a session-scoped workspace
 
-### 10.4 ThreadLocal-Cleanup
+### 10.4 ThreadLocal Cleanup
 
 ```java
 CurrentSession.setCurrent(state);
@@ -711,13 +711,13 @@ try {
 }
 ```
 
-Upstream wäre ein echtes `CurrentSession.remove()` besser.
+Upstream, a real `CurrentSession.remove()` would be better.
 
 ---
 
-## 11. Prompt und Structured Output
+## 11. Prompt and Structured Output
 
-### 11.1 Prompt-Bestandteile
+### 11.1 Prompt Components
 
 ```text
 Workflow: <workflowName> v<workflowVersion>
@@ -732,13 +732,13 @@ Workflow input:
 <input JSON>
 
 Upstream context:
-<nur contextReferences>
+<only contextReferences>
 
 Output contract:
 Return one JSON object.
 ```
 
-### 11.2 Standard-JSON-Schema
+### 11.2 Standard JSON Schema
 
 ```json
 {
@@ -769,29 +769,29 @@ Return one JSON object.
 }
 ```
 
-Damit bleiben Orchestrator-Bedingungen wie:
+This keeps orchestrator conditions such as:
 
 ```text
 context['research_step'].resultData.confidence < 0.8
 ```
 
-weiterhin nutzbar.
+usable.
 
 ---
 
-## 12. Kafka-Consumer in Spring
+## 12. Kafka Consumer in Spring
 
 ### 12.1 Topics
 
-Der Worker konsumiert explizit nur die Topics, für die er zuständig ist:
+The worker explicitly consumes only the topics it is responsible for:
 
 ```properties
 worker.quad.task-topics=agent.tasks.researcher,agent.tasks.planner,agent.tasks.coder
 ```
 
-Kein globales `agent.tasks.*`, solange der deterministische Mock-Worker parallel läuft. Sonst konsumieren zwei Worker-Implementierungen dieselben Tasks.
+No global `agent.tasks.*`, as long as the deterministic mock worker runs in parallel. Otherwise two worker implementations would consume the same tasks.
 
-### 12.2 Consumer-Konfiguration
+### 12.2 Consumer Configuration
 
 ```yaml
 spring:
@@ -816,7 +816,7 @@ spring:
         enable.idempotence: true
 ```
 
-### 12.3 Batch-Listener mit paralleler Ausführung
+### 12.3 Batch Listener with Parallel Execution
 
 ```java
 @Component
@@ -841,7 +841,7 @@ public class WorkflowTaskListener {
 }
 ```
 
-Container-Factory:
+Container factory:
 
 ```java
 @Bean
@@ -858,44 +858,44 @@ public ConcurrentKafkaListenerContainerFactory<String, String> quadBatchListener
 }
 ```
 
-Ablauf:
+Flow:
 
-1. Batch pollen
-2. alle Records parallel auf Virtual Threads ausführen
-3. pro Record Result oder DLQ publizieren
-4. erst wenn alle Records verarbeitet sind: Batch ack
+1. Poll batch
+2. Execute all records in parallel on virtual threads
+3. Publish result or DLQ per record
+4. Only when all records are processed: batch ack
 
-Vorteil:
+Advantage:
 
-- einfach
+- simple
 - at-least-once
-- Tasks desselben Batches laufen parallel
+- tasks of the same batch run in parallel
 
-Nachteil:
+Disadvantage:
 
-- der langsamste Task blockiert den Batch-Ack
-- `max.poll.interval.ms` muss groß genug sein
-- `max.poll.records` klein halten
+- the slowest task blocks the batch ack
+- `max.poll.interval.ms` must be large enough
+- keep `max.poll.records` small
 
 ---
 
-## 13. Parallelität und Kafka-Partitionierung
+## 13. Concurrency and Kafka Partitioning
 
-Alle Task-Topics sind laut SPEC mit `workflow_id` keyed. Das bedeutet:
+All task topics are keyed with `workflow_id` according to the SPEC. This means:
 
 ```text
-Tasks desselben Workflows landen auf derselben Partition.
+Tasks of the same workflow land on the same partition.
 ```
 
-Folgen:
+Consequences:
 
-- Mehrere Workflows laufen parallel über mehrere Partitionen.
-- Fork/Join-Branches desselben Workflows können parallel laufen, wenn sie im selben Consumer-Batch ankommen.
-- Wenn sie in unterschiedlichen Polls ankommen, werden sie sequenziell verarbeitet, solange ein Consumer-Thread pro Partition arbeitet.
+- Multiple workflows run in parallel across multiple partitions.
+- Fork/Join branches of the same workflow can run in parallel if they arrive in the same consumer batch.
+- If they arrive in different polls, they are processed sequentially as long as one consumer thread works per partition.
 
 ### Phase 1
 
-Batch-Parallelität reicht:
+Batch parallelism suffices:
 
 ```text
 max.poll.records = 4..16
@@ -903,19 +903,19 @@ listener.concurrency = partitions / instances
 semaphore = maxConcurrentTasks
 ```
 
-### Phase 2: echte in-flight Parallelität pro Partition
+### Phase 2: Real In-Flight Parallelism per Partition
 
-Für maximale Parallelität bei langen LLM-Tasks:
+For maximum parallelism with long LLM tasks:
 
-- eigener Consumer-Loop oder asynchroner Listener
-- Records sofort in bounded Queue übergeben
-- Virtual-Thread-Executor
-- Offset-Tracker pro Partition
-- Commit nur für höchsten zusammenhängenden Offset
-- Partition pausieren, wenn in-flight Limit erreicht
-- Partition resume, wenn Wasserstand unterschritten
+- own consumer loop or asynchronous listener
+- hand records immediately to a bounded queue
+- virtual thread executor
+- offset tracker per partition
+- commit only for the highest contiguous offset
+- pause partition when the in-flight limit is reached
+- resume partition when the water mark is undershot
 
-Skizze:
+Sketch:
 
 ```text
 TopicPartition p0
@@ -925,11 +925,11 @@ TopicPartition p0
   after 11 completes: commit 12
 ```
 
-Das ist die produktionsreife Variante, aber aufwendiger.
+This is the production-ready variant, but more involved.
 
-### Phase 3: horizontale Skalierung
+### Phase 3: Horizontal Scaling
 
-Mehrere Worker-Instanzen in derselben Consumer-Group:
+Multiple worker instances in the same consumer group:
 
 ```text
 quad-workflow-worker-1
@@ -937,7 +937,7 @@ quad-workflow-worker-2
 quad-workflow-worker-3
 ```
 
-Kafka verteilt die Partitionen. Jede Instanz verarbeitet ihre Partitionen parallel.
+Kafka distributes the partitions. Each instance processes its partitions in parallel.
 
 ---
 
@@ -1004,9 +1004,9 @@ public class TaskExecutor {
 
 ---
 
-## 15. Result-Mapping
+## 15. Result Mapping
 
-### 15.1 Erfolg
+### 15.1 Success
 
 ```java
 Map<String, Object> resultData = new LinkedHashMap<>();
@@ -1025,7 +1025,7 @@ if (result.hasStructuredOutput()) {
 }
 ```
 
-### 15.2 Status aus Agent-Output
+### 15.2 Status from Agent Output
 
 ```java
 String status = "COMPLETED";
@@ -1035,73 +1035,73 @@ if (rawStatus != null && isValidStatus(rawStatus.toString())) {
 }
 ```
 
-### 15.3 Fehlerklassifizierung
+### 15.3 Error Classification
 
-| Fehler | Status |
+| Error | Status |
 |---|---|
 | Timeout | `FAILED_RETRYABLE` |
 | HTTP 429 | `FAILED_RETRYABLE` |
 | HTTP 5xx | `FAILED_RETRYABLE` |
-| IOException / Netzwerk | `FAILED_RETRYABLE` |
+| IOException / network | `FAILED_RETRYABLE` |
 | HTTP 401/403 | `FAILED_FATAL` |
-| HTTP 400/422 Schemafehler | `FAILED_FATAL` |
+| HTTP 400/422 schema error | `FAILED_FATAL` |
 | SecurityException / ToolGuard-Deny | `FAILED_FATAL` |
 | NeedsHumanReview | `NEEDS_HITL` |
-| unbekannter Fehler | `FAILED_RETRYABLE` |
+| unknown error | `FAILED_RETRYABLE` |
 
-Der Orchestrator entscheidet dann über Retry, DLQ, HITL oder Workflow-Abbruch.
+The orchestrator then decides on retry, DLQ, HITL, or workflow abort.
 
 ---
 
 ## 16. HITL
 
-### 16.1 Workflow-HITL bleibt im Orchestrator
+### 16.1 Workflow HITL Stays in the Orchestrator
 
-Der Worker erzeugt kein eigenes Ticket-System, sondern liefert:
+The worker does not create its own ticket system; instead it delivers:
 
 ```text
 NEEDS_HITL
 ```
 
-Der Orchestrator:
+The orchestrator:
 
-- setzt den Checkpoint auf `WAITING_HITL`
-- erzeugt ein Ticket
-- pausiert die Execution
-- resumed nach Retry/Skip/Abort
+- sets the checkpoint to `WAITING_HITL`
+- creates a ticket
+- pauses the execution
+- resumes after retry/skip/abort
 
-### 16.2 Quad-HITL nicht blockierend nutzen
+### 16.2 Using Quad HITL Non-Blocking
 
-`HITLPlugin` blockiert den Agent-Thread und nutzt in-memory Checkpoints. Das passt nicht gut zu Kafka-Workern.
+`HITLPlugin` blocks the agent thread and uses in-memory checkpoints. That does not fit well with Kafka workers.
 
 Phase 1:
 
-- `HITLPlugin` deaktivieren
-- gefährliche Tools nicht freigeben
-- ToolGuard/Guardrails nutzen
+- disable `HITLPlugin`
+- do not approve dangerous tools
+- use ToolGuard/Guardrails
 
 Phase 2:
 
-- eigener non-blocking Hook
-- wirft `NeedsHumanReviewException`
-- Worker mapped auf `NEEDS_HITL`
-- Orchestrator übernimmt Ticket und Resume
+- own non-blocking hook
+- throws `NeedsHumanReviewException`
+- worker maps to `NEEDS_HITL`
+- orchestrator takes over ticket and resume
 
-Ein echter Resume mitten im Agent-Run erfordert durable Checkpoints und ist eine eigene Ausbaustufe.
+A real resume in the middle of an agent run requires durable checkpoints and is a stage of its own.
 
 ---
 
-## 17. Idempotenz und Retries
+## 17. Idempotency and Retries
 
-### 17.1 Orchestrator-Seite
+### 17.1 Orchestrator Side
 
-- Task-ID ist pro Attempt eindeutig
-- Checkpoints sind über `(executionId, stepId, iteration)` geschützt
-- doppelte Results werden ignoriert, wenn der Checkpoint nicht mehr `IN_PROGRESS` ist
+- Task ID is unique per attempt
+- checkpoints are protected via `(executionId, stepId, iteration)`
+- duplicate results are ignored if the checkpoint is no longer `IN_PROGRESS`
 
-### 17.2 Worker-Seite
+### 17.2 Worker Side
 
-Zusätzlicher Result-Cache:
+Additional result cache:
 
 ```java
 Cache<String, String> resultCache = Caffeine.newBuilder()
@@ -1116,35 +1116,35 @@ Key:
 workflowId:taskId:attempt
 ```
 
-Ablauf:
+Flow:
 
-1. Cache-Hit → gespeichertes Result erneut publizieren
-2. Cache-Miss → Agent ausführen
-3. Result publizieren
-4. Cache füllen
+1. Cache hit → publish the stored result again
+2. Cache miss → execute agent
+3. Publish result
+4. Fill cache
 
-Für Multi-Instanz-Produktion: Redis statt Caffeine.
+For multi-instance production: Redis instead of Caffeine.
 
 ---
 
 ## 18. Timeouts
 
-Drei Ebenen:
+Three levels:
 
-1. **LLM-HTTP-Timeout**
-   - muss kleiner als Task-Timeout sein
-2. **Worker-Task-Timeout**
-   - aus `task.header().timeoutMs()`
-3. **Orchestrator-Sweep**
-   - erkennt stale `IN_PROGRESS`-Checkpoints
+1. **LLM HTTP timeout**
+   - must be smaller than the task timeout
+2. **Worker task timeout**
+   - from `task.header().timeoutMs()`
+3. **Orchestrator sweep**
+   - detects stale `IN_PROGRESS` checkpoints
 
-Worker sollte:
+The worker should use:
 
 ```java
 future.get(task.header().timeoutMs() + graceMs, TimeUnit.MILLISECONDS)
 ```
 
-nutzen. Achtung: Ein abgebrochener HTTP-Call beendet nicht immer garantiert den underlying Request. Deshalb zusätzlich Provider-Timeout konfigurieren.
+Note: an aborted HTTP call does not always reliably terminate the underlying request. Therefore, additionally configure a provider timeout.
 
 ---
 
@@ -1152,7 +1152,7 @@ nutzen. Achtung: Ein abgebrochener HTTP-Call beendet nicht immer garantiert den 
 
 ### 19.1 Logging
 
-Jeder Log-Eintrag sollte enthalten:
+Every log entry should contain:
 
 ```text
 workflowId
@@ -1169,7 +1169,7 @@ offset
 
 ### 19.2 Tracing
 
-Task-Header enthält `traceParent`. Worker soll W3C Trace Context extrahieren und als aktuellen OTel-Context setzen, bevor `quad-core` läuft.
+The task header contains `traceParent`. The worker should extract the W3C Trace Context and set it as the current OTel context before `quad-core` runs.
 
 ### 19.3 Metrics
 
@@ -1185,24 +1185,24 @@ quad_worker_dlq_total
 quad_worker_duplicate_tasks_total
 ```
 
-### 19.4 Token/Cost-Lücke
+### 19.4 Token/Cost Gap
 
-`AgentRuntime` sieht TokenUsage, gibt sie aber aktuell nicht vollständig über `AgentResult` zurück. Übergangsweise:
+`AgentRuntime` sees TokenUsage but currently does not return it completely via `AgentResult`. As an interim measure:
 
 - `promptTokens=0`
 - `completionTokens=0`
 - `totalCostUsd=0`
-- oder eigene Schätzung
+- or your own estimate
 
-Upstream-Fix empfohlen:
+Upstream fix recommended:
 
 - TokenUsage in `ExecutionMetrics`
-- `AgentResult` liefert echte Usage
+- `AgentResult` provides real usage
 - optional CostCalculator
 
 ---
 
-## 20. Konfiguration
+## 20. Configuration
 
 ```yaml
 worker:
@@ -1244,40 +1244,40 @@ worker:
 
 ## 21. Tests
 
-### 21.1 Unit-Tests
+### 21.1 Unit Tests
 
-- ToolCatalog enthält erwartete Tools
-- Registry-Kopie enthält nur freigegebene Tools
-- zwei Agent-Registries beeinflussen sich nicht
-- ResultMapper mappt Raw-Text, JSON, Status, Fehler
-- ErrorClassifier klassifiziert Timeout/401/429/5xx korrekt
-- PromptBuilder enthält Step, Input, ContextReferences
+- ToolCatalog contains the expected tools
+- registry copy contains only approved tools
+- two agent registries do not influence each other
+- ResultMapper maps raw text, JSON, status, errors
+- ErrorClassifier classifies timeout/401/429/5xx correctly
+- PromptBuilder contains step, input, contextReferences
 
-### 21.2 Concurrency-Tests
+### 21.2 Concurrency Tests
 
-Mit Mock-ChatModel:
+With mock ChatModel:
 
-- 50 Tasks parallel
-- jeder Task eigene Session-ID
-- Tool sieht korrekte `CurrentSession`
-- kein Cross-Session-Memory
-- `CurrentSession.getCurrent()` ist nach jedem Task null
-- keine Registry-Mutation über Task-Grenzen
+- 50 tasks in parallel
+- each task has its own session ID
+- tool sees the correct `CurrentSession`
+- no cross-session memory
+- `CurrentSession.getCurrent()` is null after every task
+- no registry mutation across task boundaries
 
-### 21.3 Kafka-Integration
+### 21.3 Kafka Integration
 
-Mit Embedded Kafka oder Testcontainers:
+With Embedded Kafka or Testcontainers:
 
-1. Task auf `agent.tasks.researcher`
-2. Worker mit Mock-ChatModel
-3. Result auf `agent.execution.results`
+1. Task on `agent.tasks.researcher`
+2. Worker with mock ChatModel
+3. Result on `agent.execution.results`
 4. Key = workflowId
-5. taskId identisch
+5. taskId identical
 6. status = COMPLETED
 
-### 21.4 E2E gegen Orchestrator
+### 21.4 E2E Against Orchestrator
 
-Bestehende Workflows testen:
+Test existing workflows:
 
 - `reference-code-quality`
 - `xor-race`
@@ -1285,42 +1285,42 @@ Bestehende Workflows testen:
 - `guard-skip`
 - `error-taxonomy`
 
-Dafür Worker entweder mit echtem LLM oder deterministischem Mock-ChatModel betreiben.
+To do this, run the worker either with a real LLM or a deterministic mock ChatModel.
 
 ---
 
-## 22. Rollout & Aktueller Stand
+## 22. Rollout & Current Status
 
 ### Phase 1: Skeleton ✅ COMPLETED (2026-09-17)
 
-**Ergebnis:**  
+**Result:**  
 - `mvn compile` → SUCCESS
-- `mvn test` → **22 Tests bestanden** (TaskPromptBuilder, ResultMapper, ContractSerialization, ToolCatalog, ChatModelRegistry)  
+- `mvn test` → **22 tests passed** (TaskPromptBuilder, ResultMapper, ContractSerialization, ToolCatalog, ChatModelRegistry)  
 
-**Neue Features seit letztem Stand:**
-- **Echte LLM-Execution**: TaskExecutor nutzt WorkerAgentFactory für Agent-Erzeugung pro Task
-- **Timeout-Handling**: CompletableFuture.get(timeoutMs, MILLISECONDS) pro Task
-- **Startup Validation**: ApiKeyStartupValidator validiert OPENAI_API_KEY beim Bootstrapping
-- **Settings-Fehler → Kafka Publish**: Fehlende API Keys → ERROR Event an DLQ
-- **.env auto-loading**: spring-dotenv Integration für .env Datei
-- **Prometheus Metrics**: WorkerMetrics trackt TasksCompleted/Failed/DLQ/Latency
-- **API Rate Limiting**: TokenBucket Algorithmus gegen externe LLM APIs
-- **ToolGuard/Guardrails**: Schützt WriteTool/MultiEditTool/etc vor Missbrauch
-- **Graceful Shutdown Lifecycle**: ApplicationReady/Failed Events + Health Checks
-- **Docker Compose Service**: quad-workflow-worker mit HealthCheck
+**New features since the last status:**
+- **Real LLM execution**: TaskExecutor uses WorkerAgentFactory for agent creation per task
+- **Timeout handling**: CompletableFuture.get(timeoutMs, MILLISECONDS) per task
+- **Startup validation**: ApiKeyStartupValidator validates OPENAI_API_KEY during bootstrap
+- **Settings error → Kafka publish**: missing API keys → ERROR event to DLQ
+- **.env auto-loading**: spring-dotenv integration for the .env file
+- **Prometheus metrics**: WorkerMetrics tracks TasksCompleted/Failed/DLQ/Latency
+- **API rate limiting**: TokenBucket algorithm against external LLM APIs
+- **ToolGuard/Guardrails**: protects WriteTool/MultiEditTool/etc. from misuse
+- **Graceful shutdown lifecycle**: ApplicationReady/Failed events + health checks
+- **Docker Compose service**: quad-workflow-worker with health check
 
-**.env Konfiguration:**
+**.env configuration:**
 ```bash
 OPENAI_API_KEY="sk-or-v1-..."       # OpenRouter Key aus .env
 OPENAI_BASE_URL="${OPENAI_BASE_URL:-https://openrouter.ai/api/v1}"
 OPENAI_MODEL="${OPENAI_MODEL:-deepseek/deepseek-v4-flash-0731}"
 ```
 
-**Verhalten bei Settings-Fehlern:**
-- Wenn OPENAI_API_KEY fehlt → MOCK-Modus aktiviert + Warnung ins Log
-- Warnung wird als Error-Event an Kafka `agent.execution.results` publiziert
-- Worker läuft weiter aber ohne echte LLM-Calls
-- Startup Validator meldet den Status via Kafka und im Application Log
+**Behavior on settings errors:**
+- If OPENAI_API_KEY is missing → MOCK mode activated + warning in the log
+- Warning is published as an error event to Kafka `agent.execution.results`
+- Worker keeps running but without real LLM calls
+- Startup validator reports the status via Kafka and in the application log
 
 **Docker Compose Integration:**
 ```yaml
@@ -1339,79 +1339,79 @@ services:
       test: wget -qO- http://localhost:8091/actuator/health || exit 1
 ```
 
-**Nächste Schritte für Phase 2 (Kafka-Integration gegen echten Broker):**
-1. Docker Compose starten (`docker-compose.yml` aus kafka_workflow)
-2. Worker deployen und gegen echte Topics laufen lassen
-3. Echte TaskEvents vom deterministischen Orchestrator empfangen
-4. Ergebnisse validieren (status COMPLETED/FAILED_RETRYABLE/FAILED_FATAL)
-5. Prometheus Metrics aktivieren (/actuator/prometheus)
+**Next steps for Phase 2 (Kafka integration against a real broker):**
+1. Start Docker Compose (`docker-compose.yml` from kafka_workflow)
+2. Deploy the worker and run it against real topics
+3. Receive real TaskEvents from the deterministic orchestrator
+4. Validate results (status COMPLETED/FAILED_RETRYABLE/FAILED_FATAL)
+5. Enable Prometheus metrics (/actuator/prometheus)
 
-### Phase 3: Echter LLM-Betrieb
-- Provider-Timeouts konfigurieren (LLM HTTP vs Task Timeout) ✓
-- Rate-Limits implementieren ✓
-- Cost-Metrics pro Task tracken (über WorkerMetrics) ✓
-- Guardrails für gefährliche Tools (WriteTool, MultiEditTool etc.) ✓
+### Phase 3: Real LLM Operation
+- Configure provider timeouts (LLM HTTP vs task timeout) ✓
+- Implement rate limits ✓
+- Track cost metrics per task (via WorkerMetrics) ✓
+- Guardrails for dangerous tools (WriteTool, MultiEditTool, etc.) ✓
 
-### Phase 4: Produktiver Wechsel
-1. Quad-Worker nur für ausgewählte Agent-Typen aktivieren
-2. Deterministischen Mock-Worker für dieselben Topics deaktivieren
-3. Ein Agent-Typ migrieren (z.B. `researcher`)
-4. E2E gegen Orchestrator testen
-5. Weitere Agent-Typen migrieren
+### Phase 4: Production Switchover
+1. Enable Quad worker only for selected agent types
+2. Disable the deterministic mock worker for the same topics
+3. Migrate one agent type (e.g. `researcher`)
+4. Test E2E against the orchestrator
+5. Migrate further agent types
 
 ---
 
-## 23. Notwendige oder empfohlene Upstream-Fixes in quad-core
+## 23. Necessary or Recommended Upstream Fixes in quad-core
 
 ### P0
 
-1. `CurrentSession.remove()` ergänzen.
-2. `QuadToolRegistry` thread-safe oder freezbar machen.
-   - Spec sagt `ConcurrentHashMap`, Implementierung nutzt aktuell `LinkedHashMap`.
-3. TokenUsage/Cost in `AgentResult` vollständig exponieren.
+1. Add `CurrentSession.remove()`.
+2. Make `QuadToolRegistry` thread-safe or freezable.
+   - The spec says `ConcurrentHashMap`; the implementation currently uses `LinkedHashMap`.
+3. Fully expose TokenUsage/cost in `AgentResult`.
 
 ### P1
 
-4. `IdempotencyStore` bounded oder als Interface mit Caffeine/Redis-Implementierung.
-5. `SessionLockService` atomar machen und Heartbeat echt implementieren.
-6. `InMemorySessionManager.executeLocked` nicht als globalen Lock verwenden.
-7. `AgentBuilder` sollte `CurrentSession`, `WorkspaceResolver`, `ContextManager` explizit wiring-fähig machen.
-8. `QuadAgent.initialized` volatile machen oder `QuadAgent` im Worker vermeiden.
+4. Make `IdempotencyStore` bounded or an interface with a Caffeine/Redis implementation.
+5. Make `SessionLockService` atomic and implement the heartbeat properly.
+6. Do not use `InMemorySessionManager.executeLocked` as a global lock.
+7. `AgentBuilder` should make `CurrentSession`, `WorkspaceResolver`, `ContextManager` explicitly wireable.
+8. Make `QuadAgent.initialized` volatile or avoid `QuadAgent` in the worker.
 
-Diese Fixes sind klein. Sie sind ein Grund, **nicht** zu kopieren, sondern upstream zu patchen.
+These fixes are small. They are a reason **not** to copy, but to patch upstream.
 
 ---
 
-## 24. Variantenvergleich
+## 24. Variant Comparison
 
-| Variante | Aufwand | Risiko | Wartbarkeit | Empfehlung |
+| Variant | Effort | Risk | Maintainability | Recommendation |
 |---|---:|---:|---:|---|
-| `quad-core` komplett kopieren | hoch | hoch | schlecht | nein |
-| Einzelne Klassen kopieren | mittel | sehr hoch | sehr schlecht | nein |
-| Quarkus-Worker im Quad-Repo | mittel | niedrig | gut | gut, wenn Quad-Ökosystem gewünscht |
-| Spring-Boot-Worker als eigener Service | mittel | mittel | gut | empfohlen für Kafka-Plattform |
-| `ai-agent-service` erweitern | niedrig | hoch bei Parallelität | mittelmäßig | nur Übergangslösung |
-| Bestehenden deterministischen Mock-Worker ersetzen | niedrig | niedrig | gut | für Tests behalten, prod optional ersetzen |
+| Copy `quad-core` completely | high | high | poor | no |
+| Copy individual classes | medium | very high | very poor | no |
+| Quarkus worker in the Quad repo | medium | low | good | good if the Quad ecosystem is desired |
+| Spring Boot worker as its own service | medium | medium | good | recommended for the Kafka platform |
+| Extend `ai-agent-service` | low | high with concurrency | mediocre | only a temporary solution |
+| Replace existing deterministic mock worker | low | low | good | keep for tests, optionally replace in prod |
 
 ---
 
-## 25. Finale Empfehlung
+## 25. Final Recommendation
 
-**Baue einen neuen Spring-Boot-Worker `quad-workflow-worker`.**
+**Build a new Spring Boot worker `quad-workflow-worker`.**
 
-Er:
+It:
 
-- hängt an `quad-core` und `quad-tool-builtin`
-- nutzt LangChain4j aus `quad-core`
-- verwendet Spring Kafka für Topics und Acks
-- baut einen immutable globalen `ToolCatalog`
-- erzeugt pro Task:
+- depends on `quad-core` and `quad-tool-builtin`
+- uses LangChain4j from `quad-core`
+- uses Spring Kafka for topics and acks
+- builds an immutable global `ToolCatalog`
+- creates per task:
   - Agent
-  - ToolRegistry-Kopie
+  - ToolRegistry copy
   - AgentSessionState
-  - Workspace-Grants
-  - ThreadLocal-Session
-- publiziert Ergebnisse nach `agent.execution.results`
-- überlässt Routing, Retries, HITL, Sweep und Determinismus dem bestehenden Orchestrator
+  - Workspace grants
+  - ThreadLocal session
+- publishes results to `agent.execution.results`
+- leaves routing, retries, HITL, sweep, and determinism to the existing orchestrator
 
-Quarkus bleibt eine valide Alternative, ist aber keine Voraussetzung. Für das Kafka-Projekt ist Spring Boot sogar naheliegender, weil Orchestrator, Mock-Worker und Infrastruktur bereits Spring-basiert sind.
+Quarkus remains a valid alternative but is not a prerequisite. For the Kafka project, Spring Boot is even more obvious, because the orchestrator, mock worker, and infrastructure are already Spring-based.

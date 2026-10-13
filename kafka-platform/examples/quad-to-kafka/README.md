@@ -1,11 +1,10 @@
-# Workflow aus quad über Kafka ausführen
+# Run a workflow from quad over Kafka
 
-Ein Workflow, der in quad entworfen wurde, lässt sich auf dieser Plattform
-ausführen, ohne ihn neu zu zeichnen. Dieses Verzeichnis enthält einen
-vollständigen, lauffähigen Dreischritt-Workflow plus alles, was man zum
-Nachvollziehen braucht.
+A workflow designed in quad can be run on this platform without redrawing it.
+This directory contains a complete, runnable three-step workflow plus everything
+needed to reproduce it.
 
-## Der Ablauf
+## The flow
 
 ```
 quad-Workflow (flach: {name, nodes[], edges[]})
@@ -27,49 +26,49 @@ quad-Workflow (flach: {name, nodes[], edges[]})
    └──  agent.execution.results ◄┘
 ```
 
-## Zwei Formate, ein Feld entscheidet
+## Two formats, one field decides
 
-Die Bridge akzeptiert beide quad-Formate. Entscheidend ist, **wo** die
-Attribute stehen:
+The bridge accepts both quad formats. What matters is **where** the
+attributes live:
 
 | | quad-UI | quad WorkflowGeneratorService |
 |---|---|---|
-| Attribute | `properties` | `config` |
-| Agent-Bindung | `agentType` (top-level) | `config.agentId` |
+| Attributes | `properties` | `config` |
+| Agent binding | `agentType` (top-level) | `config.agentId` |
 
-Die Bridge liest eine gemergte Sicht (`config` als Basis, `properties` gewinnt
-bei Konflikt) und löst den Agent-Typ so auf:
+The bridge reads a merged view (`config` as the base, `properties` wins
+on conflict) and resolves the agent type like this:
 
 ```
 agentType  →  properties/config: agentType  →  agentId  →  agent_id  →  "generic" (mit Warnung)
 ```
 
-`config.agentId` ist dabei genau der richtige Wert: `AgentDefinitionBridge`
-registriert `quadAgent.id()` als `agent_type`, und der Worker löst Agenten über
-`WHERE agent_type = ?` auf.
+`config.agentId` is exactly the right value here: `AgentDefinitionBridge`
+registers `quadAgent.id()` as `agent_type`, and the worker resolves agents via
+`WHERE agent_type = ?`.
 
-## Reihenfolge ist nicht optional
+## Order is not optional
 
-1. **Agenten zuerst.** `/from-quad` registriert fehlende Agenten nur als Stub
-   (generischer Prompt, keine Tools). Ein Stub ist eine Notlösung, kein Ersatz
-   für die Konvertierung.
-2. **Dann den Workflow.** Beim Import werden die Task-Topics der referenzierten
-   Agent-Typen mit der konfigurierten Partitionzahl angelegt.
+1. **Agents first.** `/from-quad` registers missing agents only as a stub
+   (generic prompt, no tools). A stub is a stopgap, not a replacement
+   for the conversion.
+2. **Then the workflow.** During import, the task topics of the referenced
+   agent types are created with the configured partition count.
 
-## Voraussetzungen im Worker
+## Prerequisites in the worker
 
-Zwei Einstellungen, ohne die importierte Agenten nicht laufen:
+Two settings without which imported agents do not run:
 
-| Variable | Wert | Warum |
+| Variable | Value | Why |
 |---|---|---|
-| `WORKER_QUAD_AGENT_SOURCE` | `db` | Sonst kennt der Worker nur die statische YAML-Liste und meldet `Unknown agent type` für alles, was über `/agents/convert` kam. |
-| `OPENAI_API_KEY` | gesetzt | Ohne Key fällt der Worker auf ein Mock-Modell zurück. |
+| `WORKER_QUAD_AGENT_SOURCE` | `db` | Otherwise the worker only knows the static YAML list and reports `Unknown agent type` for everything that came via `/agents/convert`. |
+| `OPENAI_API_KEY` | set | Without a key the worker falls back to a mock model. |
 
-`modelId` in `agents.json` muss ein Key sein, den der Worker registriert hat.
-Der Worker registriert genau **einen**: `simple` (aus `OPENAI_*`). Alles andere
-scheitert mit `Unknown model key`.
+`modelId` in `agents.json` must be a key that the worker has registered.
+The worker registers exactly **one**: `simple` (from `OPENAI_*`). Anything else
+fails with `Unknown model key`.
 
-## Ausführen
+## Running
 
 ```bash
 ./run.sh                       # workflow.json mit Default-Aufgabe
@@ -77,45 +76,45 @@ scheitert mit `Unknown model key`.
 ORCH=http://localhost:8080 ./run.sh
 ```
 
-Das Skript konvertiert die drei Agenten, startet den Workflow, wartet auf das
-Ende und gibt die Checkpoints mit den Antworten aus.
+The script converts the three agents, starts the workflow, waits for
+completion and prints the checkpoints with the responses.
 
-## Auf was zu achten ist
+## Things to watch out for
 
-**Der Workflow-Name ist die Identität.** Ein zweiter POST mit demselben Namen
-liefert die bereits gespeicherte Definition zurück (`duplicate: true`) — eine
-korrigierte Fassung wird ignoriert. Für jeden geänderten Entwurf einen neuen
-Namen verwenden oder die Definition löschen.
+**The workflow name is the identity.** A second POST with the same name
+returns the already stored definition (`duplicate: true`) — a
+corrected version is ignored. For every changed draft use a new
+name or delete the definition.
 
-**Retry.** `/from-quad` startet sofort mit. Bei Timeout mit dem
-zurückgegebenen `idempotencyKey` erneut senden, dann kommt dieselbe Execution
-zurück statt einer zweiten. Alternativ ohne Auto-Start:
-`POST /api/v1/workflow-definitions` (nur speichern) und danach
-`POST /api/v1/workflows/start` mit eigenem Key.
+**Retry.** `/from-quad` starts immediately. On timeout, resend with the
+returned `idempotencyKey`, then the same execution comes
+back instead of a second one. Alternatively without auto-start:
+`POST /api/v1/workflow-definitions` (store only) and afterwards
+`POST /api/v1/workflows/start` with your own key.
 
-**Timeouts.** `config.timeoutSeconds` landet als `timeoutMs` im Task. Der
-Worker kappt bei `worker.quad.max-task-timeout-ms` (600 s) — er muss unter
-`max.poll.interval.ms` (900 s) bleiben, weil der Listener den Poll-Thread bis
-zum Ende des Batches blockiert.
+**Timeouts.** `config.timeoutSeconds` lands in the task as `timeoutMs`. The
+worker caps at `worker.quad.max-task-timeout-ms` (600 s) — it must stay below
+`max.poll.interval.ms` (900 s), because the listener blocks the poll thread until
+the end of the batch.
 
-**Parallelität.** Tasks sind mit `workflow_id` gekeyt, alle Schritte eines
-Workflows landen auf einer Partition. Parallele Zweige laufen nur innerhalb
-eines Batches (`max.poll.records`, default 8); die Grenze für Workflows
-parallel liegt bei Partitionzahl × Worker-Instanzen.
+**Concurrency.** Tasks are keyed by `workflow_id`, all steps of a
+workflow land on one partition. Parallel branches run only within
+a batch (`max.poll.records`, default 8); the limit for parallel workflows
+is partition count × worker instances.
 
-**Was beim Import verloren geht.** Die Antwort auf `/agents/convert` nennt es:
-Skills-Registry, benannte Hooks, Verzeichnisrechte und MCP/Sandbox-Unterstützung
-gibt es im Kafka-Worker nicht.
+**What is lost during import.** The response to `/agents/convert` names it:
+skills registry, named hooks, directory permissions and MCP/sandbox support
+do not exist in the Kafka worker.
 
-## Der konkrete Workflow
+## The concrete workflow
 
-Drei Schritte, jeder mit eigenem Agenten und eigenem System-Prompt, als Kette:
+Three steps, each with its own agent and its own system prompt, as a chain:
 
 ```
 node-Scout  (ex-market-scout)   → node-Analyst (ex-risk-analyst) → node-Writer (ex-report-writer)
 ```
 
-Gemessener Lauf (`space-bunny-free`, ~3 LLM-Aufrufe):
+Measured run (`space-bunny-free`, ~3 LLM calls):
 
 ```
 status: COMPLETED
@@ -125,5 +124,5 @@ status: COMPLETED
   __end                          60000  COMPLETED
 ```
 
-Jeder Schritt sieht die Antwort des Vorgängers — die Verkettung ist echte
-Datenübergabe, nicht nur eine Reihenfolge von Knoten.
+Each step sees the previous step's response — the chaining is real
+data passing, not just an ordering of nodes.

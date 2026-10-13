@@ -59,9 +59,9 @@ The orchestrator creates all Kafka topics on startup and seeds the workflow defi
 
 ## Run with containers
 
-Voraussetzung ist das `deps.tar.gz`: der Worker haengt an `agent-common` (dieses
-Repo) sowie `quad-core` und `quad-tool-builtin` (quad-quarkus) — allesamt lokal
-gebaute Artefakte ohneoeffentliches Repository. Es wird erzeugt mit:
+A prerequisite is `deps.tar.gz`: the worker depends on `agent-common` (this
+repo) as well as `quad-core` and `quad-tool-builtin` (quad-quarkus) — all
+locally built artifacts with no public repository. It is generated with:
 
 ```bash
 mvn -DskipTests install                    # agent-common
@@ -69,9 +69,9 @@ mvn -DskipTests install                    # agent-common
 ./scripts/build-deps-tarball.sh
 ```
 
-Das Skript prueft, ob die installierten Artefakte juenger als der Quellcode sind
-und bricht sonst mit einem klaren Hinweis ab. Ein aelteres `agent-common` zeigt
-sich im Image sonst nur als kryptische Kompilierfehlermeldung.
+The script checks whether the installed artifacts are newer than the source code
+and otherwise aborts with a clear hint. An older `agent-common` would otherwise
+only show up in the image as a cryptic compiler error message.
 
 ```bash
 mvn -DskipTests package
@@ -225,55 +225,55 @@ The worker sends JSON task context to the selected agent and expects a JSON obje
 
 `status` may be `COMPLETED`, `FAILED_RETRYABLE`, `FAILED_FATAL`, or `NEEDS_HITL`. Without an explicit status, successful responses are reported as `COMPLETED`.
 
-## Verifizierter Stand
+## Verified status
 
-Erstmals Ende-zu-Ende mit echtem LLM geprüft (2026-09-29). Ein Workflow
-(`guard-skip`) lief über Kafka durch Orchestrator und quad-workflow-worker
-bis `COMPLETED`: 2 echte LLM-Aufrufe, 55 s Wanduhr, Guard hat einen Schritt
-übersprungen, Idempotenz über den Schlüssel bestätigt.
+Verified end-to-end with a real LLM for the first time (2026-09-29). One workflow
+(`guard-skip`) ran over Kafka through the orchestrator and quad-workflow-worker
+to `COMPLETED`: 2 real LLM calls, 55 s wall clock, the guard skipped one step,
+idempotency confirmed via the key.
 
-Dabei behoben — die Plattform **startete vorher nicht**:
+Fixed along the way — the platform **did not start before**:
 
-| Befund | Wirkung |
+| Finding | Effect |
 |---|---|
-| `@SpringBootApplication` scant nur `com.agentplatform.orchestrator` | Startabbruch: `EmailInitiatorStore` (Paket `com.agentplatform.bridge`) wurde nie als Bean registriert |
-| `KafkaProducer` verlangte einen Jackson-2-`ObjectMapper` | Startabbruch (das Projekt nutzt Jackson 3) |
-| `ProducerInterceptor` verlangte hart einen `Tracer` | Startabbruch; Tracing ist jetzt optional |
-| `interceptor.classes` verwies auf eine nicht existierende Klasse | **jeder** Kafka-Publish scheiterte |
-| Kafka erzeugt `ProducerInterceptor` reflektiv mit No-Arg-Konstruktor | Publish weiterhin unmöglich; Header-Erzeugung wandert in den Publisher |
-| `task-topic-pattern: agent\\.tasks\\..*` in YAML | Backslashes sind in YAML literal → Wildcard matchte **0 Topics**, Worker blieb idle |
-| Worker kannte 3 von 10 `agentType`s | jeder geseedete Workflow scheiterte mit „Unbekannter AgentTyp" |
-| Worker verlangte `DataSource` auch im YAML-Modus | Startabbruch trotz Zusage „ohne Datenbank startfähig" |
-| DECISION-/Guard-Bedingungen der ausgelieferten Workflows nutzten `context[...].resultData.feld` | Zwischenlevel existiert im Kontext nicht → alle Zweige fielen auf `defaultTarget` |
-| `OrchestratorLeaseService` band `java.time.Instant` untypisiert | Lease immer `false` — Sweep lief auf jeder Replica |
-| Zeitstempel teils aus der Uhr, teils aus der Datenbank | `updated_at` wurde gegen einen Schnitt aus der Uhr verglichen |
+| `@SpringBootApplication` scans only `com.agentplatform.orchestrator` | Startup abort: `EmailInitiatorStore` (package `com.agentplatform.bridge`) was never registered as a bean |
+| `KafkaProducer` required a Jackson 2 `ObjectMapper` | Startup abort (the project uses Jackson 3) |
+| `ProducerInterceptor` hard-required a `Tracer` | Startup abort; tracing is now optional |
+| `interceptor.classes` pointed to a non-existent class | **every** Kafka publish failed |
+| Kafka creates `ProducerInterceptor` reflectively with a no-arg constructor | Publish still impossible; header creation moves into the publisher |
+| `task-topic-pattern: agent\\.tasks\\..*` in YAML | Backslashes are literal in YAML → the wildcard matched **0 topics**, the worker stayed idle |
+| The worker knew 3 of 10 `agentType`s | every seeded workflow failed with "Unknown agentType" |
+| The worker required `DataSource` even in YAML mode | Startup abort despite the promise "can start without a database" |
+| DECISION/guard conditions of the delivered workflows used `context[...].resultData.feld` | the intermediate level does not exist in the context → all branches fell through to `defaultTarget` |
+| `OrchestratorLeaseService` bound `java.time.Instant` untyped | lease always `false` — the sweep ran on every replica |
+| Timestamps partly from the clock, partly from the database | `updated_at` was compared against a cut from the clock |
 
-Beim anschließenden Live-Test des Wegs aus der Oberfläche
-(`POST /api/v1/unified/workflows/from-quad`) kamen vier weitere Fehler dazu, die
-alle erst unter realem HTTP-/Container-Betrieb auftraten und kein Unit-Test
-sehen konnte:
+In the subsequent live test of the path from the UI
+(`POST /api/v1/unified/workflows/from-quad`), four more bugs came to light, all
+of which only appeared under real HTTP/container operation and that no unit test
+could have caught:
 
-| Befund | Wirkung |
+| Finding | Effect |
 |---|---|
-| Canvas kennt keinen `end`-Knoten, der Orchestrator verlangt ihn (R6) | **jeder** Workflow aus der Oberfläche wurde mit `R6: no END node` abgewiesen |
-| `UnifiedApiGateway` importierte Jackson 2, Spring Boot 4 konvertiert mit Jackson 3 | jeder Aufruf von `/from-quad` endete mit HTTP 500 `Cannot construct instance of JsonNode` |
-| `IntakeListener`/`ConfigUpdateConsumer` riefen `acknowledge()` unter `AckMode.RECORD` | `IllegalStateException` pro Datensatz, zehn Wiederholungen, Eintrittsmeldung nie regulär verarbeitet |
-| `AutoScalingService` castete `bootstrap.servers` auf `String`, der Kafka-Client liefert `List` | Auto-Scaling scheiterte alle 30 s an `ClassCastException` — nie ausgewertet |
+| The canvas knows no `end` node, the orchestrator requires one (R6) | **every** workflow from the UI was rejected with `R6: no END node` |
+| `UnifiedApiGateway` imported Jackson 2, Spring Boot 4 converts with Jackson 3 | every call to `/from-quad` ended with HTTP 500 `Cannot construct instance of JsonNode` |
+| `IntakeListener`/`ConfigUpdateConsumer` called `acknowledge()` under `AckMode.RECORD` | `IllegalStateException` per record, ten retries, the intake message never processed normally |
+| `AutoScalingService` cast `bootstrap.servers` to `String`, the Kafka client returns `List` | auto-scaling failed every 30 s with `ClassCastException` — never evaluated |
 
-Der Weg aus der Oberfläche ist danach Ende-zu-Ende geprüft: UI-Payload →
-`WorkflowDefinitionBridge` → Validierung → `RoutingEvaluator` → Worker →
-`COMPLETED`, inklusive `SKIPPED` am nicht gewählten Zweig und dem synthetisch
-ergänzten `__end`.
+The path from the UI is then verified end-to-end: UI payload →
+`WorkflowDefinitionBridge` → validation → `RoutingEvaluator` → worker →
+`COMPLETED`, including `SKIPPED` on the unchosen branch and the synthetically
+added `__end`.
 
-Einzelheiten und Regressionstests zu jedem Punkt stehen in den Testklassen
-der jeweiligen Module.
+Details and regression tests for each point are in the test classes
+of the respective modules.
 
 ## Not yet production-complete
 
-- Confluent Schema Registry serialization (es läuft bisher nur die JSON-Schema-Registrierung)
+- Confluent Schema Registry serialization (so far only JSON schema registration runs)
 - JWT/OIDC API security
 - Vault secrets and Kafka TLS/SASL
-- ~~multi-instance orchestrator lease~~ — Lease ist verdrahtet (`SweepReaperService`), mit `SweepReaperLeaseTest` abgesichert
-- Prometheus metrics/dashboards (Metriken erzeugt, Dashboards ungetestet)
+- ~~multi-instance orchestrator lease~~ — the lease is wired up (`SweepReaperService`), covered by `SweepReaperLeaseTest`
+- Prometheus metrics/dashboards (metrics produced, dashboards untested)
 - HITL UI
 - production hardening of the external `ai-agent-service` worker (dedicated agent definitions, schema registry, real LLM E2E)

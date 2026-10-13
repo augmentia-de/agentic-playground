@@ -1,10 +1,10 @@
 # quad-workflow-worker
 
-Führt einzelne Schritte eines quad-Workflows aus. Nimmt Tasks von
-`agent.tasks.<agentType>` und schreibt das Ergebnis auf
+Executes individual steps of a quad workflow. Takes tasks from
+`agent.tasks.<agentType>` and writes the result to
 `agent.execution.results`.
 
-## Inhalt
+## Contents
 
 ```
 deployment/
@@ -16,19 +16,19 @@ config/
 └── worker.env.example                          erforderliche Einstellungen
 ```
 
-Das Compose-Fragment mit dem Worker-Service liegt in
-`../kafka/deployment/compose/docker-compose.minimal.yml`, weil
-`docker-compose.minimal.yml` Orchestrator und Worker gemeinsam startet und
-nicht sinnvoll zu trennen ist.
+The Compose fragment with the worker service is in
+`../kafka/deployment/compose/docker-compose.minimal.yml`, because
+`docker-compose.minimal.yml` starts the orchestrator and worker together and
+cannot sensibly be separated.
 
-## Voraussetzungen
+## Prerequisites
 
-Der Worker braucht Datenbankzugriff auf dieselbe `agent_definitions`, in die
-der Orchestrator schreibt. Ohne `WORKER_QUAD_AGENT_SOURCE=db` ignoriert er die
-Tabelle vollständig und kennt nur die statisch konfigurierten Agenten aus
+The worker needs database access to the same `agent_definitions` that
+the orchestrator writes to. Without `WORKER_QUAD_AGENT_SOURCE=db` it ignores the
+table completely and only knows the statically configured agents from
 `application.yml`.
 
-Beispielstart:
+Example start:
 
 ```bash
 docker build -f deployment/docker/Dockerfile-quad-workflow-worker-runtime -t quad-worker:1.0.0 .
@@ -46,15 +46,15 @@ docker run --rm \
   quad-worker:1.0.0
 ```
 
-## Vor dem ersten Task prüfen
+## Check before the first task
 
-1. **Agent-Key stimmt.** Der Worker registriert genau einen Model-Key: `simple`.
-   Der `modelId` jedes importierten Agenten muss genau dieser sein.
-2. **Topic existiert mit 12 Partitionen.** Der Orchestrator legt es beim Import
-   an. Ein vom Broker automatisch angelegtes Topic hätte nur eine Partition und
-   damit streng serielle Verarbeitung:
+1. **Agent key matches.** The worker registers exactly one model key: `simple`.
+   The `modelId` of every imported agent must be exactly this one.
+2. **Topic exists with 12 partitions.** The orchestrator creates it during import.
+   A topic created automatically by the broker would have only one partition and
+   therefore strictly serial processing:
 
    ```bash
    kafka-get-offsets.sh --bootstrap-server kafka:9092 --topic agent.tasks.<agentType> | wc -l   # erwartet 12
    ```
-3. **Task-Timeout passt in die Poll-Grenze.** Siehe `../README.md`.
+3. **Task timeout fits within the poll limit.** See `../README.md`.

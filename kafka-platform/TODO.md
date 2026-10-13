@@ -1,188 +1,188 @@
-# TODO — Deterministic Kafka Workflow Platform (nach SPEC2.md)
+# TODO — Deterministic Kafka Workflow Platform (per SPEC2.md)
 
-**Letzte Änderung:** 2026-09-19  
-**Build Status:** ✅ `mvn clean verify` — 270 Tests, davon 5 key-gated (übersprungen ohne LLM-Key)  
+**Last modified:** 2026-09-19  
+**Build Status:** ✅ `mvn clean verify` — 270 tests, of which 5 are key-gated (skipped without LLM key)  
 
 Stack: **Spring Boot 4.0.8**, Java 21, Spring Kafka, PostgreSQL 16, Redis 7.2.  
-Wichtig: **kein Spring AI / LLM in diesem Projekt**. Echte Agents leben in einem separaten Service; dieses Projekt bleibt deterministisch und stellt nur den Kafka-Worker-Contract sowie Mock-Agents bereit.
+Important: **no Spring AI / LLM in this project**. Real agents live in a separate service; this project stays deterministic and only provides the Kafka worker contract as well as mock agents.
 
 ## Module
-- `agent-common` — geteiltes Domänenmodell, DAG/Routing-Kern (rein), Topics, Events, AgentExecutor-SPI
-- `agent-orchestrator` — DAG-Engine, Checkpoints, Handler, REST-API (§16), Flyway, Topic-Provisioning, Seeding, Alerting, Auto-Scaling, Vault
-- `agent-worker` — deterministic Mock-Agents, TaskProcessor über `agent.tasks.*`, Result-Publisher über `agent.execution.results`
+- `agent-common` — shared domain model, DAG/routing core (pure), topics, events, AgentExecutor SPI
+- `agent-orchestrator` — DAG engine, checkpoints, handlers, REST API (§16), Flyway, topic provisioning, seeding, alerting, auto-scaling, Vault
+- `agent-worker` — deterministic mock agents, TaskProcessor via `agent.tasks.*`, result publisher via `agent.execution.results`
 
 ---
 
 ## ✅ Completed
 
 ### Core Platform
-- [x] **TODO.md** als Masterplan anlegen
-- [x] **Maven-Skeleton** (parent + common + orchestrator + worker), Boot 4.0.8, Java 21
-- [x] **Topics** aus §4.1 als Konstanten + Schema-Subjects §4.2
-- [x] **Domänenmodell** (NodeType STEP/DECISION/LOOP/FORK/JOIN/END, Statuses, DAG, Events, CheckpointState)
-- [x] **ExpressionEvaluator** für Guards, DECISION-Bedingungen und LOOP-Exit (pur, deterministisch)
-- [x] **RoutingEvaluator** (rein/deterministisch §15): edgeCompleted, DECISION-Branch-Gating, Guards, JOIN-Typen, Pruning/Skip-Kaskade
-- [x] **WorkflowDefinitionValidator** (§17.1): Node-Vokabular, Azyklizität, DECISION→LOOP→defaultTarget, FORK/JOIN-Paarung
-- [x] **Golden-/Determinismus-Tests** (§17.2): alle Node-Typen als Szenarien, Replay=identisch
-- [x] **DB-Schema (Flyway)**: agent_definitions, workflow_definitions, workflow_executions, workflow_checkpoints, hitl_tickets, dlq_messages
-- [x] **Event-Mapping REST↔Kafka** (§16.1): start→intake, cancel→cancellation, hitl→hitl, worker results→results
-- [x] **Orchestrator-Handler**: Intake/DagAdvance, LoopIteration, SweepReaper, Cancellation, HitlResume
-- [x] **REST-API** (§16): `/workflows/start` (idempotent), status, checkpoints, cancel; definitions; hitl
-- [x] **Mock-Agents** (deterministisch): generischer hash-basierter Executor für alle Agent-Typen
-- [x] **AgentExecutor-Seam**: Interface in `agent-common`, Mock im Worker
-- [x] **Topic-Provisioner** (AdminClient) + Consumer-Gruppen / Single-Writer
-- [x] **docker-compose** (Kafka KRaft, Postgres 16, Redis 7.2) + README-Run-Anleitung
-- [x] **Build & Tests** `mvn verify` grün
-- [x] **Manueller E2E-Lauf über Kafka**: reference, XOR, N_OF, Guard-Skip, Retryable/Fatal/Needs-HITL, Cancel
+- [x] Create **TODO.md** as master plan
+- [x] **Maven skeleton** (parent + common + orchestrator + worker), Boot 4.0.8, Java 21
+- [x] **Topics** from §4.1 as constants + schema subjects §4.2
+- [x] **Domain model** (NodeType STEP/DECISION/LOOP/FORK/JOIN/END, statuses, DAG, events, CheckpointState)
+- [x] **ExpressionEvaluator** for guards, DECISION conditions and LOOP exit (pure, deterministic)
+- [x] **RoutingEvaluator** (pure/deterministic §15): edgeCompleted, DECISION branch gating, guards, JOIN types, pruning/skip cascade
+- [x] **WorkflowDefinitionValidator** (§17.1): node vocabulary, acyclicity, DECISION→LOOP→defaultTarget, FORK/JOIN pairing
+- [x] **Golden/determinism tests** (§17.2): all node types as scenarios, replay=identical
+- [x] **DB schema (Flyway)**: agent_definitions, workflow_definitions, workflow_executions, workflow_checkpoints, hitl_tickets, dlq_messages
+- [x] **Event mapping REST↔Kafka** (§16.1): start→intake, cancel→cancellation, hitl→hitl, worker results→results
+- [x] **Orchestrator handlers**: Intake/DagAdvance, LoopIteration, SweepReaper, Cancellation, HitlResume
+- [x] **REST API** (§16): `/workflows/start` (idempotent), status, checkpoints, cancel; definitions; hitl
+- [x] **Mock agents** (deterministic): generic hash-based executor for all agent types
+- [x] **AgentExecutor seam**: interface in `agent-common`, mock in the worker
+- [x] **Topic provisioner** (AdminClient) + consumer groups / single writer
+- [x] **docker-compose** (Kafka KRaft, Postgres 16, Redis 7.2) + README run instructions
+- [x] **Build & tests** `mvn verify` green
+- [x] **Manual E2E run via Kafka**: reference, XOR, N_OF, guard skip, retryable/fatal/needs-HITL, cancel
 
 ### Bridge Layer (NEW.md §3, UI.md §2–§3)
 - [x] **WorkflowDefinitionBridge** — Quad flat `{nodes[], edges[]}` → Kafka nested DAG
 - [x] **AgentDefinitionBridge** — Quarkus rich config → Kafka reduced config
-- [x] **UnifiedApiGateway** — `/api/v1/unified/*` Router + Quarkus Proxy
-- [x] **ErrorClassifier** — TRANSIENT/FATAL/BUSINESS Taxonomie (§9.5)
+- [x] **UnifiedApiGateway** — `/api/v1/unified/*` router + Quarkus proxy
+- [x] **ErrorClassifier** — TRANSIENT/FATAL/BUSINESS taxonomy (§9.5)
 
 ### Email Input (NEW.md §5, UI.md §5)
 - [x] **EmailInputTransformer** — SMTP/Webhook → Kafka intake
 - [x] **ImapMailListener** — IMAP mailbox polling alternative
-- [x] **MailResponseHandler** — Result events → Response Emails
+- [x] **MailResponseHandler** — result events → response emails
 - [x] **EmailInitiatorStore** — Redis email→workflow tracking
 
 ### Observability (NEW.md §6, UI.md §6)
-- [x] **OrchestratorMetrics** — Prometheus Counter/Timer/Gauge Beans
-- [x] **Grafana Dashboards** — 3 JSON Dashboard Files + Provisioning
-- [x] **Prometheus Config** — prometheus.yml mit scrape target
-- [x] **OTel/Jaeger Config** — docker-compose extensions + otel-config.yaml
+- [x] **OrchestratorMetrics** — Prometheus counter/timer/gauge beans
+- [x] **Grafana dashboards** — 3 JSON dashboard files + provisioning
+- [x] **Prometheus config** — prometheus.yml with scrape target
+- [x] **OTel/Jaeger config** — docker-compose extensions + otel-config.yaml
 - [x] **OpenTelemetry Java Agent wiring** — micrometer-tracing-bridge-brave dependency
 - [x] **W3C Trace Context Propagation** — TracingProducerInterceptor
-- [x] **SchemaRegistryClient** — JSON Schema Registration (BACKWARD compatible)
-- [x] **Confluent Schema Registry JSON Schemas** — 3 JSON Schema Files + startup registration
+- [x] **SchemaRegistryClient** — JSON schema registration (BACKWARD compatible)
+- [x] **Confluent Schema Registry JSON Schemas** — 3 JSON schema files + startup registration
 
 ### Security & Alerting
-- [x] **SecretResolver** — HashiCorp Vault KV v2 Client mit Cache
-- [x] **VaultConfig** — Vault Integration Wiring
-- [x] **SlackNotifier** — Interaktive HITL Alerts mit Buttons
+- [x] **SecretResolver** — HashiCorp Vault KV v2 client with cache
+- [x] **VaultConfig** — Vault integration wiring
+- [x] **SlackNotifier** — interactive HITL alerts with buttons
 - [x] **PagerDutyAlertSender** — Critical/Major/Minor Events API v2
-- [x] **Resilience4j Circuit Breaker** — llm-provider + worker-dispatch Breaker
+- [x] **Resilience4j Circuit Breaker** — llm-provider + worker-dispatch breaker
 
 ### Frontend Integration
-- [x] **Frontend Integration** — kafkaApi.ts + Backend Selector in WorkflowComposer.tsx
-- [x] **Bridge-Kompatibilität** — WorkflowDefinitionBridge + QuadUiPayloadCompatibilityTest
-- [x] **Gateway auf Jackson 3** — `/from-quad` liefert HTTP 202 statt 500
-- [x] **Ack-Mode-Vertrag** — `ListenerAckModeContractTest`
-- [x] **LLM-Orchestrator-E2E** — `LlmDrivenWorkflowE2ETest` (4 Tests, key-gated)
+- [x] **Frontend integration** — kafkaApi.ts + backend selector in WorkflowComposer.tsx
+- [x] **Bridge compatibility** — WorkflowDefinitionBridge + QuadUiPayloadCompatibilityTest
+- [x] **Gateway on Jackson 3** — `/from-quad` returns HTTP 202 instead of 500
+- [x] **Ack mode contract** — `ListenerAckModeContractTest`
+- [x] **LLM orchestrator E2E** — `LlmDrivenWorkflowE2ETest` (4 tests, key-gated)
 
-  Prüft, was ein Festdatentest nicht abdeckt: ob die Bedingung eines Workflows
-  das Feld sieht, das das LLM wirklich liefert. Ohne `OPENAI_API_KEY` werden die
-  vier Tests übersprungen, nicht mit erfundenen Daten grün geschrieben.
+  Checks what a fixed-data test does not cover: whether a workflow's condition
+  sees the field that the LLM actually returns. Without `OPENAI_API_KEY`, the
+  four tests are skipped, not written green with fabricated data.
 
-  Vorher stand hier ein Häkchen ohne Wirklichkeit: der Weg aus der Oberfläche zum
-  Kafka-Backend scheiterte an `R6: no END node`. Der Canvas bietet keinen
-  END-Knoten an, der Orchestrator verlangt beim Speichern aber einen. Die Bridge
-  ergänzt ihn jetzt synthetisch an den Blättern des Graphen. Ohne diesen Fix war
-  **jeder** UI-Workflow abgewiesen.
+  Previously there was a checkmark here without substance: the path from the UI to the
+  Kafka backend failed on `R6: no END node`. The canvas offers no
+  END node, but the orchestrator requires one when saving. The bridge
+  now adds it synthetically at the leaves of the graph. Without this fix,
+  **every** UI workflow was rejected.
 
 ### Multi-Tenant
 - [x] **Multi-Tenant Support** — TenantContext + Interceptor + TenantAwareJdbcTemplate
-- [x] **Tenant Migration** — R__add_tenant_columns.sql mit tenant_id Spalten
+- [x] **Tenant migration** — R__add_tenant_columns.sql with tenant_id columns
 - [x] **Redis Keyspace Prefixing** — EmailInitiatorStore + PrefixCache
 
 ### Infrastructure & Deployment
 - [x] **Helm Charts** — Full k8s deployment templates (Chart.yaml, values.yaml, 5 Templates)
-- [x] **Auto-scaling Worker** — AutoScalingService basierend auf Partition Offset Delta
-- [x] **HITL Portal UI** — HitlPortalController mit HTML Page + Slack Callback
-- [x] **Automatisiertes E2E Testscript** — scripts/e2e-test.sh
+- [x] **Auto-scaling worker** — AutoScalingService based on partition offset delta
+- [x] **HITL Portal UI** — HitlPortalController with HTML page + Slack callback
+- [x] **Automated E2E test script** — scripts/e2e-test.sh
 - [x] **GdprController** — GDPR export/delete/anonymize APIs
-- [x] **ConfigUpdateConsumer** — agent.config.updates Topic Listener
+- [x] **ConfigUpdateConsumer** — agent.config.updates topic listener
 
 ---
 
 ## ⏳ Remaining (next iteration)
 
-| Item | Priorität | Aufwand | Anmerkung |
+| Item | Priority | Effort | Note |
 |------|-----------|---------|-----------|
-| ~~Orchestrator Lease~~ | ~~High~~ | ~~Medium~~ | ✅ `OrchestratorLeaseService.java` mit JDBC ShedLock Pattern |
-| ~~Production Vault Setup~~ | ~~High~~ | ~~Small~~ | ✅ `VaultConfig.java` mit Token/AppRole/K8s Auth + Pre-Fill Script |
-| **Kafka SASL_SSL Production** | High | Medium | sasl-ssl-init.sh erzeugt selbstsignierte Certs; Production CA + mTLS erforderlich |
-| ~~JWT/OIDC API Security~~ | ~~Low~~ | ~~Medium~~ | ✅ `JwtAuthenticationFilter.java` + `SecurityConfig.java` mit Bearer-Token + tenant propagation |
-| **Real LLM Workers** | Medium | Large | ai-agent-service produktionsreif machen (Agent-Def Mapping, echter LLM-E2E-Lauf) |
-| **CDC / Debezium Integration** | Low | Large | PostgreSQL CDC für dynamische Config Updates via `agent.config.updates` |
+| ~~Orchestrator Lease~~ | ~~High~~ | ~~Medium~~ | ✅ `OrchestratorLeaseService.java` with JDBC ShedLock pattern |
+| ~~Production Vault Setup~~ | ~~High~~ | ~~Small~~ | ✅ `VaultConfig.java` with token/AppRole/K8s auth + pre-fill script |
+| **Kafka SASL_SSL Production** | High | Medium | sasl-ssl-init.sh generates self-signed certs; production CA + mTLS required |
+| ~~JWT/OIDC API Security~~ | ~~Low~~ | ~~Medium~~ | ✅ `JwtAuthenticationFilter.java` + `SecurityConfig.java` with bearer token + tenant propagation |
+| **Real LLM Workers** | Medium | Large | make ai-agent-service production-ready (agent def mapping, real LLM E2E run) |
+| **CDC / Debezium Integration** | Low | Large | PostgreSQL CDC for dynamic config updates via `agent.config.updates` |
 | **Schema Evolution Tests** | Low | Small | JSON Schema BACKWARD/FORWARD compatibility testing |
-| **Kubernetes Operator** | Low | Very Large | Custom controller für auto-scale, failover, schema registry management |
+| **Kubernetes Operator** | Low | Very Large | Custom controller for auto-scale, failover, schema registry management |
 
 ---
 
-## 🧭 Item 2 (architektonisch geklärt, kein Code) — Dynamische Task-Topics & agent→topic-Routing
+## 🧭 Item 2 (architecturally clarified, no code) — Dynamic Task Topics & agent→topic Routing
 
-**Sachlage (verifiziert am Code):**
+**Situation (verified against the code):**
 
-- Der Orchestrator publiziert Task-Events **dynamisch pro Agent-Typ** über
-  `TopicNames.tasks(agentType)` → `agent.tasks.{agent_type}` (agentType wird
-  kleingeschrieben; siehe `TaskDispatcher.java:129` und
-  `agent-common/.../kafka/TopicNames.java`). Ein beliebiger neuer agentType
-  (z.B. `coder`) erzeugt damit ad hoc ein Topic `agent.tasks.coder`.
-- Der QUAD-Worker konsumierte bislang eine **statische Topic-Liste**:
-  `worker.quad.task-topics` (Default
+- The orchestrator publishes task events **dynamically per agent type** via
+  `TopicNames.tasks(agentType)` → `agent.tasks.{agent_type}` (agentType is
+  lowercased; see `TaskDispatcher.java:129` and
+  `agent-common/.../kafka/TopicNames.java`). Any new agentType
+  (e.g. `coder`) thus creates an ad-hoc topic `agent.tasks.coder`.
+- The QUAD worker previously consumed a **static topic list**:
+  `worker.quad.task-topics` (default
   `agent.tasks.researcher,agent.tasks.planner,agent.tasks.coder`),
-  verdrahtet im `WorkflowTaskListener` über
+  wired in `WorkflowTaskListener` via
   `@KafkaListener(topics = "#{'${worker.quad.task-topics}'.split(',')}")`.
-- **Folge-Gap:** Wird vom Orchestrator ein agentType dispatched, der nicht in
-  dieser Liste steht, hört der Worker das Topic nicht — die Nachricht hängt im
-  Topic (bzw. landet nur, wenn der Broker `auto.create.topics.enable=true` hat,
-  im erzeugten Topic) und wird nie verarbeitet. Zusätzlich muss die Liste bei
-  jedem neuen Agent-Manifest manuell nachgezogen werden.
+- **Resulting gap:** If the orchestrator dispatches an agentType that is not in
+  this list, the worker does not listen to that topic — the message stays in the
+  topic (or only lands, if the broker has `auto.create.topics.enable=true`,
+  in the created topic) and is never processed. In addition, the list must be
+  extended manually for every new agent manifest.
 
-**Routing-Optionen zur Schließung des Gaps (bewertet, nicht implementiert):**
+**Routing options to close the gap (evaluated, not implemented):**
 
-1. **Topics: Wildcard-Listener (minimal-invasiv, empfohlen).**
-   `@KafkaListener(topicPattern = "agent.tasks.*")` ersetzt die statische Liste.
-   Der Worker konsumiert damit automatisch jeden agentType ohne Konfig-Änderung;
-   Topic-Erzeugung erfolgt weiterhin über den Broker (Auto-Create) oder das Setup.
-   Risiko: Empfang von fremden `agent.tasks.*`-Topics → agentType-Whitelist im
-   Worker behalten (`worker.quad.agents`).
+1. **Topics: wildcard listener (minimally invasive, recommended).**
+   `@KafkaListener(topicPattern = "agent.tasks.*")` replaces the static list.
+   The worker then automatically consumes every agentType without a config change;
+   topic creation continues to happen via the broker (auto-create) or the setup.
+   Risk: receiving foreign `agent.tasks.*` topics → keep an agentType whitelist in the
+   worker (`worker.quad.agents`).
 
-2. **Topics: Dynamische Neubindung (kein Wildcard, voll kontrolliert).**
-   Neuer agentType wird per Lebenszyklus-Event (z.B. `agent.config.updates`)
-   bekannt; der Worker ergänzt das Topic zur Laufzeit über
-   `KafkaListenerEndpointRegistry`/`ConsumerSeekAware` und setzt dann den Offset
-   auf earliest. Aufwändiger, dafür ohne Wildcard-Nebenwirkungen.
+2. **Topics: dynamic rebinding (no wildcard, fully controlled).**
+   A new agentType becomes known via a lifecycle event (e.g. `agent.config.updates`);
+   the worker adds the topic at runtime via
+   `KafkaListenerEndpointRegistry`/`ConsumerSeekAware` and then sets the offset
+   to earliest. More effort, but without wildcard side effects.
 
-3. **Payload-Routing auf ein Single-Sink-Topic (einfachster, stabilster Umbau).**
-   Orchestrator publiziert alle Tasks auf EIN Topic (z.B. `agent.tasks`) mit dem
-   agentType im Payload; der Worker routet intern zu den passenden Agents
-   (`executeStructured` wählt ohnehin schon per `task.agentType()`). Kein
-   Topic-Management, keine Wildcards. Nachteil: Partitionen mischen alle
-   Agent-Typen, Consumer-Group-Lasten sind nicht pro Typ trennbar.
+3. **Payload routing to a single-sink topic (simplest, most stable rework).**
+   The orchestrator publishes all tasks to ONE topic (e.g. `agent.tasks`) with the
+   agentType in the payload; the worker routes internally to the matching agents
+   (`executeStructured` already selects via `task.agentType()` anyway). No
+   topic management, no wildcards. Disadvantage: partitions mix all
+   agent types, consumer group loads cannot be separated per type.
 
-4. **Agent-Config aus DB schließt die Wurzel des Problems mit.**
-   Seit *Item 1* liest der Worker die AgentConfig aus `agent_definitions`
-   (Property `worker.quad.agent-source=db`). Ein neuer Eintrag dort (agent_type
-   `coder`) ist damit sofort konfiguriert — es fehlt nur noch die Topic-Seite
-   (Optionen 1–3), um den Dispatch vollständig dynamisch zu machen.
+4. **Agent config from the DB also closes the root of the problem.**
+   Since *Item 1*, the worker reads the AgentConfig from `agent_definitions`
+   (property `worker.quad.agent-source=db`). A new entry there (agent_type
+   `coder`) is thus configured immediately — only the topic side is still
+   missing (options 1–3) to make dispatch fully dynamic.
 
-*Empfohlener Pfad: Kombination O1 + Item-1-DB-Config.*
+*Recommended path: combination of O1 + Item 1 DB config.*
 
 ---
 
-## 🧭 Item 2 — Status: ✅ Implementiert (O1 Wildcard-Listener + einheitlicher Contract)
+## 🧭 Item 2 — Status: ✅ Implemented (O1 wildcard listener + unified contract)
 
-**Beschlossen & umgesetzt (2026-09-19):** Orchestrator und QUAD-Worker teilen sich
-**einen kanonischen Event-Contract** `TaskEvent`/`ResultEvent` (in `agent-common`,
-Paket `com.agentplatform.common.event`, Jackson-3-Serializer `EventJson`; Feldnamen
-kompatibel zu Jackson-2-Readern via `com.fasterxml.jackson.annotation.JsonProperty` —
+**Decided & implemented (2026-09-19):** Orchestrator and QUAD worker share
+**one canonical event contract** `TaskEvent`/`ResultEvent` (in `agent-common`,
+package `com.agentplatform.common.event`, Jackson 3 serializer `EventJson`; field names
+compatible with Jackson 2 readers via `com.fasterxml.jackson.annotation.JsonProperty` —
 `timeout_ms`, `result_data`).
 
-- `WorkflowTaskListener` nutzt jetzt `@KafkaListener(topicPattern = "${worker.quad.task-topic-pattern:agent\\.tasks\\..*}")`.
-  Property `worker.quad.task-topics` (statische Liste) → `worker.quad.task-topic-pattern`
-  (Wildcard, Env-Override `WORKER_TASK_TOPIC_PATTERN`). Explizit genannte Worker-Topics
-  (`agent.tasks.researcher` usw.) sind damit nicht mehr nötig.
-- Legacy `agent-worker` (deterministic Mock-Agents) lauscht nicht mehr auf `agent.tasks.*`:
-  Default-Pattern → `legacy\.agent\.tasks\..*` (`agent-worker/.../application.yml`).
-  Beiträge des vermeintlichen Legacy-Workers werden damit nicht mehr konsumiert.
-- `docker-compose.yml`: Legacy-`worker`-Service auskommentiert (Begründungskommentar).
-- Orchestrator migriert: `TaskDispatcher.buildTaskEvent` → `TaskEvent`,
+- `WorkflowTaskListener` now uses `@KafkaListener(topicPattern = "${worker.quad.task-topic-pattern:agent\\.tasks\\..*}")`.
+  Property `worker.quad.task-topics` (static list) → `worker.quad.task-topic-pattern`
+  (wildcard, env override `WORKER_TASK_TOPIC_PATTERN`). Explicitly named worker topics
+  (`agent.tasks.researcher` etc.) are therefore no longer necessary.
+- Legacy `agent-worker` (deterministic mock agents) no longer listens on `agent.tasks.*`:
+  default pattern → `legacy\.agent\.tasks\..*` (`agent-worker/.../application.yml`).
+  Contributions from the supposed legacy worker are therefore no longer consumed.
+- `docker-compose.yml`: legacy `worker` service commented out (explanatory comment).
+- Orchestrator migrated: `TaskDispatcher.buildTaskEvent` → `TaskEvent`,
   `WorkflowEngine.onResult`/`DagTopicListener`/`MailResponseHandler` → `ResultEvent`.
-- `KafkaTopicE2ETest` baut seinen Container manuell (`ContainerProperties(TASK_TOPIC)`)
-  und bleibt damit vom Annotation-Wildcard unberührt — weiter grün.
+- `KafkaTopicE2ETest` builds its container manually (`ContainerProperties(TASK_TOPIC)`)
+  and thus remains unaffected by the annotation wildcard — still green.
 
 ---
 
@@ -207,12 +207,12 @@ helm install agentic ./helm/ --set autoscaling.enabled=true
 
 ---
 
-*Stand: 2026-10-02 — Build grün, 270 Tests, 5 davon key-gated (kein LLM-Key nötig). Die Zeile vom 2026-09-19 nannte 101 Tests, die vom 2026-09-29 244; hinzu kamen die Charakterisierungs-, Listener- und Konfigurationstests. Ausserdem sind elf Blocker behoben, die den Betrieb bzw. den Start verhinderten — siehe README, Abschnitt „Verifizierter Stand“.*  
-*Item 1 (Worker-AgentConfig aus Shared-DB `agent_definitions` mit YAML-Fallback, Property-gated) + Item 3 (Worker-e2e-Test: echter LLM-Key `OPENAI_API_KEY`, sonst deterministischer Mock-Fallback) sind implementiert.*  
-*Ebene 3 (DB-E2E) ✅: `JdbcAgentConfigSourceE2ETest` (4 Tests) fährt ein echtes PostgreSQL 16 (Testcontainer, Image `postgres:16-alpine`) mit dem echten `V1__init.sql`-Schema — verifiziert RowMapper/JSONB/Defaults und DB-first-Vorrang vor YAML in der Factory.*  
-*Ebene 4 (Kafka-Topic-Durchstich) ✅: `KafkaTopicE2ETest` (2 Tests) startet einen echten Kafka-Broker in-JVM (spring-kafka-test `EmbeddedKafkaKraftBroker`, offline, kein Docker) — verifiziert die komplette Topic-Kette Orchestrator-Producer → `agent.tasks.researcher` → `WorkflowTaskListener` (echter Batch-Container + MANUAL Ack) → TaskExecutor → `agent.execution.results`, plus den DLQ-Pfad malformed JSON → `agent.execution.dlq`.*  
-*Item 2 (O1) ✅ (2026-09-19): Wildcard-Listener `worker.quad.task-topic-pattern` (Default `agent\\.tasks\\..*`), einheitlicher kanonischer Contract `TaskEvent`/`ResultEvent` in `agent-common` für Orchestrator + QUAD-Worker (Jackson-3/Jackson-2-Wire-Format kompatibel), Legacy-`agent-worker` auf `legacy\.agent\.tasks\..*` verbannt und aus docker-compose entfernt.*  
-*Nächster Schritt: Production Vault Setup + Real LLM Worker Integration.*
+*As of: 2026-10-02 — build green, 270 tests, 5 of them key-gated (no LLM key needed). The line from 2026-09-19 named 101 tests, the one from 2026-09-29 244; the characterization, listener and configuration tests were added. In addition, eleven blockers that prevented operation or startup have been fixed — see README, section "Verified State".*  
+*Item 1 (worker AgentConfig from shared DB `agent_definitions` with YAML fallback, property-gated) + Item 3 (worker E2E test: real LLM key `OPENAI_API_KEY`, otherwise deterministic mock fallback) are implemented.*  
+*Level 3 (DB E2E) ✅: `JdbcAgentConfigSourceE2ETest` (4 tests) runs a real PostgreSQL 16 (test container, image `postgres:16-alpine`) with the real `V1__init.sql` schema — verifies RowMapper/JSONB/defaults and DB-first precedence over YAML in the factory.*  
+*Level 4 (Kafka topic end-to-end) ✅: `KafkaTopicE2ETest` (2 tests) starts a real Kafka broker in-JVM (spring-kafka-test `EmbeddedKafkaKraftBroker`, offline, no Docker) — verifies the complete topic chain orchestrator producer → `agent.tasks.researcher` → `WorkflowTaskListener` (real batch container + MANUAL ack) → TaskExecutor → `agent.execution.results`, plus the DLQ path malformed JSON → `agent.execution.dlq`.*  
+*Item 2 (O1) ✅ (2026-09-19): wildcard listener `worker.quad.task-topic-pattern` (default `agent\\.tasks\\..*`), unified canonical contract `TaskEvent`/`ResultEvent` in `agent-common` for orchestrator + QUAD worker (Jackson 3/Jackson 2 wire format compatible), legacy `agent-worker` banished to `legacy\.agent\.tasks\..*` and removed from docker-compose.*  
+*Next step: production Vault setup + real LLM worker integration.*
 
 ## 🔧 Audit Fixes (2026-09-18)
 
@@ -284,8 +284,8 @@ helm install agentic ./helm/ --set autoscaling.enabled=true
 | **prod** | Same as tls + replicas configured | SASL_SSL + mTLS | ✅ | ✅ Full |
 
 ### Build Statistics
-- **Total Modules:** 5 (parent, agent-common, agent-orchestrator, agent-worker, quad-workflow-worker); die End-to-End-Tests liegen im eigenen Projekt `../integration-tests` (`mvn -o test -Pe2e` von dort)
-- **Total Tests:** 270 (5 key-gated, ohne `OPENAI_API_KEY` übersprungen)
+- **Total Modules:** 5 (parent, agent-common, agent-orchestrator, agent-worker, quad-workflow-worker); the end-to-end tests live in their own project `../integration-tests` (`mvn -o test -Pe2e` from there)
+- **Total Tests:** 270 (5 key-gated, skipped without `OPENAI_API_KEY`)
 - **Java Files:** 100+ across all modules
 - **Lines of Code:** ~10k+ (estimated)
 - **Maven Build Time:** ~8s average
@@ -301,17 +301,17 @@ helm install agentic ./helm/ --set autoscaling.enabled=true
 
 | Item | Status |
 |------|--------|
-| Beide Backends auf identische Postgres-Instanz (`agent_platform`) | ✅ |
-| Flyway-History isoliert (QUAD `quad_schema_history` vs Orchestrator `flyway_schema_history`) | ✅ |
-| `GET/POST /api/v1/agents` (Agent-Registry für Kafka) | ✅ |
-| UnifiedApiGateway: **atomarer** Convert+Persist+Start (kein HTTP-Roundtrip zu Quarkus) | ✅ |
-| Auto-Registrierung referenzierter Agenten (`ensureStub`) | ✅ |
+| Both backends on an identical Postgres instance (`agent_platform`) | ✅ |
+| Flyway history isolated (QUAD `quad_schema_history` vs orchestrator `flyway_schema_history`) | ✅ |
+| `GET/POST /api/v1/agents` (agent registry for Kafka) | ✅ |
+| UnifiedApiGateway: **atomic** convert+persist+start (no HTTP round trip to Quarkus) | ✅ |
+| Auto-registration of referenced agents (`ensureStub`) | ✅ |
 | `fetchKafkaAgents()` in kafkaApi.ts | ✅ |
-| WorkflowComposer: Agent-Loading pro Backend (Quarkus vs Kafka) | ✅ |
-| Kafka-Execute startet Workflow sofort (Save-Lücke entfernt) | ✅ |
-| Security-Toggle `app.security.enabled` (Dev: offen, Prod: JWT) | ✅ |
-| Vite-Proxy `/api/v1`→8080, `/api`→8086 | ✅ |
-| start-backend.sh respektiert `QUARKUS_DATASOURCE_*` | ✅ |
+| WorkflowComposer: agent loading per backend (Quarkus vs Kafka) | ✅ |
+| Kafka execute starts workflow immediately (save gap removed) | ✅ |
+| Security toggle `app.security.enabled` (dev: open, prod: JWT) | ✅ |
+| Vite proxy `/api/v1`→8080, `/api`→8086 | ✅ |
+| start-backend.sh respects `QUARKUS_DATASOURCE_*` | ✅ |
 
-**UI ohne Spring-Backend:** `./start-backend.sh` (SQLite) + `npm run dev` → alles läuft über Quarkus.
-**Shared-DB-Modus:** QUARKUS_DATASOURCE_* auf PG gesetzt → beide Backends nutzen dieselbe DB.
+**UI without Spring backend:** `./start-backend.sh` (SQLite) + `npm run dev` → everything runs via Quarkus.
+**Shared-DB mode:** QUARKUS_DATASOURCE_* set to PG → both backends use the same DB.

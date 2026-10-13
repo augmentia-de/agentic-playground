@@ -1,27 +1,27 @@
-# Umsetzungsplan: Bridge Layer, Observability & Email Input für kafka-platform
+# Implementation Plan: Bridge Layer, Observability & Email Input for kafka-platform
 
-**Erstellt:** 2026-09-17  
-**Letzte Änderung:** 2026-09-18  
-**Status:** Phase 1–4 Implementiert + Frontend Integration  
-**Quellen:** NEW.md §3–§5, UI.md §2–§5  
+**Created:** 2026-09-17  
+**Last modified:** 2026-09-18  
+**Status:** Phases 1–4 implemented + frontend integration  
+**Sources:** NEW.md §3–§5, UI.md §2–§5  
 
 ---
 
-## 1. Übersicht
+## 1. Overview
 
-Dieses Dokument dokumentiert die Umsetzung der Integrationsbrücke zwischen Quarkus-Backend und Kafka-Orchestrator sowie aller ergänzenden Komponenten aus NEW.md und UI.md.
+This document documents the implementation of the integration bridge between the Quarkus backend and the Kafka orchestrator as well as all supplementary components from NEW.md and UI.md.
 
-### 1.1 Umgesetzte Module
+### 1.1 Implemented Modules
 
-| Phase | Modul | Package | Datei(en) | Status |
+| Phase | Module | Package | File(s) | Status |
 |-------|-------|---------|-----------|--------|
 | P0 | Workflow Bridge | `com.agentplatform.bridge` | `WorkflowDefinitionBridge.java`, `QuarkusWorkflow.java`, `QuarkusNode.java`, `QuarkusEdge.java` | ✅ |
-| P0 | Agent Bridge | `com.agentplatform.bridge` | `AgentDefinitionBridge.java` (inkl. WorkerAgentConfig, QuarkusAgent) | ✅ |
+| P0 | Agent Bridge | `com.agentplatform.bridge` | `AgentDefinitionBridge.java` (incl. WorkerAgentConfig, QuarkusAgent) | ✅ |
 | P1 | Prometheus Metrics | `com.agentplatform.orchestrator.metrics` | `OrchestratorMetrics.java` | ✅ |
 | P1 | Grafana Dashboards | `grafana/dashboards/` | `agent-orchestrator-overview.json`, `worker-performance.json`, `queue-health.json` | ✅ |
 | P2 | Unified API Gateway | `com.agentplatform.bridge.web` | `UnifiedApiGateway.java` | ✅ |
 | P3 | Email Transformer | `com.agentplatform.bridge.email` | `EmailInputTransformer.java`, `KafkaProducer.java`, `MailResponseHandler.java` | ✅ |
-| P3 | Control Events | `com.agentplatform.common.event` | `ControlEvents.java` (ergänzt um `EmailIntakeEvent`) | ✅ |
+| P3 | Control Events | `com.agentplatform.common.event` | `ControlEvents.java` (extended with `EmailIntakeEvent`) | ✅ |
 | P4 | Redis Initiator Store | `com.agentplatform.bridge.redis` | `EmailInitiatorStore.java` | ✅ |
 | P4 | GDPR API | `com.agentplatform.orchestrator.web` | `GdprController.java` | ✅ |
 | P4 | Prefix Cache | `com.agentplatform.worker.cache` | `PrefixCache.java` | ✅ |
@@ -30,9 +30,9 @@ Dieses Dokument dokumentiert die Umsetzung der Integrationsbrücke zwischen Quar
 | P4 | Frontend — Kafka API | `quad-quarkus/quad-ui/src/services/` | `kafkaApi.ts` | ✅ |
 | P4 | Frontend — Backend Selector | `quad-quarkus/quad-ui/src/components/` | `WorkflowComposer.tsx` (modified) | ✅ |
 
-### 1.2 Abhängigkeiten
+### 1.2 Dependencies
 
-Neue Dependencies in `agent-orchestrator/pom.xml`:
+New dependencies in `agent-orchestrator/pom.xml`:
 ```xml
 <dependency>
     <groupId>org.springframework.boot</groupId>
@@ -40,30 +40,30 @@ Neue Dependencies in `agent-orchestrator/pom.xml`:
 </dependency>
 ```
 
-Bestehende Dependencies genutzt:
-- `spring-boot-starter-actuator` (bereits vorhanden für Prometheus)
-- `spring-boot-starter-mail` muss manuell added werden (für Email-Funktionalität)
+Existing dependencies used:
+- `spring-boot-starter-actuator` (already present for Prometheus)
+- `spring-boot-starter-mail` must be added manually (for email functionality)
 
 ---
 
-## 2. Detail-Dokumentation
+## 2. Detailed Documentation
 
 ### 2.1 Workflow Definition Bridge (`WorkflowDefinitionBridge.java`)
 
-**Zweck:** Konvertiert quad-ui flat workflow format → Kafka DAG format
+**Purpose:** Converts the quad-ui flat workflow format → Kafka DAG format
 
-#### Mapping-Tabelle
+#### Mapping Table
 
-| Quad Typ | Kafka NodeType | Mapping |
+| Quad Type | Kafka NodeType | Mapping |
 |----------|----------------|---------|
-| `agent` | `STEP` | Direkt |
-| `conditional` | `DECISION` | Kanten → Branches extrahieren |
-| `fork` | `FORK` | Kanten → Branch.firstStep |
+| `agent` | `STEP` | Direct |
+| `conditional` | `DECISION` | Extract edges → branches |
+| `fork` | `FORK` | Edges → Branch.firstStep |
 | `join` | `JOIN` | joinPolicy → JoinType |
-| `loop` | `LOOP` | BFS Loop-Body-Ermittlung |
-| `nested-workflow` | ❌ Feature-Lücke | Ausgabe als Warnung |
+| `loop` | `LOOP` | BFS loop-body detection |
+| `nested-workflow` | ❌ Feature gap | Emitted as warning |
 
-#### Algorithmus
+#### Algorithm
 
 ```
 convert(QuarkusWorkflow qwf):
@@ -77,28 +77,28 @@ convert(QuarkusWorkflow qwf):
 
 #### Attribute Mapping
 
-| Quad Property | Kafka Feld | Transform |
+| Quad Property | Kafka Field | Transform |
 |---------------|------------|-----------|
-| `id` | `stepId` | Identisch |
-| `type` | `nodeType` | Enum-Mapping |
-| `agentType` | `agentType` | Identisch / Default "generic" |
+| `id` | `stepId` | Identical |
+| `type` | `nodeType` | Enum mapping |
+| `agentType` | `agentType` | Identical / default "generic" |
 | `properties.joinPolicy` | `joinType` | `"all"`→`"AND"`, `"any"`→`"XOR"` |
-| `timeoutMs` / `timeoutSeconds` | `timeoutMs` | Sekunden × 1000 |
-| `requiresHumanApproval` | `requiresHumanApproval` | Identisch |
+| `timeoutMs` / `timeoutSeconds` | `timeoutMs` | Seconds × 1000 |
+| `requiresHumanApproval` | `requiresHumanApproval` | Identical |
 | `properties.guardCondition` | `guardCondition` | String |
 
 ### 2.2 Agent Definition Bridge (`AgentDefinitionBridge.java`)
 
-**Zweck:** Konvertiert Quarkus-AgentDefinition → Kafka WorkerAgentConfig
+**Purpose:** Converts Quarkus AgentDefinition → Kafka WorkerAgentConfig
 
-#### Feature-Lücken (dokumentiert)
+#### Feature Gaps (documented)
 
-| Feature | Status | Grund |
+| Feature | Status | Reason |
 |---------|--------|-------|
-| Skills Registry | ❌ Nicht im Worker | Skill-Lookup nicht implementiert |
-| Named Hooks | ❌ Nicht im Worker | pre/post hook Infrastruktur fehlt |
-| Directory Permissions | ❌ Nicht im Worker | Workspace-Konfiguration fehlt |
-| MCP/Sandbox | ❌ Nicht im Worker | Externe Infrastruktur nötig |
+| Skills Registry | ❌ Not in the worker | Skill lookup not implemented |
+| Named Hooks | ❌ Not in the worker | pre/post hook infrastructure missing |
+| Directory Permissions | ❌ Not in the worker | Workspace configuration missing |
+| MCP/Sandbox | ❌ Not in the worker | External infrastructure required |
 
 #### Model Key Resolution
 
@@ -122,23 +122,23 @@ default: 8
 
 **Endpoint:** `GET /actuator/prometheus`
 
-#### Metriken
+#### Metrics
 
-| Name | Typ | Beschreibung | Tags |
+| Name | Type | Description | Tags |
 |------|-----|--------------|------|
-| `orchestrator.workflows_started` | Counter | Workflows gestartet | `status` |
-| `orchestrator.routing_decisions` | Counter | Routing-Entscheidungen | `node_type`, `decision` |
-| `orchestrator.loop_iterations` | Counter | Loop-Iterationen | `workflow_name` |
-| `orchestrator.checkpoints_persisted` | Counter | Checkpoints gespeichert | — |
-| `orchestrator.hitl_tickets_created` | Counter | HITL Tickets erstellt | `reason` |
-| `orchestrator.dlq_enqueued` | Counter | DLQ-Einträge | `error_type` |
-| `orchestrator.workflow_duration_seconds` | DistributionSummary | Ausführungsdauer | — |
-| `orchestrator.routing_evaluation_ms` | DistributionSummary | Routing-Eval-Zeit | — |
-| `orchestrator.validation_duration_ms` | DistributionSummary | Validierungszeit | — |
-| `orchestrator.hitl_open_count` | Gauge | Offene HITL Tickets | — |
-| `orchestrator.stale_executions_found` | Gauge | Veraltete Executions gefunden | — |
+| `orchestrator.workflows_started` | Counter | Workflows started | `status` |
+| `orchestrator.routing_decisions` | Counter | Routing decisions | `node_type`, `decision` |
+| `orchestrator.loop_iterations` | Counter | Loop iterations | `workflow_name` |
+| `orchestrator.checkpoints_persisted` | Counter | Checkpoints persisted | — |
+| `orchestrator.hitl_tickets_created` | Counter | HITL tickets created | `reason` |
+| `orchestrator.dlq_enqueued` | Counter | DLQ entries | `error_type` |
+| `orchestrator.workflow_duration_seconds` | DistributionSummary | Execution duration | — |
+| `orchestrator.routing_evaluation_ms` | DistributionSummary | Routing eval time | — |
+| `orchestrator.validation_duration_ms` | DistributionSummary | Validation time | — |
+| `orchestrator.hitl_open_count` | Gauge | Open HITL tickets | — |
+| `orchestrator.stale_executions_found` | Gauge | Stale executions found | — |
 
-#### application.yml Konfiguration
+#### application.yml Configuration
 
 ```yaml
 management:
@@ -159,7 +159,7 @@ management:
 
 #### agent-orchestrator-overview.json
 
-| Panel | Typ | Query |
+| Panel | Type | Query |
 |-------|-----|-------|
 | Workflows Started | Bar Chart | `sum(increase(orchestrator.workflows_started[5m])) by (status)` |
 | Workflow Duration P50/P95/P99 | Time Series | `histogram_quantile(..., rate(...[5m]))` |
@@ -171,7 +171,7 @@ management:
 
 #### worker-performance.json
 
-| Panel | Typ | Query |
+| Panel | Type | Query |
 |-------|-----|-------|
 | Tasks Received by Agent Type | Bar Chart | `sum(increase(tasks_received_total[5m])) by (agentType)` |
 | Tasks Completed | Bar Chart | `sum(increase(tasks_completed_total[5m])) by (agentType, status)` |
@@ -182,7 +182,7 @@ management:
 
 #### queue-health.json
 
-| Panel | Typ | Query |
+| Panel | Type | Query |
 |-------|-----|-------|
 | Kafka Topic Lag | Time Series | `sum by (topic, partition) (kafka_consumer_lag_records)` |
 | Intake vs Results Rate | Time Series | `rate(kafka_consumergroup_offsets{topic=...})` |
@@ -192,17 +192,17 @@ management:
 
 **Base Path:** `/api/v1/unified`
 
-#### Endpunkte
+#### Endpoints
 
-| Method | Path | Funktion | Header Required |
+| Method | Path | Function | Header Required |
 |--------|------|----------|-----------------|
-| POST | `/workflows/from-quad` | Quad → Kafka Workflow Conversion | `X-Backend: quarkus` |
+| POST | `/workflows/from-quad` | Quad → Kafka workflow conversion | `X-Backend: quarkus` |
 | POST | `/agents/convert` | Rich Agent → Worker Config | — |
 | GET | `/metrics` | Merged Prometheus + Quarkus Metrics | — |
 | GET | `/quarkus/{path}` | REST Proxy to Quarkus | — |
 | GET | `/quarkus/stream/{path}` | SSE Proxy to Quarkus | — |
 
-#### Beispielanfrage
+#### Example Request
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/unified/workflows/from-quad \
@@ -222,8 +222,8 @@ curl -X POST http://localhost:8080/api/v1/unified/workflows/from-quad \
 
 ### 2.6 Email Input Transformer (`EmailInputTransformer.java`)
 
-**Aktivierung:** `app.email.transformer.enabled=true`  
-**Endpunkt:** `POST /api/v1/email/receive`
+**Activation:** `app.email.transformer.enabled=true`  
+**Endpoint:** `POST /api/v1/email/receive`
 
 #### Pipeline
 
@@ -256,15 +256,15 @@ app:
 
 ### 2.7 Mail Response Handler (`MailResponseHandler.java`)
 
-**Aktivierung:** `app.email.responder.enabled=true`
+**Activation:** `app.email.responder.enabled=true`
 
-#### Event-basierte Emails
+#### Event-Based Emails
 
-| Ergebnis | Email Betreff | Inhalt |
+| Result | Email Subject | Content |
 |----------|---------------|--------|
-| COMPLETED | "Workflow Complete: {taskId}" | Summary mit Duration |
+| COMPLETED | "Workflow Complete: {taskId}" | Summary with duration |
 | NEEDS_HITL | "Action Required: HITL Approval for {taskId}" | Approval Link |
-| FAILED_RETRYABLE | "Workflow Error: {taskId}" | Hinweis auf automatisches Retry |
+| FAILED_RETRYABLE | "Workflow Error: {taskId}" | Note about automatic retry |
 | FAILED_FATAL | "Workflow Error: {taskId}" | Fatal error info |
 
 #### Configuration
@@ -282,37 +282,37 @@ app:
 
 ---
 
-## 3. Dateistruktur
+## 3. File Structure
 
 ```
 kafka-platform/
 ├── agent-common/src/main/java/com/agentplatform/
 │   ├── bridge/                          [PHASE 1]
-│   │   ├── AgentDefinitionBridge.java   (#100 Zeilen)
-│   │   ├── QuarkusWorkflow.java         (#30 Zeilen)
-│   │   ├── QuarkusNode.java             (#55 Zeilen)
-│   │   ├── QuarkusEdge.java             (#25 Zeilen)
-│   │   └── WorkflowDefinitionBridge.java (#250 Zeilen)
+│   │   ├── AgentDefinitionBridge.java   (#100 lines)
+│   │   ├── QuarkusWorkflow.java         (#30 lines)
+│   │   ├── QuarkusNode.java             (#55 lines)
+│   │   ├── QuarkusEdge.java             (#25 lines)
+│   │   └── WorkflowDefinitionBridge.java (#250 lines)
 │   ├── common/event/
-│   │   └── ControlEvents.java           (+13 Zeilen neue EmailIntakeEvent)
+│   │   └── ControlEvents.java           (+13 lines new EmailIntakeEvent)
 │   └── orchestrator/metrics/            [PHASE 2]
-│       └── OrchestratorMetrics.java     (#115 Zeilen)
+│       └── OrchestratorMetrics.java     (#115 lines)
 ├── agent-orchestrator/src/main/java/com/agentplatform/orchestrator/
 │   ├── bridge/web/                      [PHASE 3]
-│   │   └── UnifiedApiGateway.java       (#200 Zeilen)
+│   │   └── UnifiedApiGateway.java       (#200 lines)
 │   └── bridge/email/                    [PHASE 4]
-│       ├── EmailInputTransformer.java   (#160 Zeilen)
-│       ├── KafkaProducer.java           (#50 Zeilen)
-│       └── MailResponseHandler.java     (#150 Zeilen)
+│       ├── EmailInputTransformer.java   (#160 lines)
+│       ├── KafkaProducer.java           (#50 lines)
+│       └── MailResponseHandler.java     (#150 lines)
 ├── agent-orchestrator/src/main/resources/
-│   ├── application.yml                  (aktualisiert: actuator exposed)
+│   ├── application.yml                  (updated: actuator exposed)
 │   └── ...
 ├── grafana/dashboards/                  [PHASE 2]
-│   ├── agent-orchestrator-overview.json (#160 Zeilen)
-│   ├── worker-performance.json          (#120 Zeilen)
-│   └── queue-health.json                (#110 Zeilen)
-├── agent-orchestrator/pom.xml           (aktualisiert: webflux added)
-└── IMPL_STATUS.md                       ← dieses Dokument
+│   ├── agent-orchestrator-overview.json (#160 lines)
+│   ├── worker-performance.json          (#120 lines)
+│   └── queue-health.json                (#110 lines)
+├── agent-orchestrator/pom.xml           (updated: webflux added)
+└── IMPL_STATUS.md                       ← this document
 ```
 
 ---
@@ -326,9 +326,9 @@ cd kafka-platform
 mvn clean verify -pl agent-common,agent-orchestrator
 ```
 
-### 4.2 Docker Compose erweitern
+### 4.2 Extending Docker Compose
 
-Für Email-Funktionalität `docker-compose.yml` aktualisieren:
+Update `docker-compose.yml` for email functionality:
 
 ```yaml
   mail-server:
@@ -338,7 +338,7 @@ Für Email-Funktionalität `docker-compose.yml` aktualisieren:
       - "8025:8025"   # Web UI
 ```
 
-Application config ergänzen:
+Add application config:
 
 ```yaml
 spring:
@@ -368,9 +368,9 @@ export QUARKUS_BASE_URL=http://localhost:8086
 
 ## 5. Tests
 
-### 5.1 Unit Tests für Bridge-Klassen
+### 5.1 Unit Tests for Bridge Classes
 
-Empfohlene Test-Szenarien:
+Recommended test scenarios:
 
 ```java
 // WorkflowBridgeTest
@@ -388,7 +388,7 @@ Empfohlene Test-Szenarien:
 @Test void testNullHandlingDefaults() {...}
 ```
 
-### 5.2 Integrationstests
+### 5.2 Integration Tests
 
 ```bash
 # Unified Gateway testen
@@ -403,12 +403,12 @@ curl http://localhost:8080/actuator/prometheus
 
 ---
 
-## 6. Phase 5 Ergänzungen (2026-09-18)
+## 6. Phase 5 Additions (2026-09-18)
 
 ### 6.1 Redis Email Initiator Tracking (`EmailInitiatorStore.java`)
 
-Speichert die Zuordnung `workflowId → initiatorEmail` in Redis.  
-TTL: 7 Tage. Wird vom MailResponseHandler genutzt, um Ergebnis-EMails zurückzusenden.
+Stores the mapping `workflowId → initiatorEmail` in Redis.  
+TTL: 7 days. Used by MailResponseHandler to send result emails back.
 
 Key-Patterns:
 - `email:initator:{workflowId}` → email address
@@ -416,18 +416,18 @@ Key-Patterns:
 
 ### 6.2 GDPR Export/Delete API (`GdprController.java`)
 
-| Method | Path | Beschreibung |
+| Method | Path | Description |
 |--------|------|--------------|
-| GET | `/api/v1/gdpr/export?session={id}` | Export Session-Daten als JSON |
-| GET | `/api/v1/gdpr/export?workflowId={uuid}` | Export Execution + Checkpoints |
-| DELETE | `/api/v1/gdpr/delete?session={id}&confirm=true` | Unwiderrufliche Löschung |
-| POST | `/api/v1/gdpr/anonymize?session={id}` | PII durch Hash ersetzen |
+| GET | `/api/v1/gdpr/export?session={id}` | Export session data as JSON |
+| GET | `/api/v1/gdpr/export?workflowId={uuid}` | Export execution + checkpoints |
+| DELETE | `/api/v1/gdpr/delete?session={id}&confirm=true` | Irreversible deletion |
+| POST | `/api/v1/gdpr/anonymize?session={id}` | Replace PII with a hash |
 
-### 6.3 Prefix Cache im Worker (`PrefixCache.java`)
+### 6.3 Prefix Cache in the Worker (`PrefixCache.java`)
 
-Redis-basiertes Prompt-Caching zur Token-Einsparung.
+Redis-based prompt caching to save tokens.
 
-Algorithmus:
+Algorithm:
 ```
 1. SHA-256(prefix text) → cache hash
 2. lookup redis prefix:cache:{hash}
@@ -441,21 +441,21 @@ stableHash(usePrefix, clearPrefix, cachePrefix, sourceType, sourceValue)
 ```
 
 Stats (Redis keys):
-- `prefix:stats:hits` — Cache Treffer
-- `prefix:stats:misses` — Cache Fehlschläge
+- `prefix:stats:hits` — cache hits
+- `prefix:stats:misses` — cache misses
 
-### 6.4 OTel / Jaeger Konfiguration
+### 6.4 OTel / Jaeger Configuration
 
 **docker/compose-extensions.yml:**
-- Jaeger All-in-One Container (UI :16686, Collector :14268/:14250)
-- OpenTelemetry Collector Contrib mit Transform Processor
+- Jaeger all-in-one container (UI :16686, collector :14268/:14250)
+- OpenTelemetry Collector Contrib with transform processor
 
 **docker/otel-config.yaml:**
 - Receivers: OTLP gRPC/HTTP, Prometheus Scrape
 - Processors: Batch, Transform (resource attributes)
 - Exporters: Jaeger, Prometheus, Logging
 
-**application.yml Ergänzungen:**
+**application.yml additions:**
 ```yaml
 management:
   zipkin:
@@ -467,66 +467,66 @@ management:
 
 ### 6.5 Intake Listener (`IntakeListener.java`)
 
-Zwei Kafka Listener auf dem gleichen Topic mit verschiedenen Groups:
-- `orchestrator-intake-group` — verarbeitet Start-Events
-- `email-tracking-group` — extrahiert `initiatorEmail` und speichert in Redis
+Two Kafka listeners on the same topic with different groups:
+- `orchestrator-intake-group` — processes start events
+- `email-tracking-group` — extracts `initiatorEmail` and stores it in Redis
 
 ### 6.6 Frontend Integration
 
-**kafkaApi.ts** — Neue TypeScript-API-Datei mit Funktionen:
-- `fetchKafkaWorkflows()` — Kafka Workflow Definitions laden
-- `convertQuadToKafka(...)` — Bridge Conversion via REST
-- `startKafkaWorkflow(...)` — Workflow via Kafka starten
+**kafkaApi.ts** — New TypeScript API file with functions:
+- `fetchKafkaWorkflows()` — load Kafka workflow definitions
+- `convertQuadToKafka(...)` — bridge conversion via REST
+- `startKafkaWorkflow(...)` — start workflow via Kafka
 - `getKafkaWorkflowStatus(executionId)` — Status polling
-- `cancelKafkaWorkflow(...)` — Abbrechen
+- `cancelKafkaWorkflow(...)` — cancel
 - `fetchMergedMetrics()` — Merged Prometheus metrics
 
-**WorkflowComposer.tsx** Änderungen:
-- Backend-Selector Dropdown hinzugefügt (Quarkus / Kafka)
-- `mapQuadNodeTypeToKafka()` — Typkonvertierung
-- `runKafkaWorkflow()` — Kafka-spezifisches Polling
-- Auto-load von Kafka workflows wenn Backend gewählt wird
+**WorkflowComposer.tsx** changes:
+- Backend selector dropdown added (Quarkus / Kafka)
+- `mapQuadNodeTypeToKafka()` — type conversion
+- `runKafkaWorkflow()` — Kafka-specific polling
+- Auto-load of Kafka workflows when a backend is selected
 
 ---
 
-## 7. TODO nach diesem Durchgang
+## 7. TODO After This Pass
 
-| Item | Priorität | Aufwand | Anmerkung |
+| Item | Priority | Effort | Note |
 |------|-----------|---------|-----------|
-| ~~Frontend-Integration (Tab-Auswahl)~~ | ~~P0~~ | ~~Medium~~ | ✅ Implemented in WorkflowComposer.tsx |
-| ~~Redis Initiator-E-Mail Tracking~~ | ~~P1~~ | ~~Small~~ | ✅ EmailInitiatorStore.java |
-| Mailbox-Listener (IMAP/POP3) | P1 | Medium | Alternative zu Mailgun/SendGrid Webhook |
-| Schema Registry JSON Schemas | P2 | Medium | Confluent Schema Registry Integration |
-| Vault Secrets Management | P2 | Medium | HashiCorp Vault Integration |
-| ~~OTel/Jaeger Container Config~~ | ~~P2~~ | ~~Small~~ | ✅ compose-extensions.yml + otel-config.yaml |
-| ~~GDPR Export/Delete APIs~~ | ~~P3~~ | ~~Small~~ | ✅ GdprController.java |
-| ~~Advanced Context Prefix Caching~~ | ~~P3~~ | ~~Small~~ | ✅ PrefixCache.java |
-| Multi-Tenant Support | P3 | Large | Tenant-Isolation über Redis Keyspace |
-| Auto-scaling Worker | P3 | Large | Basierend auf Kafka Partition Offset Delta |
+| ~~Frontend integration (tab selection)~~ | ~~P0~~ | ~~Medium~~ | ✅ Implemented in WorkflowComposer.tsx |
+| ~~Redis initiator email tracking~~ | ~~P1~~ | ~~Small~~ | ✅ EmailInitiatorStore.java |
+| Mailbox listener (IMAP/POP3) | P1 | Medium | Alternative to Mailgun/SendGrid webhook |
+| Schema Registry JSON Schemas | P2 | Medium | Confluent Schema Registry integration |
+| Vault Secrets Management | P2 | Medium | HashiCorp Vault integration |
+| ~~OTel/Jaeger container config~~ | ~~P2~~ | ~~Small~~ | ✅ compose-extensions.yml + otel-config.yaml |
+| ~~GDPR export/delete APIs~~ | ~~P3~~ | ~~Small~~ | ✅ GdprController.java |
+| ~~Advanced context prefix caching~~ | ~~P3~~ | ~~Small~~ | ✅ PrefixCache.java |
+| Multi-Tenant Support | P3 | Large | Tenant isolation via Redis keyspace |
+| Auto-scaling Worker | P3 | Large | Based on Kafka partition offset delta |
 
 ---
 
-## 7. Referenzen
+## 7. References
 
-| Dokument | relevante Abschnitte |
+| Document | Relevant sections |
 |----------|---------------------|
 | NEW.md | §3 Bridging, §4 Integration, §5 Email, §6 Observability |
 | UI.md | §2 Format Analysis, §3 Integration Options, §5 Email, §6 Observability |
 | SPEC2.md | §4 Topics, §5 Architecture, §10 HITL, §15 Deterministic Routing |
-| TODO.md | Masterplan mit Done/To Do Checklist |
+| TODO.md | Master plan with Done/To Do checklist |
 
 ---
 
-*Ende des Dokuments.*  
-*Nächster Schritt: Frontend-Integration der Unified API*
+*End of document.*  
+*Next step: frontend integration of the Unified API*
 
 ---
 
-## 8. Phase 6 Ergänzungen (2026-09-18) — Frontend + Redis + PrefixCache
+## 8. Phase 6 Additions (2026-09-18) — Frontend + Redis + PrefixCache
 
 ### 8.1 quad-ui/src/services/kafkaApi.ts
 
-Neue TypeScript-API-Datei für Kafka-Backend-Kommunikation:
+New TypeScript API file for Kafka backend communication:
 
 ```typescript
 // Workflow Definitions
@@ -550,7 +550,7 @@ fetchMergedMetrics() → {kafkaOrchestrator, quadQuarkus, merged}
 
 ### 8.2 quad-ui/src/components/WorkflowComposer.tsx Modifications
 
-**Zusätzliche States:**
+**Additional states:**
 ```tsx
 const [backend, setBackend] = useState<'quarkus' | 'kafka'>('quarkus')
 const [kafkaWorkflows, setKafkaWorkflows] = useState<KafkaWorkflowDefinition[]>([])
@@ -564,14 +564,14 @@ const [kafkaWorkflows, setKafkaWorkflows] = useState<KafkaWorkflowDefinition[]>(
 </select>
 ```
 
-**Handler Änderungen:**
-- `handleExecute()` prüft `backend` und ruft je nach Wert REST oder Kafka API auf
-- `mapQuadNodeTypeToKafka(type)` wandelt Quad-Typen in Kafka-Enums um
-- `runKafkaWorkflow(executionId)` pollt `/api/v1/workflows/{id}` alle 2s
+**Handler changes:**
+- `handleExecute()` checks `backend` and calls the REST or Kafka API depending on its value
+- `mapQuadNodeTypeToKafka(type)` converts Quad types into Kafka enums
+- `runKafkaWorkflow(executionId)` polls `/api/v1/workflows/{id}` every 2s
 
 ### 8.3 kafka-platform/agent-orchestrator/.../bridge/redis/EmailInitiatorStore.java
 
-Redis-basierte Speicherung der Zuordnung Email → Workflow-ID.
+Redis-based storage of the email → workflow ID mapping.
 
 Keys:
 - `email:initator:{workflowId}` → email address (TTL 7d)
@@ -579,17 +579,17 @@ Keys:
 
 ### 8.4 kafka-platform/agent-worker/.../cache/PrefixCache.java
 
-Redis Prompt-Caching mit SHA-256 Hash als Key.
+Redis prompt caching with a SHA-256 hash as the key.
 
 Features:
-- `getOrFetch(hash, fallback)` — Cache Lookup
-- `put(hash, value)` — Caches entry mit TTL
-- `stableHash(usePrefix, clearPrefix, cachePrefix, sourceType, sourceValue)` — deterministische Hash-Erzeugung
-- Preload-Funktion für Startup-Prefixes
+- `getOrFetch(hash, fallback)` — cache lookup
+- `put(hash, value)` — caches entry with TTL
+- `stableHash(usePrefix, clearPrefix, cachePrefix, sourceType, sourceValue)` — deterministic hash generation
+- Preload function for startup prefixes
 
 Stats:
-- `prefix:stats:hits` — Counter Treffer
-- `prefix:stats:misses` — Counter Fehlschläge
+- `prefix:stats:hits` — counter hits
+- `prefix:stats:misses` — counter misses
 
 ### 8.5 docker/compose-extensions.yml
 
@@ -615,7 +615,7 @@ Exporters: Jaeger, Prometheus, Logging
 Pipelines: traces → jaeger, metrics → prometheus
 ```
 
-### 8.7 application.yml Ergänzungen
+### 8.7 application.yml Additions
 
 ```yaml
 management:
@@ -629,38 +629,38 @@ management:
 
 ---
 
-## 9. Phase 7 Ergänzungen (2026-09-18) — Alerting, Vault, Schema Registry & Co.
+## 9. Phase 7 Additions (2026-09-18) — Alerting, Vault, Schema Registry & Co.
 
 ### 9.1 ErrorClassifier (`agent-common/common/model/ErrorClassification.java`)
 
-Drei-Kategorien-Taxonomie für Fehlerklassifizierung:
+Three-category taxonomy for error classification:
 
-| Kategorie | Verhalten | Beispiele |
+| Category | Behavior | Examples |
 |-----------|-----------|-----------|
-| `TRANSIENT` | Automatisch retryen | Timeout, Rate Limit, Netzwerkfehler, Circuit Breaker |
-| `BUSINESS` | HITL-Eskalation nötig | Guardrail-Verletzung, niedrige Konfidenz, Format-Problem |
-| `FATAL` | Sofort DLQ, kein Retry | Ungültige Step-ID, fehlende Config, Datenkorruption |
+| `TRANSIENT` | Automatically retry | Timeout, rate limit, network error, circuit breaker |
+| `BUSINESS` | HITL escalation required | Guardrail violation, low confidence, format problem |
+| `FATAL` | Immediate DLQ, no retry | Invalid step ID, missing config, data corruption |
 
-Heuristiken:
-- `classify(String errorMessage)` — Keyword-Matching im Fehlertext
-- `classifyFromException(Class<?>)` — Exception-Klassenname prüfen
+Heuristics:
+- `classify(String errorMessage)` — keyword matching in the error text
+- `classifyFromException(Class<?>)` — check the exception class name
 
 ### 9.2 HashiCorp Vault Integration (`SecretResolver.java`)
 
-KV v2 Engine Client mit In-Memory Cache (TTL-basiert):
+KV v2 engine client with in-memory cache (TTL-based):
 
-| Funktion | Beschreibung |
+| Function | Description |
 |----------|-------------|
-| `resolve(path, key)` | Einzelnen Secret-Wert holen |
-| `resolveAll(path)` | Alle Keys als Map |
-| `invalidate(path, key)` | Cache-Eintrag entfernen |
-| `isConnected()` | Health-Check |
+| `resolve(path, key)` | Fetch a single secret value |
+| `resolveAll(path)` | All keys as a map |
+| `invalidate(path, key)` | Remove cache entry |
+| `isConnected()` | Health check |
 
-Auth-Methoden:
-- Kubernetes Service Account Token (empfohlen)
+Auth methods:
+- Kubernetes service account token (recommended)
 - AppRole (Role ID + Secret ID)
 
-Vorgesehene Pfade:
+Intended paths:
 - `secret/data/agent-platform/db` → DB Credentials
 - `secret/data/agent-platform/openai` → LLM API Keys
 - `secret/data/agent-platform/slack` → Slack Webhook URL
@@ -669,24 +669,24 @@ Vorgesehene Pfade:
 ### 9.3 Alerting Module
 
 **SlackNotifier:**
-- HITL-Eskalation mit interaktiven Buttons (Approve/Reject/Retry)
-- Simple Notifications mit Color-Coded Attachments
-- Aktiv via `app.slack.enabled=true`
+- HITL escalation with interactive buttons (Approve/Reject/Retry)
+- Simple notifications with color-coded attachments
+- Enabled via `app.slack.enabled=true`
 
 **PagerDutyAlertSender:**
-- Critical/Major/Minor Severity Events (Events API v2)
-- Resolve-Funktion nach HITL-Abschluss
-- Aktiv via `app.pagerduty.enabled=true`
+- Critical/major/minor severity events (Events API v2)
+- Resolve function after HITL completion
+- Enabled via `app.pagerduty.enabled=true`
 
 ### 9.4 Schema Registry Client (`SchemaRegistryClient.java`)
 
-JSON Schema Registration mit BACKWARD-Compatibility Enforcement:
-- `registerAll()` — alle Schemas at startup
-- `getVersion(subject, schema)` — neue Version falls changed
-- `isCompatible(subject, newSchema)` — Kompatibilitätsprüfung
-- `listSubjects(prefix)` — Registered subjects auflisten
+JSON schema registration with BACKWARD compatibility enforcement:
+- `registerAll()` — all schemas at startup
+- `getVersion(subject, schema)` — new version if changed
+- `isCompatible(subject, newSchema)` — compatibility check
+- `listSubjects(prefix)` — list registered subjects
 
-Konfiguration:
+Configuration:
 ```yaml
 app:
   schema-registry:
@@ -698,7 +698,7 @@ app:
 
 ### 9.5 Resilience4j Circuit Breaker
 
-Konfigurierte Breaker in application.yml:
+Configured breakers in application.yml:
 
 | Breaker | Sliding Window | Failure Threshold | Open State Duration |
 |---------|---------------|-------------------|---------------------|
@@ -717,7 +717,7 @@ resilience4j-circularbuffer:2.2.0
 
 ### 9.6 Grafana Provisioning
 
-Neue Verzeichnisstruktur:
+New directory structure:
 ```
 grafana/
 ├── datasources/prometheus.yml       # Prometheus Datasource
@@ -735,17 +735,16 @@ httpMethod: POST
 
 ### 9.7 ConfigUpdateConsumer (`ConfigUpdateConsumer.java`)
 
-Kafka Listener auf `agent.config.updates`:
-- Lädt geänderte Agent-Configs aus PostgreSQL per CDC
-- Unterstützt UPDATE und DELETE change types
-- Gruppend-ID: `config-updates-group`
+Kafka listener on `agent.config.updates`:
+- Loads changed agent configs from PostgreSQL via CDC
+- Supports UPDATE and DELETE change types
+- Group ID: `config-updates-group`
 
-### 9.8 MailResponseHandler verbessert
+### 9.8 MailResponseHandler Improved
 
-- Import für ResultStatus korrigiert
-- Parsing von Kafka JSON-Payload optimiert
+- Fixed import for ResultStatus
+- Optimized parsing of the Kafka JSON payload
 
-### 9.9 Application.yml Ergänzungen
+### 9.9 Application.yml Additions
 
-Resilience4j + OTel Tracing + Schéma Registry config hinzugefügt.
-
+Added Resilience4j + OTel tracing + schema registry config.

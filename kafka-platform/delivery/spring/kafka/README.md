@@ -1,10 +1,10 @@
-# Kafka-Plattform
+# Kafka platform
 
-Orchestrator und Agent-Worker auf Spring Boot. Der Orchestrator nimmt
-Workflow-Starts und -Ergebnisse entgegen und steuert den DAG; die Worker führen
-einzelne Tasks aus.
+Orchestrator and agent worker on Spring Boot. The orchestrator accepts
+workflow starts and results and drives the DAG; the workers execute
+individual tasks.
 
-## Inhalt
+## Contents
 
 ```
 deployment/
@@ -27,19 +27,19 @@ config/
     └── grafana/                        Dashboards, Datasource, Provisioning
 ```
 
-## Zwei Startwege
+## Two startup paths
 
-**Vollständiger Stack.** `docker-compose.yml` bringt Kafka, Postgres, Redis,
-Vault, Prometheus, Grafana, Jaeger und den OTel-Collector mit.
+**Complete stack.** `docker-compose.yml` brings along Kafka, Postgres, Redis,
+Vault, Prometheus, Grafana, Jaeger and the OTel collector.
 
 ```bash
 cd deployment/compose
 docker compose up -d --build
 ```
 
-**Gegen bestehende Infrastruktur.** `docker-compose.minimal.yml` startet nur
-Orchestrator und Worker und bindet Kafka, Postgres und Redis von außen ein.
-Beide Variablen sind Pflicht und werden beim Start geprüft:
+**Against existing infrastructure.** `docker-compose.minimal.yml` starts only
+the orchestrator and worker and connects Kafka, Postgres and Redis from outside.
+Both variables are mandatory and are checked at startup:
 
 ```bash
 export EXTERNAL_KAFKA_BOOTSTRAP_SERVERS=kafka.example.internal:9092
@@ -51,7 +51,7 @@ cd deployment/compose
 docker compose -f docker-compose.minimal.yml up -d --build
 ```
 
-Für den kompletten Lebenszyklus liegt `scripts/start-minimal.sh` bei
+For the complete lifecycle, `scripts/start-minimal.sh` is included
 (`build`, `start`, `stop`, `status`, `logs`).
 
 ## Helm
@@ -62,19 +62,19 @@ helm install agent-platform deployment/helm \
   -f meine-umgebung.yaml
 ```
 
-`deployment/helm` ist der Chart-Stand aus dem Quell-Repo und wird nicht
-verändert. Zielsystem-Anpassungen gehören in ein Overlay unter `config/helm`.
+`deployment/helm` is the chart state from the source repo and is not
+changed. Target system adjustments belong in an overlay under `config/helm`.
 
-Der Chart-Default startet Kafka mit einem Replikat und Postgres mit dem
-Passwort `agent`. Beides gehört in einer Auslieferung ersetzt, siehe
+The chart default starts Kafka with one replica and Postgres with the
+password `agent`. Both should be replaced in a delivery, see
 `config/helm/values.delivery.yaml`.
 
-## Zwei Worker
+## Two workers
 
-`compose/docker-compose.two-workers.yml` startet Orchestrator plus **zwei**
-`quad-workflow-worker`. Beide teilen sich eine Consumer-Group
-(`WORKER_QUAD_AGENT_SOURCE=db`, `WORKER_QUAD_GROUP_ID=quad-workflow-worker`), damit
-Kafka die Partitionen aufteilt.
+`compose/docker-compose.two-workers.yml` starts the orchestrator plus **two**
+`quad-workflow-worker`. Both share one consumer group
+(`WORKER_QUAD_AGENT_SOURCE=db`, `WORKER_QUAD_GROUP_ID=quad-workflow-worker`), so that
+Kafka distributes the partitions.
 
 ```bash
 export EXTERNAL_KAFKA_BOOTSTRAP_SERVERS=kafka.example:9092
@@ -86,72 +86,72 @@ cd deployment/compose
 docker compose -f docker-compose.two-workers.yml up -d --build
 ```
 
-Host-Ports sind über `ORCH_HOST_PORT`, `WORKER1_HOST_PORT`, `WORKER2_HOST_PORT`
-setzbar (Default 8080/8092/8093). Ein festes Port-Mapping kollidiert sonst mit
-irgendetwas auf dem Host, und der Fehler erscheint erst beim `up` als
-undurchsichtiges `address already in use` aus dem Daemon.
+Host ports can be set via `ORCH_HOST_PORT`, `WORKER1_HOST_PORT`, `WORKER2_HOST_PORT`
+(default 8080/8092/8093). A fixed port mapping otherwise collides with
+something on the host, and the error only appears at `up` as an
+opaque `address already in use` from the daemon.
 
-### Gemessene Verteilung
+### Measured distribution
 
-Drei Container, Kafka single-node, 120 Partitionen (10 Agent-Typen × 12):
+Three containers, Kafka single-node, 120 partitions (10 agent types × 12):
 
-| Prüfung | Ergebnis |
+| Check | Result |
 |---|---|
-| Partitionen je Instanz | **60 / 60** |
-| davon je Agent-Topic (`ex-market-scout`, `-analyst`, `-writer`) | **6 / 6** |
-| 7 Workflows, 18 ausgeführte Tasks | **8 auf worker-1, 12 auf worker-2** |
+| Partitions per instance | **60 / 60** |
+| of which per agent topic (`ex-market-scout`, `-analyst`, `-writer`) | **6 / 6** |
+| 7 workflows, 18 executed tasks | **8 on worker-1, 12 on worker-2** |
 
-### Was zwei Worker bringen — und was nicht
+### What two workers bring — and what they do not
 
-Der Durchsatz wächst mit der **Anzahl gleichzeitig laufender Workflows**, nicht
-innerhalb eines Workflows. Grund ist der Task-Key: er ist die `workflow_id`, und
-alle Agent-Typ-Topics haben 12 Partitionen. Deshalb landen alle Schritte eines
-Workflows auf **demselben Partitionsindex** — bei 12 Partitionen also auf
-derselben Index in jedem Topic.
+Throughput grows with the **number of concurrently running workflows**, not
+within a workflow. The reason is the task key: it is the `workflow_id`, and
+all agent-type topics have 12 partitions. Therefore all steps of a
+workflow land on **the same partition index** — with 12 partitions that is
+the same index in every topic.
 
-Daraus folgt:
+It follows that:
 
-* Ein sequenzieller Workflow läuft auf **einer** Instanz, nämlich der, die die
-  passenden Partitionen hält. Er ist nicht auf beide verteilt.
-* Verteilt wird über Workflows hinweg. Bei zwei aufeinanderfolgenden Läufen
-  derselben Definition passiert es, dass beide auf derselben Instanz landen —
-  bei nur wenigen Workflows ist das kein Fehler, sondern der Hash.
-* Wer Parallelität **innerhalb** eines Workflows braucht, muss parallele Zweige
-  im DAG bauen. Die laufen dann als Batch (bis `max.poll.records`, Default 8)
-  gleichzeitig — aber weiterhin auf der Instanz, die ihre Partition hält.
-* Fällt eine Instanz aus, halbiert sich der Durchsatz; Workflows laufen weiter,
-  die auf der verbliebenen Partition sitzen.
+* A sequential workflow runs on **one** instance, namely the one that
+  holds the matching partitions. It is not distributed across both.
+* Distribution happens across workflows. With two consecutive runs
+  of the same definition, it can happen that both land on the same instance —
+  with only a few workflows that is not a bug, but the hash.
+* Anyone who needs parallelism **within** a workflow must build parallel branches
+  in the DAG. Those then run as a batch (up to `max.poll.records`, default 8)
+  simultaneously — but still on the instance that holds their partition.
+* If an instance fails, throughput is halved; workflows continue that
+  sit on the remaining partition.
 
-`WORKER_MAX_CONCURRENT_TASKS` ist **pro Instanz**. Der Wert wird verdoppelt
-wirksam, deshalb ist er im Compose explizit gesetzt statt auf dem Worker-Default
-von 24 zu bleiben.
+`WORKER_MAX_CONCURRENT_TASKS` is **per instance**. The value becomes
+effective doubled, which is why it is set explicitly in Compose instead of
+remaining at the worker default of 24.
 
-### Zwei eigene Services statt `--scale`
+### Two dedicated services instead of `--scale`
 
-Jede Instanz braucht ihren eigenen veröffentlichten Port für Health und Metriken.
-Bei `--scale quad-worker=2` kollidiert ein festes Port-Mapping auf der zweiten
-Replika. Für größere Flotten: Port-Mapping entfernen und
-`docker compose up -d --scale quad-worker=2` verwenden — dann sind
-Health und Metriken nur noch über den Orchestrator bzw. im Cluster erreichbar.
+Each instance needs its own published port for health and metrics.
+With `--scale quad-worker=2`, a fixed port mapping collides on the second
+replica. For larger fleets: remove the port mapping and
+use `docker compose up -d --scale quad-worker=2` — then
+health and metrics are only reachable via the orchestrator or in the cluster.
 
-## Health und Metriken
+## Health and metrics
 
-| Zweck | Endpunkt |
+| Purpose | Endpoint |
 |---|---|
 | Health | `GET /actuator/health` |
-| Metriken | `GET /actuator/prometheus` |
-| Workflow-Status | `GET /api/v1/workflows/{executionId}` |
-| HITL-Tickets | `GET /api/v1/hitl/tickets` |
+| Metrics | `GET /actuator/prometheus` |
+| Workflow status | `GET /api/v1/workflows/{executionId}` |
+| HITL tickets | `GET /api/v1/hitl/tickets` |
 
-Für den Betrieb relevant: `orchestrator.stale_result_total` zählt Ergebnisse,
-die zu einem Task gehören, der nicht mehr aktuell ist. Ein dauerhaft
-steigender Wert bedeutet, dass Worker Ergebnisse liefern, die der Orchestrator
-verwirft — typisch nach einem Rebalance.
+Relevant for operations: `orchestrator.stale_result_total` counts results
+that belong to a task that is no longer current. A permanently
+rising value means that workers deliver results that the orchestrator
+discards — typical after a rebalance.
 
-## Noch offen vor einer Auslieferung
+## Still open before a delivery
 
-`app.security.enabled` steht auf `false`, das JWT-Secret hat einen
-Platzhalter-Default und `POSTGRES_PASSWORD` einen Default-Wert. Alle Endpunkte
-dieser Plattform sind damit ohne Authentifizierung erreichbar, sobald der Port
-erreichbar ist. Für einen Betrieb mit Netzzugang ist das zu entscheiden; die
-Ablage enthält bewusst keine Security-Konfiguration.
+`app.security.enabled` is set to `false`, the JWT secret has a
+placeholder default and `POSTGRES_PASSWORD` a default value. All endpoints
+of this platform are therefore reachable without authentication as soon as the port
+is reachable. For operation with network access, this must be decided; the
+folder deliberately contains no security configuration.

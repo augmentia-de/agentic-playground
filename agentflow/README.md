@@ -14,12 +14,12 @@ root aggregator. Builds/deploys independently.
 
 ## Modules
 
-| Module | Inhalt | Abhängigkeiten |
+| Module | Content | Dependencies |
 |---|---|---|
-| `agentflow-core` | Framework-neutraler **LangGraph4j**-Graph (`AgentFlowGraph`, `AgentFlowState`) | nur `langgraph4j-core` |
-| `agentflow-examples` | Fünf **Sample-Business-Cases** als durable Temporal-Workflows (Support-Triage, Contract-Review, Invoice-Saga, Market-Research, Onboarding) | `agentflow-core`, `quad-core`, Temporal |
-| `agentflow-app` | **Spring Boot**-App: Graph-Reasoning via **Spring AI** in einer **Temporal**-Activity, Workflow + REST | `agentflow-core`, `agentflow-examples`, `quad-core`, Spring AI, Temporal |
-| `agentflow-ui` | **Angular 20** Webapp: Dashboard, Runs, Workflow-/Agent-Editor, HITL, Observability, Examples, Settings (siehe `UI.md`) | `agentflow-app` (REST) |
+| `agentflow-core` | Framework-neutral **LangGraph4j** graph (`AgentFlowGraph`, `AgentFlowState`) | only `langgraph4j-core` |
+| `agentflow-examples` | Five **sample business cases** as durable Temporal workflows (support triage, contract review, invoice saga, market research, onboarding) | `agentflow-core`, `quad-core`, Temporal |
+| `agentflow-app` | **Spring Boot** app: graph reasoning via **Spring AI** in a **Temporal** activity, workflow + REST | `agentflow-core`, `agentflow-examples`, `quad-core`, Spring AI, Temporal |
+| `agentflow-ui` | **Angular 20** web app: dashboard, runs, workflow/agent editor, HITL, observability, examples, settings (see `UI.md`) | `agentflow-app` (REST) |
 
 The split is the point: **Temporal owns durability**, **LangGraph4j owns the graph**, the
 LLM/tool calls live in **activities** (never in deterministic workflow code).
@@ -38,8 +38,8 @@ cd agentflow && mvn -DskipTests package
 
 ## Run (Temporal + App)
 
-**Schnellstart (empfohlen)** — startet Temporal (Docker), App und optional die UI und legt
-Beispiel-Daten an:
+**Quick start (recommended)** — starts Temporal (Docker), the app and optionally the UI, and creates
+sample data:
 
 ```bash
 cd agentflow
@@ -49,7 +49,7 @@ cd agentflow
 ./start-agentflow.sh --no-demo-runs        # nur Memory/Capabilities seeden
 ```
 
-Manuell:
+Manually:
 
 ```bash
 # 1) Temporal dev server (Docker)
@@ -263,28 +263,28 @@ curl -X POST "http://localhost:8095/examples/market-research?topic=Temporal%20vs
 curl -X POST "http://localhost:8095/examples/onboarding?newHire=Ada&projectScope=agentflow"
 ```
 
-| Case | Komponierte Fähigkeiten |
+| Case | Composed capabilities |
 |---|---|
 | `support-triage` | Structured Output, Memory, Capability/RAG, HITL |
-| `contract-review` | PII-Anonymisierung, Guardrail, Structured Output, HITL |
-| `invoice-processing` | Saga/Kompensation (durabel), Structured Output |
-| `market-research` | Sub-Agenten, Web-Tools |
-| `onboarding` | Long-term Memory, Capability-Search, MCP |
+| `contract-review` | PII anonymization, Guardrail, Structured Output, HITL |
+| `invoice-processing` | Saga/compensation (durable), Structured Output |
+| `market-research` | Sub-agents, Web tools |
+| `onboarding` | Long-term Memory, Capability-search, MCP |
 
 ## Declarative workflow definitions (`quad.workflow` v2)
 
-Neben den Java-Workflows lädt `agentflow-app` **deklarative Definitionen** im kanonischen
-`quad.workflow`-v2-Format (dieselben Schemas/Validatoren wie `quad-quarkus`/`kafka-platform`,
-wiederverwendet aus `quad-workflow-core`):
+Besides the Java workflows, `agentflow-app` loads **declarative definitions** in the canonical
+`quad.workflow` v2 format (the same schemas/validators as `quad-quarkus`/`kafka-platform`,
+reused from `quad-workflow-core`):
 
-- Dateien: `agentflow-app/src/main/resources/workflows/*.json` (die fünf Business-Cases,
-  jeweils mit eingebettetem `agents[]`).
-- Beim Start werden sie mit `QuadWorkflowPublishCompiler` publiziert (füllt `contentHash`,
-  setzt `status: published`, prüft gegen das v2-JSON-Schema) und mit
-  `QuadWorkflowSemanticValidator` geprüft (genau ein `end`, azyklisches `dependsOn`,
-  auflösbare Referenzen). **Fail-closed**: eine ungültige Datei verhindert den Start.
-- Ort konfigurierbar über `agentflow.workflows.location` (Default `classpath*:workflows/*.json`,
-  z. B. `file:./workflows/*.json`).
+- Files: `agentflow-app/src/main/resources/workflows/*.json` (the five business cases,
+  each with an embedded `agents[]`).
+- At startup they are published with `QuadWorkflowPublishCompiler` (fills `contentHash`,
+  sets `status: published`, validates against the v2 JSON schema) and checked with
+  `QuadWorkflowSemanticValidator` (exactly one `end`, acyclic `dependsOn`,
+  resolvable references). **Fail-closed**: an invalid file prevents startup.
+- Location configurable via `agentflow.workflows.location` (default `classpath*:workflows/*.json`,
+  e.g. `file:./workflows/*.json`).
 
 ```bash
 # Definitionen auflisten / im Volltext (publiziert, mit Hashes)
@@ -297,8 +297,8 @@ curl -X POST "http://localhost:8095/agentflow/runs/declarative?workflowId=market
 curl -X POST "http://localhost:8095/agentflow/runs/declarative/<temporalId>/approve?approved=true"
 ```
 
-Beispiel-Definition (Auszug): `mainWorkflow.nodes` mit `type: agent` + `agent.ref` auf einen
-Eintrag aus `agents[]`; `requiresHumanApproval` markiert HITL-Knoten.
+Example definition (excerpt): `mainWorkflow.nodes` with `type: agent` + `agent.ref` to an
+entry from `agents[]`; `requiresHumanApproval` marks HITL nodes.
 
 ```jsonc
 { "format": "quad.workflow", "schemaVersion": 2,
@@ -311,23 +311,23 @@ Eintrag aus `agents[]`; `requiresHumanApproval` markiert HITL-Knoten.
                 "systemPrompt": "..." } ] }
 ```
 
-Der Node-Typ-Vertex ist damit derselbe wie in quad/kafka (`agent`, `decision`, `loop`, `fork`,
-`join`, `hitl`, `subworkflow`, `end`). Der generische Runner führt **alle** Knotentypen aus:
-`agent`, `decision` (Mini-Conditions, Branch-Pruning), `loop` (maxIterations + exitCondition),
-`fork`/`join` (`all`/`any`/`n_of_m`), `hitl` (per-Node-Signal) und `end`; `subworkflow`-Knoten
-werden inline expandiert. Authoring wird nach `agentflow.workflows.state-dir` persistiert (mit
-Versions-Snapshots), einsehbar über `/agentflow/workflows/{id}/versions`.
+The node-type vertex is therefore the same as in quad/kafka (`agent`, `decision`, `loop`, `fork`,
+`join`, `hitl`, `subworkflow`, `end`). The generic runner executes **all** node types:
+`agent`, `decision` (mini conditions, branch pruning), `loop` (maxIterations + exitCondition),
+`fork`/`join` (`all`/`any`/`n_of_m`), `hitl` (per-node signal) and `end`; `subworkflow` nodes
+are expanded inline. Authoring is persisted to `agentflow.workflows.state-dir` (with
+version snapshots), viewable via `/agentflow/workflows/{id}/versions`.
 
-### Guardrails, PII & Hooks pro Agent (deklarativ)
+### Guardrails, PII & hooks per agent (declarative)
 
-Agenten im v2-Dokument können Sicherheits-/Compliance-Features **deklarativ** setzen; der Runner
-(`DeclarativeActivitiesImpl`) wertet sie beim Bau des quad-core-Agenten aus:
+Agents in the v2 document can set security/compliance features **declaratively**; the runner
+(`DeclarativeActivitiesImpl`) evaluates them when building the quad-core agent:
 
-| Feld | Werte | Wirkung |
+| Field | Values | Effect |
 |---|---|---|
-| `guardrailsInput` | `pii`, `sql-injection`, `prompt-injection` | Eingabe-Prüfung **vor** dem Modellaufruf |
-| `guardrailsOutput` | dieselben Namen | Ausgabe-Prüfung **nach** dem Modellaufruf |
-| `hooks` | `pii` / `pii:EMAIL,PHONE_NUMBER,…`, `audit` | PII-Maskierung (`[REDACTED]`), Audit-Trail |
+| `guardrailsInput` | `pii`, `sql-injection`, `prompt-injection` | Input check **before** the model call |
+| `guardrailsOutput` | the same names | Output check **after** the model call |
+| `hooks` | `pii` / `pii:EMAIL,PHONE_NUMBER,…`, `audit` | PII masking (`[REDACTED]`), audit trail |
 
 ```jsonc
 { "id": "ex-guarded", "name": "Guarded", "model": "…", "systemPrompt": "…",
@@ -336,19 +336,19 @@ Agenten im v2-Dokument können Sicherheits-/Compliance-Features **deklarativ** s
   "hooks": ["pii:EMAIL,PHONE_NUMBER,CREDIT_CARD", "audit"] }
 ```
 
-Hinweis: Die Guardrails werden von quad-core's `GuardrailPlugin` im Hook-Pipeline durchgesetzt
-(`beforeModelCall`/`afterModelCall`); ein Block liefert `Request cancelled: …`. Die
-PII-Maskierung (`PiiAnonymizerHook`) und der Audit-Trail (`AuditTrailHook`) sind reguläre
-quad-core-Hooks. Verfügbare Namen liefert `GET /agentflow/quad/capabilities`
+Note: the guardrails are enforced by quad-core's `GuardrailPlugin` in the hook pipeline
+(`beforeModelCall`/`afterModelCall`); a block returns `Request cancelled: …`. The
+PII masking (`PiiAnonymizerHook`) and the audit trail (`AuditTrailHook`) are regular
+quad-core hooks. Available names are returned by `GET /agentflow/quad/capabilities`
 (`guardrails`, `hooks`, `piiMaskTypes`).
 
-### Dynamische Workflows generieren (LLM)
+### Generating dynamic workflows (LLM)
 
-Aus einer Aufgabenbeschreibung erzeugt ein LLM („Workflow-Architect“) einen **v2-Workflow**
-(Agent-Schritte als DAG). Der Generator läuft über denselben quad-core-Pfad wie die Agenten
-(`ModelFactory.createOpenAiFromEnv()`, also `OPENAI_*`/`QUAD_LLM_*` inkl. dynamischer Header) und
-publiziert das Ergebnis durch denselben Compiler/Validator wie die Klassenpfad-Definitionen — das
-Resultat ist damit garantiert lauffähig (genau ein `end`, azyklisch, auflösbare Referenzen).
+From a task description, an LLM (“workflow architect”) generates a **v2 workflow**
+(agent steps as a DAG). The generator runs through the same quad-core path as the agents
+(`ModelFactory.createOpenAiFromEnv()`, i.e. `OPENAI_*`/`QUAD_LLM_*` including dynamic headers) and
+publishes the result through the same compiler/validator as the classpath definitions — the
+result is therefore guaranteed to be runnable (exactly one `end`, acyclic, resolvable references).
 
 ```bash
 # 1) Vorschau (nicht persistiert)
@@ -365,22 +365,22 @@ curl -X POST http://localhost:8095/agentflow/workflows/generate/run \
   -H 'Content-Type: application/json' -d '{"task":"..."}'
 ```
 
-Pro Schritt entsteht ein `agent`-Knoten (mit `dependsOn` aus den Abhängigkeiten) plus ein
-eingebetteter `agents[]`-Eintrag; genau ein `end`-Knoten fasst die Terminals zusammen. Bei mehreren
-Vorgängern werden deren Ergebnisse als Text im Schritt-Kontext („Previous results“) übergeben.
-Tool-Namen des Planers werden auf die verfügbaren Built-ins (`readFile`, `writeFile`,
-`listDirectory`, `grepSearch`, `findFiles`, `webSearch`, `webfetch`) beschränkt; das Token-Budget
-ist über `agentflow.workflow.generator.max-output-tokens` steuerbar.
+Per step, an `agent` node is created (with `dependsOn` from the dependencies) plus an
+embedded `agents[]` entry; exactly one `end` node merges the terminals. With multiple
+predecessors, their results are passed as text in the step context (“Previous results”).
+The planner's tool names are restricted to the available built-ins (`readFile`, `writeFile`,
+`listDirectory`, `grepSearch`, `findFiles`, `webSearch`, `webfetch`); the token budget
+can be controlled via `agentflow.workflow.generator.max-output-tokens`.
 
 ## Web UI (Angular)
 
-Modul `agentflow-ui/` — Angular-20-SPA (Standalone Components, Signals) für den gesamten
-AgentFlow-Betrieb. Design/Spezifikation: [`UI.md`](UI.md).
+Module `agentflow-ui/` — Angular 20 SPA (standalone components, signals) for the entire
+AgentFlow operation. Design/specification: [`UI.md`](UI.md).
 
-Screens: Dashboard · Runs (Liste/Detail/Signale) · Workflows (Editor v2-JSON, Validate/Save,
-**+ Neuer Workflow**) · **Generate** (Aufgabe → Vorschau/Speichern/Ausführen) ·
-Agents (Editor, **+ Neuer Agent** inkl. Guardrails/PII/Audit) · HITL-Queue ·
-Observability (Metriken/Provenance/Capabilities) · Examples · Settings.
+Screens: dashboard · runs (list/detail/signals) · workflows (v2 JSON editor, validate/save,
+**+ new workflow**) · **generate** (task → preview/save/run) ·
+agents (editor, **+ new agent** incl. guardrails/PII/audit) · HITL queue ·
+observability (metrics/provenance/capabilities) · examples · settings.
 
 ```bash
 # 1) Backend (Temporal + App) wie oben starten
@@ -392,24 +392,24 @@ cd agentflow-ui && npm run build
 cd .. && mvn -pl agentflow-ui -am -Pui package
 ```
 
-Die UI nutzt ausschließlich bestehende/ergänzte REST-Endpoints; Secrets werden nie angezeigt
-(`/agentflow/settings` liefert nur `hasApiKey`). Neu im Backend ergänzt: `GET /agentflow/runs`
-(Visibility-Liste), `GET /agentflow/runs/{id}`, `POST /agentflow/runs/{id}/terminate`,
-`GET /agentflow/runs/{id}/events` (History-Log), `POST /agentflow/workflows/validate`,
-`PUT /agentflow/workflows/{id}`, `POST /agentflow/workflows` (neuen, leeren Workflow anlegen),
+The UI uses exclusively existing/supplemented REST endpoints; secrets are never displayed
+(`/agentflow/settings` only returns `hasApiKey`). Newly added to the backend: `GET /agentflow/runs`
+(visibility list), `GET /agentflow/runs/{id}`, `POST /agentflow/runs/{id}/terminate`,
+`GET /agentflow/runs/{id}/events` (history log), `POST /agentflow/workflows/validate`,
+`PUT /agentflow/workflows/{id}`, `POST /agentflow/workflows` (create a new, empty workflow),
 `GET /agentflow/workflows/{id}/versions`, `GET /agentflow/settings`,
-`POST /agentflow/workflows/generate` / `.../generate/save` / `.../generate/run` (LLM-Generierung),
-**SSE** `GET /agentflow/runs/stream` + `/agentflow/runs/{id}/stream` (Status **+ Events**),
+`POST /agentflow/workflows/generate` / `.../generate/save` / `.../generate/run` (LLM generation),
+**SSE** `GET /agentflow/runs/stream` + `/agentflow/runs/{id}/stream` (status **+ events**),
 `POST /agentflow/testbench/run`.
 
-Screens zusätzlich: **Testbench** (Tokens/Tools/Kosten/Provenance), **Graph-Editor** (Dependencies
-setzen/verbinden, Add/Rename/Delete) und **Versionen**; Run-Detail zeigt ein **Live-Log** (History-Events).
-Opt-in Backend-Features: `agentflow.security.oidc.enabled` (JWT-Resource-Server, **deaktiv** per Default),
-`agentflow.security.enabled` (API-Key-Gate), `agentflow.tenant.enabled` (`X-Tenant-Id`-Scoping) —
-Client-Header setzbar unter Settings.
+Additional screens: **testbench** (tokens/tools/cost/provenance), **graph editor** (set/connect
+dependencies, add/rename/delete) and **versions**; run detail shows a **live log** (history events).
+Opt-in backend features: `agentflow.security.oidc.enabled` (JWT resource server, **disabled** by default),
+`agentflow.security.enabled` (API-key gate), `agentflow.tenant.enabled` (`X-Tenant-Id` scoping) —
+client headers configurable under settings.
 
-Der `decision`-Knoten ist über quad/kafka/agentflow hinweg dokumentiert (bewusst **unverändert**):
-siehe [`DECISION_NODE_COMPARISON.md`](DECISION_NODE_COMPARISON.md).
+The `decision` node is documented across quad/kafka/agentflow (deliberately **unchanged**):
+see [`DECISION_NODE_COMPARISON.md`](DECISION_NODE_COMPARISON.md).
 
 ## What is intentionally NOT here (yet)
 
@@ -420,4 +420,4 @@ siehe [`DECISION_NODE_COMPARISON.md`](DECISION_NODE_COMPARISON.md).
 - OIDC is implemented but **disabled by default** (`agentflow.security.oidc.enabled=false`); the
   API-key gate and `X-Tenant-Id` scoping are independently opt-in.
 
-See `docs/AGENT_STACK_EVOLUTION.md` (§7 Evolutionspfad, §10 Risiken) for the roadmap.
+See `docs/AGENT_STACK_EVOLUTION.md` (§7 evolution path, §10 risks) for the roadmap.

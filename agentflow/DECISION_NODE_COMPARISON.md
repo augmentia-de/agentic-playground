@@ -1,11 +1,11 @@
-# `decision`-Knoten — Vergleich quad-quarkus · kafka-platform · agentflow
+# `decision` node — comparison quad-quarkus · kafka-platform · agentflow
 
-**Status:** Vergleich (2026-10-10). **Keine Änderung** an der agentflow-`decision`-Implementierung —
-dieses Dokument beschreibt nur die Semantik der drei Engines.
+**Status:** Comparison (2026-10-10). **No change** to the agentflow `decision` implementation —
+this document only describes the semantics of the three engines.
 
-## 1. Kanonische Form (v2-Schema, geteilt)
+## 1. Canonical form (v2 schema, shared)
 
-Das `quad.workflow`-v2-Schema (`quad-workflow-core`) definiert `nodeDecision`:
+The `quad.workflow` v2 schema (`quad-workflow-core`) defines `nodeDecision`:
 
 ```json
 {
@@ -15,43 +15,43 @@ Das `quad.workflow`-v2-Schema (`quad-workflow-core`) definiert `nodeDecision`:
 }
 ```
 
-- **agentflow** nutzt genau diese Form (`NodeSpec.branches` + `defaultTarget`).
-- **kafka** nutzt die gleiche Form (`DagNode.branches` + `defaultTarget`), nur mit `stepId`/`nodeType "DECISION"`.
-- **quad** hat die Form im Schema **und** in `ConditionalNode`; die *Engine* nutzt davon abweichend ein
-  boolesches Paar.
+- **agentflow** uses exactly this form (`NodeSpec.branches` + `defaultTarget`).
+- **kafka** uses the same form (`DagNode.branches` + `defaultTarget`), only with `stepId`/`nodeType "DECISION"`.
+- **quad** has the form in the schema **and** in `ConditionalNode`; the *engine*, by contrast, uses a
+  boolean pair.
 
-## 2. Laufzeit-Semantik im Vergleich
+## 2. Runtime semantics compared
 
-| Aspekt | **agentflow** | **quad-quarkus** | **kafka-platform** |
+| Aspect | **agentflow** | **quad-quarkus** | **kafka-platform** |
 |---|---|---|---|
-| Knotenform (Schema) | `branches[]` + `defaultTarget` | `branches[]` + `defaultTarget` (Schema) | `branches[]` + `defaultTarget` |
-| Laufzeit-Ausführung | `DeclarativeAgentWorkflow`: erster passender Branch, sonst `defaultTarget`; nicht gewählte Targets werden **gepruned** | `ConditionalNodeExecutor`: **eine** Bedingung → `trueTarget`/`falseTarget`; nicht erreichbare Downstream-Nodes werden als „skipped by conditional“ markiert | `RoutingEvaluator`: Branches in Reihenfolge, erster truthy gewinnt, sonst `defaultTarget` |
-| Persistierte Entscheidung | im Workflow-Ergebnis/Plan sichtbar (Branch-Target als Output des Knotens) | `run`-State + Node-Outputs | `Decision(stepId, branchId, chosenTarget, iteration)`, `branchId="default"` bei Default |
-| Condition-Sprache | `ConditionEvaluator`: `contains:`, `notcontains:`, `starts:`, `equals:`, `truthy`, `falsy` (leer = true) | `WorkflowCondition.matches`: `contains:`, `notcontains:`, `matches:` (Regex), `iter<op><n>`; separat `ExpressionExitCondition` `key >= value` (Scores, `AgentScope`) | `ExpressionEvaluator`: **vollständiger Ausdrucksparser** über `context`/`input`-Maps, z. B. `context['research_step'].confidence < 0.8` (Pfade, Zahlen, Strings, Bool, Vergleiche/Logik) |
-| Branch-Modell | n Branches + Default | 1 Condition → 2 Ziele (+ Schema-Branches) | n Branches + Default (+ `guardCondition` je Node) |
-| Nicht gewählte Pfade | gepruned → Nachfolger werden **skipped** | Downstream „skipped by conditional“ | nicht gefeuert (Routing), Checkpoint merkt sich `decision_branch` |
-| Pruning-Regel | `join` mit `any`/`n_of_m` bleibt lauffähig; `end` nie geskippt | Erreichbarkeit ab `true/falseTarget` | Routing-`fireableSteps` rein aus persistiertem Zustand |
+| Node form (schema) | `branches[]` + `defaultTarget` | `branches[]` + `defaultTarget` (schema) | `branches[]` + `defaultTarget` |
+| Runtime execution | `DeclarativeAgentWorkflow`: first matching branch, otherwise `defaultTarget`; unselected targets are **pruned** | `ConditionalNodeExecutor`: **one** condition → `trueTarget`/`falseTarget`; unreachable downstream nodes are marked as "skipped by conditional" | `RoutingEvaluator`: branches in order, first truthy wins, otherwise `defaultTarget` |
+| Persisted decision | visible in the workflow result/plan (branch target as the node's output) | `run` state + node outputs | `Decision(stepId, branchId, chosenTarget, iteration)`, `branchId="default"` for the default |
+| Condition language | `ConditionEvaluator`: `contains:`, `notcontains:`, `starts:`, `equals:`, `truthy`, `falsy` (empty = true) | `WorkflowCondition.matches`: `contains:`, `notcontains:`, `matches:` (regex), `iter<op><n>`; separately `ExpressionExitCondition` `key >= value` (scores, `AgentScope`) | `ExpressionEvaluator`: **full expression parser** over `context`/`input` maps, e.g. `context['research_step'].confidence < 0.8` (paths, numbers, strings, bool, comparisons/logic) |
+| Branch model | n branches + default | 1 condition → 2 targets (+ schema branches) | n branches + default (+ `guardCondition` per node) |
+| Unselected paths | pruned → successors are **skipped** | downstream "skipped by conditional" | not fired (routing), checkpoint remembers `decision_branch` |
+| Pruning rule | `join` with `any`/`n_of_m` stays runnable; `end` never skipped | reachability from `true/falseTarget` | routing `fireableSteps` purely from persisted state |
 
-## 3. Ausdrucksstärke (Kurzfazit)
+## 3. Expressiveness (brief conclusion)
 
 ```
-Ausdrucksstärke:   kafka  >  quad (WorkflowCondition)  >  agentflow
-Struktur-Gleichheit: agentflow = quad(Schema) = kafka   (branches[] + defaultTarget)
+Expressiveness:      kafka  >  quad (WorkflowCondition)  >  agentflow
+Structural equality: agentflow = quad(schema) = kafka   (branches[] + defaultTarget)
 ```
 
-- **kafka** ist am mächtigsten (echter Ausdrucksparser über Knoten-Outputs), dafür am komplexesten.
-- **quad** ist zweigeteilt: Schema-`decision` (wie agentflow/kafka) vs. Engine-`ConditionalNode`
-  (boolesch) plus `WorkflowCondition` (contains/notcontains/matches/iter).
-- **agentflow** ist bewusst minimal (kleine, schnell testbare Condition-Sprache) und damit am
-  leichtesten deterministisch zu halten.
+- **kafka** is the most powerful (a real expression parser over node outputs), but also the most complex.
+- **quad** is split in two: schema `decision` (like agentflow/kafka) vs. engine `ConditionalNode`
+  (boolean) plus `WorkflowCondition` (contains/notcontains/matches/iter).
+- **agentflow** is deliberately minimal (a small, quickly testable condition language) and therefore
+  the easiest to keep deterministic.
 
-## 4. Konsequenz / Nicht-Änderung
+## 4. Consequence / non-change
 
-Bewusst **keine Änderung** an agentflow-`decision` in diesem Schritt. Wenn später Angleichung
-gewünscht ist, wären optionale, abwärtskompatible Erweiterungen von `ConditionEvaluator` denkbar:
+Deliberately **no change** to agentflow `decision` in this step. If alignment is desired later,
+optional, backward-compatible extensions of `ConditionEvaluator` would be conceivable:
 
-1. `matches:<regex>` (quad-Parität) — klein, ohne Semantikbruch.
-2. `context.<node>.<field> <op> <value>` (kafka-Parität) — größerer Schritt (Pfadauflösung über
-   Knoten-Outputs, Parser statt Präfix-Matching).
+1. `matches:<regex>` (quad parity) — small, without a semantic break.
+2. `context.<node>.<field> <op> <value>` (kafka parity) — a bigger step (path resolution over
+   node outputs, parser instead of prefix matching).
 
-Beides würde die bestehenden Branches/`defaultTarget`-Formate unverändert lassen.
+Both would leave the existing branches/`defaultTarget` formats unchanged.

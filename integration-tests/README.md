@@ -1,10 +1,10 @@
-# Integrationstests — kafka-platform × quad
+# Integration Tests — kafka-platform × quad
 
-Tests gegen die **fertigen Artefakte**: gepackte JARs, echter Kafka-Broker, echte Postgres,
-echte HTTP-Aufrufe. Kein In-Process-Zugriff, keine Mock-Interfaces im Testpfad — nur der
-Worker selbst arbeitet im Mock-Modus, weil ohne LLM-Key sonst nichts deterministisch liefe.
+Tests against the **finished artifacts**: packaged JARs, a real Kafka broker, a real Postgres,
+real HTTP calls. No in-process access, no mock interfaces in the test path — only the
+worker itself runs in mock mode, because without an LLM key nothing would run deterministically.
 
-## Schnellstart
+## Quickstart
 
 ```bash
 # alles: Stack hochfahren, 58 Tests, Stack wieder runter
@@ -19,12 +19,12 @@ mvn -o test -Pe2e
 ./scripts/run-integration-tests.sh --stop
 ```
 
-Der Runner setzt `--quarkus.base-url` der Bridge auf den quad-Port. Ohne das scheitert der
-Proxy-Pfad der Unified-API mit 502 — siehe [Befund 3](#befund-3).
+The runner sets the bridge's `--quarkus.base-url` to the quad port. Without that, the
+proxy path of the Unified API fails with 502 — see [Finding 3](#finding-3).
 
-### Voraussetzungen
+### Prerequisites
 
-| Komponente | Erwartet | Variabel |
+| Component | Expected | Variable |
 |---|---|---|
 | Kafka | `localhost:9092` | `KAFKA_BOOTSTRAP_SERVERS` |
 | Postgres | `jdbc:postgresql://localhost:5432/ap` | `POSTGRES_URL` |
@@ -32,29 +32,29 @@ Proxy-Pfad der Unified-API mit 502 — siehe [Befund 3](#befund-3).
 | Worker | Port `18081` | `WORKER_PORT` |
 | quad | Port `18086` | `QUAD_PORT` |
 
-Die Ports liegen bewusst neben den Standards (`8080`, `8086`, `8092`), damit ein laufender
-Entwickler-Stack nicht mitgetroffen wird. Kafka und Postgres startet der Runner **nicht** — sie
-sind die gemeinsame Infrastruktur, die auch der Entwickler-Stack nutzt.
+The ports deliberately sit next to the defaults (`8080`, `8086`, `8092`) so that a running
+developer stack does not get hit by mistake. The runner does **not** start Kafka and Postgres — they
+are the shared infrastructure that the developer stack also uses.
 
-Bevorzugt frisch: **eigener Broker**. Der Grund steht in [Befund 1](#befund-1) — die
-Beobachtungen hängen davon ab, ob ein Topic vorher schon existierte.
+Fresh is preferred: **a dedicated broker**. The reason is in [Finding 1](#finding-1) — the
+observations depend on whether a topic already existed beforehand.
 
-## Aufbau
+## Structure
 
-Vier Schichten. Jede baut auf der vorigen auf und prüft eine andere Fehlerklasse.
+Four layers. Each builds on the previous one and checks a different class of errors.
 
-| Schicht | Test | Umgebung | prüft |
+| Layer | Test | Environment | Checks |
 |---|---|---|---|
-| **L0** | `l0contract/PlatformContractTest` | keine | Topic-Namen, Partitionierung, Task-/ResultEvent-JSON, DAG-Validator, Event-Roundtrip |
-| **L1** | `l1api/OrchestratorApiTest` | Orchestrator | Health, Definitionen anlegen/ablehnen, Start, Idempotenz, 404, Checkpoints, HITL, Metrics |
-| **L2** | `l2kafka/KafkaContractTest` | + Broker | Topics gegen Spezifikation, Intake-/Task-/Result-Events, Nachrichtenfluss |
-| **L3** | `l3e2e/PlatformEndToEndTest` | + Worker | echte Läufe: Ende, HITL-Gate, Freigabe, Abbruch, Task- und Result-Events |
-| **L3** | `l3e2e/CrossPlatformWorkflowTest` | + quad | quad-Definition → Bridge → kafka-Ausführung, beide Backend-Wege |
+| **L0** | `l0contract/PlatformContractTest` | none | Topic names, partitioning, task/result event JSON, DAG validator, event roundtrip |
+| **L1** | `l1api/OrchestratorApiTest` | Orchestrator | Health, create/reject definitions, start, idempotency, 404, checkpoints, HITL, metrics |
+| **L2** | `l2kafka/KafkaContractTest` | + Broker | Topics against specification, intake/task/result events, message flow |
+| **L3** | `l3e2e/PlatformEndToEndTest` | + Worker | real runs: end, HITL gate, approval, cancellation, task and result events |
+| **L3** | `l3e2e/CrossPlatformWorkflowTest` | + quad | quad definition → bridge → kafka execution, both backend paths |
 
-Fehlt eine Abhängigkeit, überspringt die Schicht per `assumeTrue` — der Build bleibt grün und
-sagt, was fehlte. L0 läuft immer.
+If a dependency is missing, the layer skips via `assumeTrue` — the build stays green and
+says what was missing. L0 always runs.
 
-## Profile
+## Profiles
 
 ```bash
 mvn -o test              # L0 (Standard: alles außer Netzwerk)
@@ -62,47 +62,47 @@ mvn -o test -Pintegration   # L0 + L1 + L2
 mvn -o test -Pe2e            # alles
 ```
 
-Gesteuert über Tags: `requires-orchestrator`, `requires-kafka`, `requires-e2e`.
+Controlled via tags: `requires-orchestrator`, `requires-kafka`, `requires-e2e`.
 
-**Achtung beim Lesen der Zusammenfassung.** Läuft die Umgebung nicht, meldet Surefire
-`Tests run: 18, Skipped: 0` — obwohl L1 und L2 durchaus beteiligt waren. Sie springen in
-`@BeforeAll` über eine Annahme und zählen deshalb als **0 Tests**, nicht als „übersprungen“.
-Im Report steht das als leere Klasse:
+**Careful when reading the summary.** If the environment is not running, Surefire reports
+`Tests run: 18, Skipped: 0` — even though L1 and L2 were definitely involved. They skip in
+`@BeforeAll` via an assumption and therefore count as **0 tests**, not as "skipped".
+The report shows this as an empty class:
 
 ```
  18 tests   de.augmentia.it.l0contract.PlatformContractTest
-  0 tests   de.augmentia.it.l1api.OrchestratorApiTest      ← per Annahme übersprungen
-  0 tests   de.augmentia.it.l2kafka.KafkaContractTest      ← per Annahme übersprungen
+  0 tests   de.augmentia.it.l1api.OrchestratorApiTest      ← skipped by assumption
+  0 tests   de.augmentia.it.l2kafka.KafkaContractTest      ← skipped by assumption
 ```
 
-Wer „18 grün“ sieht, sollte also gegenprüfen, ob die Umgebung stand. Der Runner startet sie
-deshalb selbst, statt sich darauf zu verlassen.
+So anyone who sees "18 green" should double-check whether the environment was up. The runner
+therefore starts it itself instead of relying on that.
 
-## Aktueller Stand
+## Current Status
 
 ```
-L0  PlatformContractTest        18 Tests   grün
-L1  OrchestratorApiTest         14 Tests   grün
-L2  KafkaContractTest           11 Tests   grün, 1 @Disabled (Befund 1)
-L3  PlatformEndToEndTest         8 Tests   grün
-L3  CrossPlatformWorkflowTest    7 Tests   grün, 1 @Disabled (Befund 2)
+L0  PlatformContractTest        18 Tests   green
+L1  OrchestratorApiTest         14 Tests   green
+L2  KafkaContractTest           11 Tests   green, 1 @Disabled (Finding 1)
+L3  PlatformEndToEndTest         8 Tests   green
+L3  CrossPlatformWorkflowTest    7 Tests   green, 1 @Disabled (Finding 2)
 ──────────────────────────────────────────────────────────
-    58 Tests, 0 Fehler, 2 dokumentierte Befunde
+    58 Tests, 0 failures, 2 documented findings
 ```
 
 ---
 
-# Befunde
+# Findings
 
-Zwei echte Fehler im Produktivcode. Beide sind als `@Disabled`-Test formuliert — die Assertion
-ist die richtige Erwartung und wird aktiv, sobald der Fehler behoben ist. Dazu steht jeweils ein
-grüner Test, der den heutigen Zustand festhält: der Befund ist damit nicht nur notiert,
-sondern messbar. Sobald sich das Verhalten ändert, fällt **zuerst** der grüne Ist-Test um und
-zeigt die Änderung.
+Two real bugs in the production code. Both are formulated as a `@Disabled` test — the assertion
+is the correct expectation and becomes active as soon as the bug is fixed. For each, there is also
+a green test that records the current state: the finding is thus not only noted,
+but measurable. As soon as the behavior changes, the green as-is test fails **first** and
+shows the change.
 
-## Befund 1 — wer zuerst publiziert, legt das Topic fest
+## Finding 1 — whoever publishes first defines the topic
 
-`KafkaTopicInitializer` ist **create-if-missing**:
+`KafkaTopicInitializer` is **create-if-missing**:
 
 ```java
 Set<String> existing = adminClient.listTopics().names().get();
@@ -112,8 +112,8 @@ List<NewTopic> missing = specs.stream()
         .toList();
 ```
 
-Ein Topic, das schon existiert, behält seine Broker-Vorgaben — ohne Hinweis, ohne Log.
-Beobachtet auf einem Broker, der schon vorher benutzt wurde:
+A topic that already exists keeps its broker settings — without a hint, without a log.
+Observed on a broker that had already been used before:
 
 | Topic | Spec | Broker |
 |---|---|---|
@@ -128,77 +128,77 @@ Beobachtet auf einem Broker, der schon vorher benutzt wurde:
 | `agent.control.loop` | 6 | **1** |
 | `agent.config.updates` | compact | **delete** |
 
-Das Muster ist eindeutig: `agent.tasks.*`, `timeouts` und `dlq` waren beim ersten Start noch
-nicht da und bekamen die Spezifikation. Alles andere hatte jemand schon vorher berührt — der
-Broker hat es mit einer Partition und `cleanup.policy=delete` angelegt, und der Initializer
-hat das kommentarlos akzeptiert.
+The pattern is unambiguous: `agent.tasks.*`, `timeouts` and `dlq` did not exist yet on the first
+start and received the specification. Everything else had already been touched by someone
+beforehand — the broker created it with one partition and `cleanup.policy=delete`, and the
+initializer accepted that without comment.
 
-**Warum das mehr als Kosmetik ist.** Zwei Folgen, die unterschiedlich schwer wiegen:
+**Why this is more than cosmetic.** Two consequences that weigh differently:
 
-- **Parallelität.** `INTAKE` und `RESULTS` sollen 12 Partitionen haben. Mit einer Partition
-  läuft die gesamte Plattform serialisiert. Das fällt nicht auf, weil die Tests weiterlaufen —
-  es wird nur langsamer.
-- **Kompaktierung.** `config.updates` ist als `compact` definiert, damit nur die jeweils letzte
-  Konfiguration pro `agent_type` erhalten bleibt. Mit `delete` wächst das Topic stattdessen, bis
-  die Retention greift. Die Fälle sind nicht gleich, aber die Datenmenge ist begrenzt.
+- **Parallelism.** `INTAKE` and `RESULTS` are supposed to have 12 partitions. With one partition,
+  the entire platform runs serialized. This does not stand out, because the tests keep running —
+  it just gets slower.
+- **Compaction.** `config.updates` is defined as `compact` so that only the latest configuration
+  per `agent_type` is retained. With `delete`, the topic instead grows until retention kicks in.
+  The cases are not the same, but the data volume is bounded.
 
-Der Test prüft das topicweise gegen `KafkaTopics.all()` — nicht topicweise handgepflückt, weil
-die Liste sich mit jedem Lauf ändert. Deshalb nennt die Fehlermeldung immer den vollständigen
-Satz Abweichungen.
+The test checks this topic by topic against `KafkaTopics.all()` — not hand-picked per topic, because
+the list changes with every run. That is why the error message always names the complete
+set of deviations.
 
-**Fix-Richtung:** Der Initializer sollte abgleichen statt nur anlegen — `createPartitions` für
-zu wenige Partitionen, `alterConfigs` für `cleanup.policy` und `retention.ms`. Beides sind
-idempotente Admin-Operationen.
+**Fix direction:** The initializer should reconcile instead of only creating — `createPartitions` for
+too few partitions, `alterConfigs` for `cleanup.policy` and `retention.ms`. Both are
+idempotent admin operations.
 
 Tests: `brokerMatchesTopicSpecification` (`@Disabled`), `driftIsLimitedToTopicsCreatedByTheBroker`,
 `workerTopicsAreFullyPartitioned`, `configUpdatesCompactionComesFromTheTopicCreator`.
 
-## Befund 2 — quad meldet einen leeren Workflow als `completed`
+## Finding 2 — quad reports an empty workflow as `completed`
 
-`POST /api/ui/workflows` mit `nodes: []` wird angenommen. Der Workflow lässt sich starten, und
-der Lauf endet mit Status `completed`.
+`POST /api/ui/workflows` with `nodes: []` is accepted. The workflow can be started, and
+the run ends with status `completed`.
 
-Damit bedeutet `completed` nichts — es lief schlicht nichts. Ein Workflow ohne Knoten sollte
-beim Anlegen oder spätestens beim Start abgelehnt werden. Wer auf `completed` prüft, um
-Erfolg zu signalisieren, bekommt hier ein falsches Ja.
+This makes `completed` meaningless — simply nothing ran. A workflow without nodes should be
+rejected on creation, or at the latest on start. Anyone who checks for `completed` to signal
+success gets a false yes here.
 
 Tests: `quadRejectsEmptyWorkflow` (`@Disabled`), `emptyWorkflowRunsAndReportsCompleted`.
 
 ---
 
-# Konfigurationsfallen
+# Configuration Pitfalls
 
-Keine Fehler, aber beim Einrichten aufgetroffen — hier, damit sie niemand neu suchen muss.
+Not bugs, but encountered during setup — recorded here so that nobody has to search for them again.
 
-**`quarkus.base-url` der Bridge.** Der Orchestrator läuft mit
-`quarkus.base-url=http://localhost:8086`. Quad läuft standardmäßig auf `8086`, im Test auf
-`18086`. Ohne Anpassung liefert `POST /api/v1/unified/workflows/from-quad` mit
-`X-Backend: quarkus` ein `502` — die Fehlermeldung nennt immerhin die unerreichbare Adresse.
-Der Runner setzt das Argument, deshalb ist der Test grün. Für einen echten Betrieb gehört
-`quarkus.base-url` in die Konfiguration statt auf den Default zu zeigen.
+**The bridge's `quarkus.base-url`.** The orchestrator runs with
+`quarkus.base-url=http://localhost:8086`. Quad runs on `8086` by default, in the test on
+`18086`. Without an adjustment, `POST /api/v1/unified/workflows/from-quad` with
+`X-Backend: quarkus` returns a `502` — the error message at least names the unreachable address.
+The runner sets the argument, which is why the test is green. For real operation,
+`quarkus.base-url` belongs in the configuration instead of pointing at the default.
 
-**Worker-Port.** In `quad-workflow-worker/src/main/resources/application.yml` steht
-`server.port: 8092` fest, ohne `${...:-Default}` — also **nicht** per Environment
-überschreibbar. Der Runner setzt `--server.port`. Wenn der Worker wirklich mal auf einem
-anderen Port laufen soll, ist das eine Config-Zeile, keine Systemeigenschaft.
+**Worker port.** In `quad-workflow-worker/src/main/resources/application.yml`,
+`server.port: 8092` is hard-coded, without `${...:-Default}` — so it is **not** overridable via the
+environment. The runner sets `--server.port`. If the worker really is ever supposed to run on a
+different port, that is one config line, not a system property.
 
-**quad-Datenverzeichnis.** quad legt seine SQLite-Datei als `data/quad.db` an, aufgelöst gegen
-das **Arbeitsverzeichnis** des Prozesses, nicht gegen das Jar. Der Runner startet quad deshalb
-in `$RUN_DIR/quad`. Aus dem Modulverzeichnis gestartet, findet Flyway die Datei nicht und
-quad startet gar nicht.
+**quad data directory.** quad creates its SQLite file as `data/quad.db`, resolved against
+the process's **working directory**, not against the jar. The runner therefore starts quad
+in `$RUN_DIR/quad`. Started from the module directory, Flyway does not find the file and
+quad does not start at all.
 
-**Der Legacy-Worker hört nicht mehr auf `agent.tasks.*`.** `agent-worker` ist auf
-`legacy\.agent\.tasks\..*` umgestellt, weil der kanonische Worker (`quad-workflow-worker`)
-diese Topics übernommen hat. Im Test startet der Runner deshalb
-`quad-workflow-worker` — der `agent-worker` wäre still und die L3-Tests würden hängen.
+**The legacy worker no longer listens on `agent.tasks.*`.** `agent-worker` has been switched to
+`legacy\.agent\.tasks\..*`, because the canonical worker (`quad-workflow-worker`)
+has taken over these topics. In the test the runner therefore starts
+`quad-workflow-worker` — the `agent-worker` would be silent and the L3 tests would hang.
 
-## Notiert, nicht als Test festgeschrieben
+## Noted, Not Fixed as a Test
 
-- **`TaskEvent.header` ist nicht validierungspflichtig.** Das Feld darf `null` sein
-  (`TaskEvent.java`). Für Korrelation und Timeout-Überwachung ist der Header aber der einzige
-  Weg, einen Task einem Lauf zuzuordnen. L0 hält den heutigen Vertrag fest; die Frage, ob das
-  gewollt ist, gehört in die Produktentscheidung.
-- **Der HITL-Freigabepfad braucht Zeit.** Nach dem Retry eines pausierten Laufs laufen die
-  restlichen Schritte asynchron weiter. Der Test wartet auf `COMPLETED` und darf `PAUSED_HITL`
-  dort **nicht** in der Warteliste haben — sonst kehrt er sofort zurück, bevor die Freigabe
-  verarbeitet ist.
+- **`TaskEvent.header` is not required for validation.** The field may be `null`
+  (`TaskEvent.java`). For correlation and timeout monitoring, however, the header is the only
+  way to assign a task to a run. L0 records today's contract; the question of whether that is
+  intended belongs in the product decision.
+- **The HITL approval path takes time.** After the retry of a paused run, the
+  remaining steps continue asynchronously. The test waits for `COMPLETED` and must **not** have
+  `PAUSED_HITL` in the wait list there — otherwise it returns immediately, before the approval
+  has been processed.

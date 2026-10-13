@@ -160,16 +160,16 @@ Access `GET /api/ui/status` to see:
         ↓
 [POST /api/ui/workflows/{id}/execute → executeWorkflow(id)]
         ↓
-[Backend: UiAgentResource.executeWorkflow() (topologische Sortierung)]
+[Backend: UiAgentResource.executeWorkflow() (topological sorting)]
         ↓
-[Pro Knoten: LLM-Aufruf, Output → Kontext für Nachfolger]
+[Per node: LLM call, output → context for downstream nodes]
         ↓
 [UI: Node status: running → completed/failed]
         ↓
 [Debug tab opens with results]
 ```
 
-> Die JSON-Schema-Kontrakte für diese Requests/Responses liegen in `quad-ui/schemas/`
+> The JSON schema contracts for these requests/responses live in `quad-ui/schemas/`
 > (`execute.schema.json`, `workflow.schema.json`, `agent.schema.json`, `monitor.schema.json`).
 
 ---
@@ -191,7 +191,7 @@ Access `GET /api/ui/status` to see:
 ### Current Implementation Gaps
 1. **Edge connections** - Visual connection lines not rendered
 2. **Node configuration** - No per-node settings dialog
-3. **Save/Load UI** - WorkflowComposer erstellt + führt über das Backend aus; Laden/Speichern bestehender Workflows (GET /workflows) ist noch nicht eingebunden
+3. **Save/Load UI** - WorkflowComposer creates and executes via the backend; loading/saving existing workflows (GET /workflows) is not yet wired in
 
 ### Future Enhancements
 1. Add "Save Workflow" modal to WorkflowComposer

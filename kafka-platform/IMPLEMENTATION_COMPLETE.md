@@ -1,27 +1,27 @@
-# Umsetzungsstatus: kafka-platform (Agentic Platform)
+# Implementation Status: kafka-platform (Agentic Platform)
 
-**Erstellt:** 2026-09-17  
-**Letzte Änderung:** 2026-09-18  
-**Status:** ✅ Komplett — Alle P0–P3 Items implementiert  
-**Quellen:** NEW.md §3–§5, UI.md §2–§5, SPEC2.md  
+**Created:** 2026-09-17  
+**Last modified:** 2026-09-18  
+**Status:** ✅ Complete — All P0–P3 items implemented  
+**Sources:** NEW.md §3–§5, UI.md §2–§5, SPEC2.md  
 
 ---
 
-## 1. Übersicht
+## 1. Overview
 
-Dieses Dokument dokumentiert die vollständige Umsetzung aller Komponenten aus NEW.md und UI.md für die Integrationsbrücke zwischen Quarkus-Backend und Kafka-Orchestrator sowie aller ergänzenden Infrastructure/Operations-Komponenten.
+This document documents the complete implementation of all components from NEW.md and UI.md for the integration bridge between the Quarkus backend and the Kafka orchestrator as well as all supplementary infrastructure/operations components.
 
-### 1.1 Umgesetzte Module (alle 4 Phasen + Ergänzungen)
+### 1.1 Implemented Modules (all 4 phases + additions)
 
-| Phase | Modul | Package | Datei(en) | Status |
+| Phase | Module | Package | File(s) | Status |
 |-------|-------|---------|-----------|--------|
 | **P0** | Workflow Bridge | `com.agentplatform.bridge` | `WorkflowDefinitionBridge.java`, `QuarkusWorkflow.java`, `QuarkusNode.java`, `QuarkusEdge.java` | ✅ |
-| **P0** | Agent Bridge | `com.agentplatform.bridge` | `AgentDefinitionBridge.java` (inkl. WorkerAgentConfig, QuarkusAgent) | ✅ |
+| **P0** | Agent Bridge | `com.agentplatform.bridge` | `AgentDefinitionBridge.java` (incl. WorkerAgentConfig, QuarkusAgent) | ✅ |
 | **P1** | Prometheus Metrics | `com.agentplatform.orchestrator.metrics` | `OrchestratorMetrics.java` | ✅ |
 | **P1** | Grafana Dashboards | `grafana/dashboards/` | `agent-orchestrator-overview.json`, `worker-performance.json`, `queue-health.json` | ✅ |
 | **P2** | Unified API Gateway | `com.agentplatform.bridge.web` | `UnifiedApiGateway.java` | ✅ |
 | **P3** | Email Transformer | `com.agentplatform.bridge.email` | `EmailInputTransformer.java`, `KafkaProducer.java`, `MailResponseHandler.java` | ✅ |
-| **P3** | Control Events | `com.agentplatform.common.event` | `ControlEvents.java` (ergänzt um `EmailIntakeEvent`) | ✅ |
+| **P3** | Control Events | `com.agentplatform.common.event` | `ControlEvents.java` (extended with `EmailIntakeEvent`) | ✅ |
 | **P4** | Redis Initiator Store | `com.agentplatform.bridge.redis` | `EmailInitiatorStore.java` | ✅ |
 | **P4** | GDPR API | `com.agentplatform.orchestrator.web` | `GdprController.java` | ✅ |
 | **P4** | Prefix Cache | `com.agentplatform.worker.cache` | `PrefixCache.java` | ✅ |
@@ -52,7 +52,7 @@ Dieses Dokument dokumentiert die vollständige Umsetzung aller Komponenten aus N
 
 ---
 
-## 2. Architektur & Data Flow
+## 2. Architecture & Data Flow
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
@@ -137,7 +137,7 @@ Dieses Dokument dokumentiert die vollständige Umsetzung aller Komponenten aus N
 
 ### 2.1 Input Channels
 
-| Channel | Beschreibung | Endpoint/Topic |
+| Channel | Description | Endpoint/Topic |
 |---------|-------------|----------------|
 | **REST API** | Start workflow via idempotent key | `/api/v1/workflows/start` |
 | **Email Webhook** | Mailgun/SendGrid webhook receiver | `POST /api/v1/email/receive` |
@@ -147,7 +147,7 @@ Dieses Dokument dokumentiert die vollständige Umsetzung aller Komponenten aus N
 
 ### 2.2 Output Channels
 
-| Channel | Beschreibung | Trigger |
+| Channel | Description | Trigger |
 |---------|-------------|---------|
 | **Prometheus** | `/actuator/prometheus` endpoint | Continuously scraped |
 | **Slack** | Interactive HITL buttons + notifications | Error threshold, HITL events |
@@ -157,40 +157,40 @@ Dieses Dokument dokumentiert die vollständige Umsetzung aller Komponenten aus N
 
 ---
 
-## 3. Format-Mapping Details
+## 3. Format Mapping Details
 
 ### 3.1 Workflow Definition Mapping (NEW.md §3.1)
 
 | Quad Feature | Kafka Equivalent | Transform |
 |--------------|-----------------|-----------|
 | `{name, nodes[], edges[]}` | `{dag_structure: {nodes[]}}` | Flat → Nested |
-| Kanten {source, target} | `dependsOn: [nodeA, nodeB]` | Reverse Adjacency List |
-| Node Typ `agent` | `STEP` | 1:1 Mapping |
-| Node Typ `conditional` | `DECISION` | Branches extrahieren aus Kanten |
-| Node Typ `fork` | `FORK` | Kanten → Branch.firstStep |
-| Node Typ `join` | `JOIN` | joinPolicy → JoinType |
-| Node Typ `loop` | `LOOP` | Loop-Body via BFS ermitteln |
+| Edges {source, target} | `dependsOn: [nodeA, nodeB]` | Reverse Adjacency List |
+| Node type `agent` | `STEP` | 1:1 Mapping |
+| Node type `conditional` | `DECISION` | Extract branches from edges |
+| Node type `fork` | `FORK` | Edges → Branch.firstStep |
+| Node type `join` | `JOIN` | joinPolicy → JoinType |
+| Node type `loop` | `LOOP` | Determine loop body via BFS |
 | `requiresHumanApproval` | `requiresHumanApproval` | 1:1 |
-| `guardCondition` | `guardCondition` | String Property Extraktion |
-| ❌ Nested Workflows | Nicht unterstützt | Warnung: Feature-Lücke |
+| `guardCondition` | `guardCondition` | String property extraction |
+| ❌ Nested workflows | Not supported | Warning: feature gap |
 
-**Konverter-Klasse:** `WorkflowDefinitionBridge.java` mit statischen `convert()` Methoden.
+**Converter class:** `WorkflowDefinitionBridge.java` with static `convert()` methods.
 
 ### 3.2 Agent Definition Mapping (NEW.md §3.2)
 
-| Quarkus Feld | Kafka Target | Mapping |
+| Quarkus Field | Kafka Target | Mapping |
 |--------------|-------------|---------|
-| `id` | `agentId` | Direkt oder fallback `name` |
-| `modelId` | `modelKey` | Alias-Normalisierung: "claude-3-opus" → "claude-3" |
-| `temperature` | `temperature` | Identisch |
-| `maxTokens` | `maxReActIterations` | Heuristik: `maxTokens / 4` |
-| System Prompt | `systemPrompt` | Identisch |
-| ToolDefs[] | `allowedTools` | Namen-Extraktion ohne Config |
-| Skills Registry | ❌ Lost | Feature-Lücke |
-| Named Hooks | ❌ Lost | Feature-Lücke |
-| Dir Permissions | ❌ Lost | Feature-Lücke |
+| `id` | `agentId` | Direct or fallback `name` |
+| `modelId` | `modelKey` | Alias normalization: "claude-3-opus" → "claude-3" |
+| `temperature` | `temperature` | Identical |
+| `maxTokens` | `maxReActIterations` | Heuristic: `maxTokens / 4` |
+| System Prompt | `systemPrompt` | Identical |
+| ToolDefs[] | `allowedTools` | Name extraction without config |
+| Skills Registry | ❌ Lost | Feature gap |
+| Named Hooks | ❌ Lost | Feature gap |
+| Dir Permissions | ❌ Lost | Feature gap |
 
-**Konverter-Klasse:** `AgentDefinitionBridge.java` mit statischer `fromQuadAgent(QuarkusAgent)` Methode.
+**Converter class:** `AgentDefinitionBridge.java` with static `fromQuadAgent(QuarkusAgent)` method.
 
 ---
 
@@ -202,35 +202,35 @@ Dieses Dokument dokumentiert die vollständige Umsetzung aller Komponenten aus N
 | **Worker Performance** | `worker-performance.json` | Tasks Received by Type, Completed by Status, Duration P50/P95/P99, DLQ Rate, Error Pie Chart, Consumer Lag |
 | **Queue Health** | `queue-health.json` | Topic Lag, Intake vs Results Rate, Throughput, Control Events, Queue Depth Summary, Error Trend |
 
-**Provisioning:** Grafana importiert automatisch alle Dashboards via `provisioning/dashboards/` config. Prometheus Datasource wird via `provisioning/datasources/` konfiguriert.
+**Provisioning:** Grafana automatically imports all dashboards via the `provisioning/dashboards/` config. The Prometheus datasource is configured via `provisioning/datasources/`.
 
 ---
 
 ## 5. Observability Stack
 
-| Component | Port(s) | Ziel |
+| Component | Port(s) | Purpose |
 |-----------|---------|------|
-| Prometheus | 9090 | Metriken-Sammlung |
-| Grafana | 3000 | Visualisierung + Dashboards |
+| Prometheus | 9090 | Metric collection |
+| Grafana | 3000 | Visualization + dashboards |
 | Jaeger | 16686 | Distributed Tracing UI |
-| OpenTelemetry Collector | 4317/gRPC, 4318/HTTP | Trace Forwarding zu Jaeger |
+| OpenTelemetry Collector | 4317/gRPC, 4318/HTTP | Trace forwarding to Jaeger |
 | HashiCorp Vault | 8200 | Secrets Management |
 
-### 5.1 Prometheus Metriken
+### 5.1 Prometheus Metrics
 
-| Name | Typ | Beschreibung | Tags |
+| Name | Type | Description | Tags |
 |------|-----|-------------|------|
-| `orchestrator.workflows_started` | Counter | Workflows gestartet | `status` |
-| `orchestrator.routing_decisions` | Counter | Routing-Entscheidungen | `node_type`, `decision` |
-| `orchestrator.loop_iterations` | Counter | Loop-Iterationen | `workflow_name` |
-| `orchestrator.checkpoints_persisted` | Counter | Checkpoints gespeichert | — |
-| `orchestrator.hitl_tickets_created` | Counter | HITL Tickets erstellt | `reason` |
-| `orchestrator.dlq_enqueued` | Counter | DLQ-Einträge | `error_type` |
-| `orchestrator.workflow_duration_seconds` | Histogram | Ausführungsdauer | — |
-| `orchestrator.routing_evaluation_ms` | Histogram | Routing-Eval-Zeit | — |
-| `orchestrator.validation_duration_ms` | Histogram | Validierungszeit | — |
-| `orchestrator.hitl_open_count` | Gauge | Offene HITL Tickets | — |
-| `orchestrator.stale_executions_found` | Gauge | Veraltete Executions gefunden | — |
+| `orchestrator.workflows_started` | Counter | Workflows started | `status` |
+| `orchestrator.routing_decisions` | Counter | Routing decisions | `node_type`, `decision` |
+| `orchestrator.loop_iterations` | Counter | Loop iterations | `workflow_name` |
+| `orchestrator.checkpoints_persisted` | Counter | Checkpoints persisted | — |
+| `orchestrator.hitl_tickets_created` | Counter | HITL tickets created | `reason` |
+| `orchestrator.dlq_enqueued` | Counter | DLQ entries | `error_type` |
+| `orchestrator.workflow_duration_seconds` | Histogram | Execution duration | — |
+| `orchestrator.routing_evaluation_ms` | Histogram | Routing eval time | — |
+| `orchestrator.validation_duration_ms` | Histogram | Validation time | — |
+| `orchestrator.hitl_open_count` | Gauge | Open HITL tickets | — |
+| `orchestrator.stale_executions_found` | Gauge | Stale executions found | — |
 | `orchestrator.worker_scale_target` | Gauge | Target Worker Count | — |
 
 ### 5.2 OpenTelemetry Span Hierarchy
@@ -242,7 +242,7 @@ agent.execute ─→ llm.call ─→ tool.execute
      └── W3C format: 00-{traceId}-{spanId}-flags
 ```
 
-W3C Trace Context wird in jedem Kafka Producer via `TracingProducerInterceptor` injiziert.
+W3C Trace Context is injected into every Kafka producer via `TracingProducerInterceptor`.
 
 ---
 
@@ -301,26 +301,26 @@ helm upgrade agentic ./helm/ --set autoscaling.enabled=true
 ./scripts/e2e-test.sh
 ```
 
-Automatisiert den vollständigen Workflow-Ausführungszyklus über alle Topologien.
+Automates the complete workflow execution cycle across all topologies.
 
 ---
 
-## 8. Sicherheit
+## 8. Security
 
 ### 8.1 Secrets Management
 
-| Secret | Quelle | Storage |
+| Secret | Source | Storage |
 |--------|--------|---------|
 | DB Password | Vault KV2 | `secret/data/agent-platform/db/password` |
 | LLM API Key | Vault KV2 | `secret/data/agent-platform/openai/api-key` |
 | Slack Webhook | Vault KV2 | `secret/data/agent-platform/slack/webhook-url` |
 | PagerDuty Key | Vault KV2 | `secret/data/agent-platform/pagerduty/integration-key` |
 
-Vault wird im Dev Modus mit Root-Token betrieben. Für Production muss ein approper auth method konfiguriert werden.
+Vault runs in dev mode with a root token. For production, an appropriate auth method must be configured.
 
 ### 8.2 Kafka Transport Security
 
-SASL_SSL kann pro docker-compose profile aktiviert werden:
+SASL_SSL can be enabled per docker-compose profile:
 ```yaml
 KAFKA_SECURITY_PROTOCOL: SASL_SSL
 KAFKA_SASL_MECHANISM: SCRAM-SHA-512
@@ -328,38 +328,38 @@ KAFKA_SASL_MECHANISM: SCRAM-SHA-512
 
 ### 8.3 Tenant Isolation
 
-Multi-Tenant Support über:
+Multi-tenant support via:
 - Redis keyspace prefixing (`{tenant}:...`)
-- JDBC tenant filter für SQL queries
-- ThreadLocal Tenant Context mit Header Extraction
+- JDBC tenant filter for SQL queries
+- ThreadLocal tenant context with header extraction
 - Kafka topic partitioning (`agent.tasks.{type}.{tenant}`)
 
 ---
 
-## 9. Remaining Gaps (für nächste Iteration)
+## 9. Remaining Gaps (for next iteration)
 
-| Item | Status | Aufwand | Anmerkung |
+| Item | Status | Effort | Note |
 |------|--------|---------|-----------|
-| ~~Confluent Schema Registry~~ | ✅ | — | Schemas existieren + Client registriert sie bei Startup |
-| ~~Vault statt env-Secrets~~ | ✅ | — | SecretResolver + VaultConfig + docker-compose service |
-| ~~TLS/SASL~~ | ✅ | — | sasl-ssl-init.sh Helper script + docker-compose anchors |
-| ~~Orchestrator Lease~~ | ⚠️ Partial | Small | ShedLock fehlt noch; Redis-basierter Semaphor-Ansatz genutzt |
-| ~~Metriken routing_decision etc.~~ | ✅ | — | In OrchestratorMetrics.java implementiert |
-| ~~HITL Portal UI / Slack Callback~~ | ✅ | — | HitlPortalController mit HTML Page + Slack Webhook Handler |
-| ~~Automatisiertes E2E Testscript~~ | ✅ | — | scripts/e2e-test.sh |
+| ~~Confluent Schema Registry~~ | ✅ | — | Schemas exist + client registers them at startup |
+| ~~Vault instead of env secrets~~ | ✅ | — | SecretResolver + VaultConfig + docker-compose service |
+| ~~TLS/SASL~~ | ✅ | — | sasl-ssl-init.sh helper script + docker-compose anchors |
+| ~~Orchestrator Lease~~ | ⚠️ Partial | Small | ShedLock still missing; Redis-based semaphore approach used |
+| ~~Metrics routing_decision etc.~~ | ✅ | — | Implemented in OrchestratorMetrics.java |
+| ~~HITL Portal UI / Slack Callback~~ | ✅ | — | HitlPortalController with HTML page + Slack webhook handler |
+| ~~Automated E2E test script~~ | ✅ | — | scripts/e2e-test.sh |
 | ~~OpenTelemetry Java Agent~~ | ✅ | — | micrometer-tracing-bridge-brave dependency added |
 | ~~W3C Trace Context in Kafka Headers~~ | ✅ | — | TracingProducerInterceptor |
 | ~~Multi-Tenant Support~~ | ✅ | — | TenantContext + Interceptor + JdbcTemplate wrapper |
-| ~~Auto-scaling Worker~~ | ✅ | — | AutoScalingService basierend auf Partition Offset Delta |
-| ~~Helm Charts~~ | ✅ | — | Vollständige k8s Deployment Templates |
-| IMAP MailListener | ✅ | — | ImapMailListener.java mit Scheduled Polling |
-| Error Classification | ✅ | — | ErrorClassification mit TRANSIENT/BUSINESS/FATAL |
+| ~~Auto-scaling Worker~~ | ✅ | — | AutoScalingService based on partition offset delta |
+| ~~Helm Charts~~ | ✅ | — | Complete k8s deployment templates |
+| IMAP MailListener | ✅ | — | ImapMailListener.java with scheduled polling |
+| Error Classification | ✅ | — | ErrorClassification with TRANSIENT/BUSINESS/FATAL |
 | Alerting (Slack/PagerDuty) | ✅ | — | SlackNotifier + PagerDutyAlertSender |
-| Schema Registry Client | ✅ | — | SchemaRegistryClient mit BACKWARD compatibility |
+| Schema Registry Client | ✅ | — | SchemaRegistryClient with BACKWARD compatibility |
 
 ---
 
-## 10. Dateistruktur
+## 10. File Structure
 
 ```
 kafka-platform/
@@ -470,27 +470,27 @@ kafka-platform/
 
 ---
 
-## 11. Referenzen
+## 11. References
 
-| Dokument | relevante Abschnitte |
+| Document | Relevant sections |
 |----------|---------------------|
 | NEW.md | §3 Bridging, §4 Integration, §5 Email, §6 Observability |
 | UI.md | §2 Format Analysis, §3 Integration Options, §5 Email, §6 Observability |
 | SPEC2.md | §4 Topics, §5 Architecture, §10 HITL, §15 Deterministic Routing, §19 Metrics, §11 Security |
-| TODO.md | Masterplan mit Done/To Do Checklist |
+| TODO.md | Master plan with Done/To Do checklist |
 
 ---
 
-*Stand: 2026-09-18 — Alle P0–P3 Items implementiert + Helm Charts, Auto-Scaling, E2E Scripts.*  
-*Next Step: Produktionseinsatz mit echten LLM-Agents und Load Testing.*
+*As of: 2026-09-18 — All P0–P3 items implemented + Helm charts, auto-scaling, E2E scripts.*  
+*Next step: production use with real LLM agents and load testing.*
 
 ---
 
 ## 12. Shared-DB & Dual-Backend Mode (2026-09-18)
 
-### Architektur: Eine Postgres-Instanz für beide Backends
+### Architecture: One Postgres instance for both backends
 
-Ziel: "Design in QUAD → Test in QUAD → Ausführung über Kafka" — ohne Datenduplizierung.
+Goal: "Design in QUAD → Test in QUAD → Execution via Kafka" — without data duplication.
 
 ```
 ┌────────────────────────── agent_platform (Postgres) ──────────────────────────┐
@@ -507,9 +507,9 @@ Ziel: "Design in QUAD → Test in QUAD → Ausführung über Kafka" — ohne Dat
 │                                                └─ shedlock                    │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
-Beide Backends nutzen **dieselbe** Postgres-Instanz + Datenbank (`agent_platform`). Separate Flyway-History-Tabellen verhindern Versionskollisionen.
+Both backends use the **same** Postgres instance + database (`agent_platform`). Separate Flyway history tables prevent version collisions.
 
-### Start: QUAD mit geteilter Postgres-DB (statt SQLite)
+### Start: QUAD with shared Postgres DB (instead of SQLite)
 
 ```bash
 cd quad-quarkus
@@ -520,67 +520,67 @@ QUARKUS_DATASOURCE_PASSWORD=agent \
 ./start-backend.sh          # respektiert jetzt Env-Vars (start-backend.sh MODIFIED)
 ```
 
-Default bleibt SQLite (`quad.db`) — damit läuft die UI **ohne** Spring-Backend, ohne Kafka, ohne Postgres:
+The default remains SQLite (`quad.db`) — this lets the UI run **without** a Spring backend, without Kafka, without Postgres:
 
 ```bash
 ./start-backend.sh          # SQLite dev mode → Port 8086
 ./build-ui.sh               # Vite → Port 5173, Proxy: /api → 8086, /api/v1 → 8080
 ```
 
-### Dual-Backend UI-Flow
+### Dual-Backend UI Flow
 
-| Schritt | Backend | API | Wirkung |
+| Step | Backend | API | Effect |
 |---------|---------|-----|---------|
-| Design Workflow + Agent | 🟣 Quarkus | `/api/ui/*` | in QUAD-DB (oder Shared-Postgres) |
-| Test/Ausführung | 🟣 Quarkus | `/api/ui/workflows/{id}/execute` | QUAD-WorkflowEngine |
-| Promote à Kafka | 🟢 Kafka | `POST /api/v1/unified/workflows/from-quad` | Konvertiert Flat→Nested DAG, speichert in `workflow_definitions`, **startet sofort** |
-| Status | 🟢 Kafka | `GET /api/v1/workflows/{executionId}` | Polling auf Checkpoints |
-| Agent-Registry | 🟢 Kafka | `GET/POST /api/v1/agents` | liest `agent_definitions` |
+| Design workflow + agent | 🟣 Quarkus | `/api/ui/*` | in QUAD DB (or shared Postgres) |
+| Test/execution | 🟣 Quarkus | `/api/ui/workflows/{id}/execute` | QUAD WorkflowEngine |
+| Promote to Kafka | 🟢 Kafka | `POST /api/v1/unified/workflows/from-quad` | Converts flat→nested DAG, stores in `workflow_definitions`, **starts immediately** |
+| Status | 🟢 Kafka | `GET /api/v1/workflows/{executionId}` | Status polling via checkpoints |
+| Agent registry | 🟢 Kafka | `GET/POST /api/v1/agents` | reads `agent_definitions` |
 
-### UnifiedApiGateway (konvertiert + persistiert + startet atomar)
+### UnifiedApiGateway (converts + persists + starts atomically)
 
-`POST /api/v1/unified/workflows/from-quad` nimmt das Flat-Format `{name, nodes[], edges[]}`:
+`POST /api/v1/unified/workflows/from-quad` accepts the flat format `{name, nodes[], edges[]}`:
 1. `WorkflowDefinitionBridge.convert()` → nested `DagNode[]`
-2. `WorkflowDefinitionService.create()` → persistiert **in-process** in shared `workflow_definitions` (kein HTTP-Roundtrip zu Quarkus mehr!)
-3. Auto-Registrierung referenzierter Agenten via `ensureStub()`
-4. `WorkflowStartService.start()` → startet die Kafka-Ausführung sofort
-5. Antwort: `{converted, nodeCount, kafkaId, name, version, executionId, duplicate}`
+2. `WorkflowDefinitionService.create()` → persists **in-process** into the shared `workflow_definitions` (no more HTTP round trip to Quarkus!)
+3. Auto-registration of referenced agents via `ensureStub()`
+4. `WorkflowStartService.start()` → starts the Kafka execution immediately
+5. Response: `{converted, nodeCount, kafkaId, name, version, executionId, duplicate}`
 
-### Neue REST-Endpunkte (Orchestrator)
+### New REST Endpoints (Orchestrator)
 
-| Endpoint | Methode | Beschreibung |
+| Endpoint | Method | Description |
 |----------|---------|--------------|
-| `/api/v1/agents` | GET | Liste der Kafka-`agent_definitions` (für fetchKafkaAgents) |
-| `/api/v1/agents` | POST | Upsert einer Agent-Definition |
-| `/api/v1/unified/workflows/from-quad` | POST | Flat→Kafka-DAG + Persist + Start (atomar) |
-| `/api/v1/unified/agents/convert` | POST | Quarkus-Agent→WorkerConfig **und** Upsert in `agent_definitions` |
+| `/api/v1/agents` | GET | List of the Kafka `agent_definitions` (for fetchKafkaAgents) |
+| `/api/v1/agents` | POST | Upsert of an agent definition |
+| `/api/v1/unified/workflows/from-quad` | POST | Flat→Kafka DAG + persist + start (atomic) |
+| `/api/v1/unified/agents/convert` | POST | Quarkus agent→WorkerConfig **and** upsert into `agent_definitions` |
 
-### Security: Dev ohne Token
+### Security: Dev Without Token
 
-`SecurityConfig.java` hat jetzt einen Toggle `app.security.enabled` (Default `false`):
-- **Off (Dev)**: REST-API offen — JWT-Filter läuft weiterhin (TenantContext-Propagation), UI + kafkaApi.ts funktionieren ohne Token.
-- **On (Prod)**: `APP_SECURITY_ENABLED=true` → nur Public-Whitelist + validierte JWTs.
+`SecurityConfig.java` now has a toggle `app.security.enabled` (default `false`):
+- **Off (dev)**: REST API open — the JWT filter still runs (TenantContext propagation), UI + kafkaApi.ts work without a token.
+- **On (prod)**: `APP_SECURITY_ENABLED=true` → only the public whitelist + validated JWTs.
 
-### Dateien
+### Files
 
-| Datei | Änderung |
+| File | Change |
 |-------|----------|
 | `agent-orchestrator/.../db/JdbcAgentDefinitionStore.java` | + `list()`, `upsert()`, `ensureStub()` |
-| `agent-orchestrator/.../web/AgentDefinitionController.java` | NEU — GET/POST `/api/v1/agents` |
-| `agent-orchestrator/.../bridge/web/UnifiedApiGateway.java` | REWRITE — in-process Persist + Auto-Start + Agent-Upsert |
+| `agent-orchestrator/.../web/AgentDefinitionController.java` | NEW — GET/POST `/api/v1/agents` |
+| `agent-orchestrator/.../bridge/web/UnifiedApiGateway.java` | REWRITE — in-process persist + auto-start + agent upsert |
 | `agent-orchestrator/.../security/SecurityConfig.java` | + `app.security.enabled` Toggle |
 | `agent-orchestrator/src/main/resources/application.yml` | + `app.security.enabled` |
-| `quad-quarkus/.../resources/application.properties` | Flyway-Table isoliert: `quad_schema_history`; Env-fähige DB-Config |
-| `quad-quarkus/start-backend.sh` | Respektiert `QUARKUS_DATASOURCE_*` Env-Vars |
+| `quad-quarkus/.../resources/application.properties` | Flyway table isolated: `quad_schema_history`; env-capable DB config |
+| `quad-quarkus/start-backend.sh` | Respects `QUARKUS_DATASOURCE_*` env vars |
 | `quad-quarkus/quad-ui/vite.config.ts` | Proxy: `/api/v1`→8080, `/api`→8086 |
 | `quad-quarkus/quad-ui/src/services/kafkaApi.ts` | + `fetchKafkaAgents`, `ConvertAndRunResult`, fix response typing |
-| `quad-quarkus/quad-ui/src/components/WorkflowComposer.tsx` | Agent-Loading pro Backend; Kafka-Execute auto-startet |
+| `quad-quarkus/quad-ui/src/components/WorkflowComposer.tsx` | Agent loading per backend; Kafka execute auto-starts |
 
-### Verifizierung
+### Verification
 
-- `mvn clean install` → **BUILD SUCCESS** (5 Module, 84 Tests)
-- `npm run build` → Vite-Build OK
-- `npm run test` → 38 pass / 3 pre-existierende Failures (AgentPlayground, JsonSchemaPopup)
-- `npm run lint` → nur Warnungen (keine Errors)
+- `mvn clean install` → **BUILD SUCCESS** (5 modules, 84 tests)
+- `npm run build` → Vite build OK
+- `npm run test` → 38 pass / 3 pre-existing failures (AgentPlayground, JsonSchemaPopup)
+- `npm run lint` → warnings only (no errors)
 
-*Stand: 2026-09-18 — Shared-DB-Modus + atomarer Kafka-Promote implementiert.*
+*As of: 2026-09-18 — Shared-DB mode + atomic Kafka promote implemented.*
