@@ -1,222 +1,220 @@
-# Agentic Platform — vom quad-Agenten zur dauerhaften Workflow-Plattform
+# Agentic Platform — from a quad agent to a durable workflow platform
 
-Ein Monorepo mit **einer gemeinsamen Agenten-Basis** (`quad-core`) und **drei Stufen** der
-Workflow-Orchestrierung:
+A monorepo with **one shared agent basis** (`quad-core`) and **three stages** of workflow
+orchestration:
 
 ```
-   Stufe 1                Stufe 2                       Stufe 3
+   Stage 1                Stage 2                       Stage 3
    quad-quarkus           kafka-platform                agentflow
-   synchron / in-process  asynchron / event-getrieben   dauerhaft / durabel
+   synchronous/in-process asynchronous/event-driven    durable
    (Quarkus)              (Kafka)                       (Temporal)
         │                      │                             │
         └──────────────────────┴─────────────────────────────┘
                                │
-                    gemeinsame Basis: quad-core
-              (LangChain4j-Agent, ReAct, Hooks, Tools, MCP,
-               Guardrails, PII, HITL, Observability)
+                    shared basis: quad-core
+              (LangChain4j agent, ReAct, hooks, tools, MCP,
+               guardrails, PII, HITL, observability)
 ```
 
-Die Agenten selbst ändern sich über die Stufen **nicht** — es ändert sich nur, *wer* die
-Ausführung orchestriert und *wo* die Dauerhaftigkeit (Retries, Checkpoints, Replay) liegt.
+The agents themselves do **not** change across the stages — only *who* orchestrates the
+execution and *where* durability (retries, checkpoints, replay) lives.
 
 ---
 
-## Die gemeinsame Basis: `quad-core`
+## The shared basis: `quad-core`
 
-`quad-core` (in `quad-quarkus/`) ist ein **framework-neutrales Java-Framework für LLM-Agenten
-auf Basis von LangChain4j**. Es ist die Konstante in allen drei Stufen: ein Agent wird immer
-gleich gebaut, unabhängig davon, ob er in Quarkus, in einem Kafka-Worker oder in einer
-Temporal-Activity läuft.
+`quad-core` (inside `quad-quarkus/`) is a **framework-neutral Java framework for LLM agents
+built on LangChain4j**. It is the constant across all three stages: an agent is always assembled
+the same way, regardless of whether it runs in Quarkus, in a Kafka worker or in a Temporal
+activity.
 
 ```java
 Agent agent = AgentBuilder.defaultAgent()
         .withModel(ModelFactory.createOpenAiFromEnv())   // OPENAI_*
-        .withSystemPrompt("Du bist ein Recherche-Assistent.")
+        .withSystemPrompt("You are a research assistant.")
         .withToolObjects(new ReadFileTool(), new WebSearchTool())
         .withGuardrail(promptInjectionGuardrail())
-        .withHook(piiHook())                              // GDPR/PII-Maskierung
+        .withHook(piiHook())                              // GDPR/PII masking
         .withHook(new AuditTrailHook(store))
-        .withEventPublisher(publisher)                    // Metriken/Tracing/Logging
+        .withEventPublisher(publisher)                    // metrics/tracing/logging
         .build();
 
 String answer = agent.run(task, new AgentSessionState());
 ```
 
-Was `quad-core` liefert (Auszug):
+What `quad-core` provides (excerpt):
 
-| Baustein | Bedeutung |
+| Building block | Meaning |
 |---|---|
-| `AgentBuilder` / `AgentRuntime` | Agent-Assemblierung + ReAct-Loop (Reason → Act → Observe) |
-| **Hook-Pipeline** | 6 Eingriffspunkte (`before/after Agent/Model/Tool`) → Guardrails, HITL, Telemetrie, Resilience, GDPR als Steckmodule |
-| Tools & MCP | Built-ins (`readFile`, `grepSearch`, `webSearch`, …), `@Tool`-Methoden, `SubAgentTool`, MCP-Bridge |
-| Guardrails / PII / Audit | `GuardrailPlugin`, `PiiAnonymizerHook`, `AuditTrailHook` |
-| HITL | `HITLPlugin` + `CheckpointService` (SSE/Kafka/Console-Channels) |
-| Observability | typisierte `AgentEvent`s, `MetricsHook` (Micrometer), `TracingHook` (OTel), `ProvenanceTracker` |
-| Modell | `ModelFactory` (OpenAI-kompatibel, `OPENAI_*`/`QUAD_LLM_*`) |
+| `AgentBuilder` / `AgentRuntime` | Agent assembly + ReAct loop (reason → act → observe) |
+| **Hook pipeline** | six interception points (`before/after Agent/Model/Tool`) → guardrails, HITL, telemetry, resilience, GDPR as pluggable modules |
+| Tools & MCP | built-ins (`readFile`, `grepSearch`, `webSearch`, …), `@Tool` methods, `SubAgentTool`, MCP bridge |
+| Guardrails / PII / audit | `GuardrailPlugin`, `PiiAnonymizerHook`, `AuditTrailHook` |
+| HITL | `HITLPlugin` + `CheckpointService` (SSE/Kafka/console channels) |
+| Observability | typed `AgentEvent`s, `MetricsHook` (Micrometer), `TracingHook` (OTel), `ProvenanceTracker` |
+| Model | `ModelFactory` (OpenAI-compatible, `OPENAI_*`/`QUAD_LLM_*`) |
 
-**Wer `quad-core` einbindet:**
+**Who depends on `quad-core`:**
 
-| Modul | quad-Abhängigkeit |
+| Module | quad dependency |
 |---|---|
-| `quad-quarkus/quad-quarkus` | `quad-core` (direkt, in-process) |
+| `quad-quarkus/quad-quarkus` | `quad-core` (direct, in-process) |
 | `kafka-platform/quad-workflow-worker` | `de.augmentia.quad:quad-core` + `quad-tool-builtin` |
 | `agentflow/agentflow-app` | `quad-core` + `quad-tool-builtin` + `quad-tool-mcp` |
 
-> Der Root-Aggregator löst `quad-core` **im Reaktor** auf, damit der Kafka-Worker nicht ein
-> veraltetes Jar aus `~/.m2` zieht (siehe [Build & Test](#build--test)).
+> The root aggregator resolves `quad-core` **within the reactor**, so the Kafka worker never
+> pulls a stale jar from `~/.m2` (see [Build & test](#build--test)).
 
 ---
 
-## Der Weg in drei Stufen
+## The path across three stages
 
-### Stufe 1 — `quad-quarkus`: synchron, in-process (Quarkus + LangChain4j)
+### Stage 1 — `quad-quarkus`: synchronous, in-process (Quarkus + LangChain4j)
 
-Der Agent läuft **im selben Prozess** wie die Anwendung. Quarkus stellt REST/SSE und die
-React-UI (`quad-ui`); die Workflow-Engine (`quad.workflow` v2) führt DAGs mit 7 Node-Executoren
-(`agent`, `decision`, `loop`, `fork`, `join`, `hitl`, `end`) aus. Asynchronität entsteht nur dort,
-wo man sie explizit will — über Messaging-Channels (Kafka/AMQP/E-Mail).
+The agent runs **in the same process** as the application. Quarkus serves REST/SSE and the
+React UI (`quad-ui`); the workflow engine (`quad.workflow` v2) executes DAGs with seven node
+executors (`agent`, `decision`, `loop`, `fork`, `join`, `hitl`, `end`). Asynchrony only appears
+where you ask for it — via messaging channels (Kafka/AMQP/email).
 
 ```
 Client ──REST/SSE──► quad-quarkus (Quarkus)
-                        │  AgentBuilder + AgentRuntime + Hook-Pipeline   (quad-core)
-                        │  Workflow-Engine (quad.workflow v2)
-                        └─ JDBC-Stores (SQLite/Postgres): runs, memory, audit, skills, checkpoints
+                        │  AgentBuilder + AgentRuntime + hook pipeline   (quad-core)
+                        │  workflow engine (quad.workflow v2)
+                        └─ JDBC stores (SQLite/Postgres): runs, memory, audit, skills, checkpoints
 ```
 
-- **Passt zu:** interaktiven, agent-zentrierten Anwendungen mit UI, kurzen Läufen, direkter
-  Kontrolle über Prompt/Tools.
-- **Grenze:** Orchestrierung und Dauerhaftigkeit liegen im Anwendungsprozess; Skalierung und
-  Lastverteilung eines Laufs über mehrere Instanzen sind Handarbeit.
-- **Start:** `cd quad-quarkus && mvn quarkus:dev -Dquarkus.http.port=8083` (UI: `quad-ui`).
+- **Fits:** interactive, agent-centric applications with a UI, short runs, direct control over
+  prompt/tools.
+- **Limit:** orchestration and durability live inside the application process; scaling and load
+  balancing a single run across instances is manual work.
+- **Run:** `cd quad-quarkus && mvn quarkus:dev -Dquarkus.http.port=8083` (UI: `quad-ui`).
 - Details: [`quad-quarkus/README.md`](quad-quarkus/README.md).
 
-### Stufe 2 — `kafka-platform`: asynchron, event-getrieben (Kafka)
+### Stage 2 — `kafka-platform`: asynchronous, event-driven (Kafka)
 
-Die **Orchestrierung wird vom Agenten entkoppelt**. Ein deterministischer Orchestrator hält den
-Routing-Zustand; die eigentliche Agenten-Arbeit läuft als **Task über Kafka** und kommt als
-**Result** zurück. Derselbe `quad-core`-Agent steckt jetzt in `quad-workflow-worker` — die
-übrigen Module (`agent-common`, `agent-orchestrator`, `agent-worker`) bleiben bewusst
-**LLM-frei und deterministisch**.
+The **orchestration is decoupled from the agent**. A deterministic orchestrator owns the routing
+state; the actual agent work travels as a **task over Kafka** and comes back as a **result**. The
+same `quad-core` agent now lives in `quad-workflow-worker` — the other modules (`agent-common`,
+`agent-orchestrator`, `agent-worker`) deliberately stay **LLM-free and deterministic**.
 
 ```
-        quad-Workflow/Agent  ──/unified/…──►  Bridge  ──►  workflow-/agent_definitions (Postgres)
+        quad workflow/agent  ──/unified/…──►  bridge  ──►  workflow-/agent_definitions (Postgres)
                                                             │
  Orchestrator (Spring Boot) ◄──intake───────────────────────┘
-   │  RoutingEvaluator (pur, deterministisch, replaybar)
-   │  Checkpoints · Retries · HITL-Tickets · Sweep · Redis-Idempotenz
+   │  RoutingEvaluator (pure, deterministic, replayable)
+   │  checkpoints · retries · HITL tickets · sweep · Redis idempotency
    ▼
- agent.tasks.<agentType>   (Key = workflow_id)
+ agent.tasks.<agentType>   (key = workflow_id)
    │
    ▼
- Worker:  ┌ agent-worker            (deterministischer Mock)
-          └ quad-workflow-worker    (quad-core + echter LLM, Mock-Fallback)
+ Worker:  ┌ agent-worker            (deterministic mock)
+          └ quad-workflow-worker    (quad-core + real LLM, mock fallback)
    │
    ▼
- agent.execution.results ──► Orchestrator ──► nächster Schritt … ──► END
+ agent.execution.results ──► orchestrator ──► next step … ──► END
 ```
 
-- **Neu gegenüber Stufe 1:** Dauerhaftigkeit liegt in **Postgres** (Checkpoints), **Redis**
-  (Start-Idempotenz) und Kafka (Retention/Replay); Lastverteilung über Partitionen
-  (`Key = workflow_id`) und Worker-Instanzen; HITL als entkoppelte Tickets.
-- **Bridge (quad → kafka):** `POST /api/v1/unified/agents/convert` (Agenten zuerst!) und
-  `POST /api/v1/unified/workflows/from-quad` (Workflow). Details:
+- **New vs. stage 1:** durability lives in **Postgres** (checkpoints), **Redis** (start
+  idempotency) and Kafka (retention/replay); load is spread over partitions
+  (`key = workflow_id`) and worker instances; HITL becomes decoupled tickets.
+- **Bridge (quad → kafka):** `POST /api/v1/unified/agents/convert` (agents first!) and
+  `POST /api/v1/unified/workflows/from-quad` (workflow). Details:
   [`kafka-platform/examples/quad-to-kafka/README.md`](kafka-platform/examples/quad-to-kafka/README.md).
-- **Passt zu:** hohem Durchsatz, Parallelität, loser Kopplung, mehreren Worker-Flotten.
-- **Grenze:** Orchestrierungslogik (Retries, Timers, Zustandsmaschine) ist **selbst gebaut**
-  und muss deterministisch/replaybar gehalten werden.
-- **Start:** `cd kafka-platform && mvn verify`, dann `docker compose up -d kafka postgres redis`.
+- **Fits:** high throughput, parallelism, loose coupling, multiple worker fleets.
+- **Limit:** orchestration logic (retries, timers, state machine) is **hand-built** and must be
+  kept deterministic/replayable.
+- **Run:** `cd kafka-platform && mvn verify`, then `docker compose up -d kafka postgres redis`.
 - Details: [`kafka-platform/README.md`](kafka-platform/README.md).
 
-### Stufe 3 — `agentflow`: dauerhaft, durabel (Temporal + Spring AI)
+### Stage 3 — `agentflow`: durable (Temporal + Spring AI)
 
-Hier ersetzt **Temporal** die handgebaute Kafka-Orchestrierung. Ein Workflow ist
-deterministischer Code; alles Nicht-Deterministische (LLM-/Tool-Aufrufe) läuft in **Activities**.
-Dieselben `quad-core`-Agenten werden als Activity gebaut und ausgeführt; zusätzlich gibt es einen
-Spring-AI-Pfad (LangGraph4j) und **deklarative `quad.workflow`-v2-Dokumente**, die ein generischer
-Runner über alle Node-Typen (`agent`, `decision`, `loop`, `fork`, `join`, `hitl`, `subworkflow`,
-`end`) ausführt.
+Here **Temporal** replaces the hand-built Kafka orchestration. A workflow is deterministic code;
+everything non-deterministic (LLM/tool calls) runs in **activities**. The same `quad-core` agents
+are built and executed inside an activity; there is additionally a Spring AI (LangGraph4j) path
+and **declarative `quad.workflow` v2 documents** that a generic runner executes across all node
+types (`agent`, `decision`, `loop`, `fork`, `join`, `hitl`, `subworkflow`, `end`).
 
 ```
 Client ──REST──► agentflow-app (Spring Boot)
-                    │  startet Workflow  ──►  Temporal Server (:7233)
-                    │                              │  Event-History = Durability
-                    │   ┌──────────────────────────┘  Replay · Retries · Timer · Signals
+                    │  starts workflow  ──►  Temporal server (:7233)
+                    │                              │  event history = durability
+                    │   ┌──────────────────────────┘  replay · retries · timers · signals
                     │   ▼
-                    │  Workflow (deterministisch): Plan/DAG, Verzweigung, HITL-Wait
-                    │      │  Activity
+                    │  workflow (deterministic): plan/DAG, branching, HITL wait
+                    │      │  activity
                     │      ▼
-                    └─  Activity: quad-core-Agent / Spring AI / Tools / MCP  (nicht-deterministisch)
+                    └─  activity: quad-core agent / Spring AI / tools / MCP  (non-deterministic)
 ```
 
-- **Neu gegenüber Stufe 2:** Durability, Retries, Timers und HITL-**Signale** sind
-  **Plattform-Features** statt Eigenbau. Die Event-History erlaubt deterministisches Replay;
-  ein Worker-Neustart ist unkritisch. Deklarative v2-Definitionen werden validiert
-  (genau ein `end`, azyklisch, auflösbare Referenzen) und **fail-closed** publiziert.
-- **Passt zu:** lang laufenden, ausfallsicheren Geschäftsprozessen mit menschlichen
-  Freigaben und reproduzierbarem Audit.
-- **Starten:** `cd agentflow && ./start-agentflow.sh` (App `:8095`, Temporal-UI `:8233`, Angular-UI `:4200`).
+- **New vs. stage 2:** durability, retries, timers and HITL **signals** are **platform features**
+  instead of DIY. The event history enables deterministic replay; a worker restart is
+  uneventful. Declarative v2 definitions are validated (exactly one `end`, acyclic, resolvable
+  references) and published **fail-closed**.
+- **Fits:** long-running, failure-tolerant business processes with human approvals and a
+  reproducible audit trail.
+- **Run:** `cd agentflow && ./start-agentflow.sh` (app `:8095`, Temporal UI `:8233`, Angular UI `:4200`).
 - Details: [`agentflow/README.md`](agentflow/README.md).
 
 ---
 
-## Was sich pro Stufe ändert (und was nicht)
+## What changes per stage (and what does not)
 
-| Aspekt | Stufe 1 · quad-quarkus | Stufe 2 · kafka-platform | Stufe 3 · agentflow |
+| Aspect | Stage 1 · quad-quarkus | Stage 2 · kafka-platform | Stage 3 · agentflow |
 |---|---|---|---|
-| **Agent-Basis** | `quad-core` (LangChain4j) | `quad-core` (in `quad-workflow-worker`) | `quad-core` (+ Spring AI) |
-| **Orchestrierung** | in-process (Workflow-Engine) | Kafka-Choreografie + deterministischer Evaluator | **Temporal** |
-| **Durability** | DB-Stores/Checkpoints im Prozess | Postgres-Checkpoints, Redis-Idempotenz, Sweep | **Temporal-History (Replay)** |
-| **Trigger** | REST/SSE, Messaging-Channels | Kafka-Topics | REST/SSE + Temporal-Signals |
-| **Modellaufruf** | in-process | im Kafka-Worker | in Temporal-Activities |
-| **HITL** | Checkpoints via SSE | HITL-Tickets (Kafka) | Temporal-Signals |
-| **UI** | React (`quad-ui`) | REST-API (+ Brücke aus `quad-ui`) | Angular (`agentflow-ui`) |
-| **LLM-frei?** | nein | Kern ja (`agent-common`/`orchestrator`/`worker`), LLM nur im `quad-workflow-worker` | nein (LLM in Activities gekapselt) |
+| **Agent basis** | `quad-core` (LangChain4j) | `quad-core` (in `quad-workflow-worker`) | `quad-core` (+ Spring AI) |
+| **Orchestration** | in-process (workflow engine) | Kafka choreography + deterministic evaluator | **Temporal** |
+| **Durability** | DB stores/checkpoints in-process | Postgres checkpoints, Redis idempotency, sweep | **Temporal history (replay)** |
+| **Trigger** | REST/SSE, messaging channels | Kafka topics | REST/SSE + Temporal signals |
+| **Model call** | in-process | in the Kafka worker | inside Temporal activities |
+| **HITL** | checkpoints via SSE | HITL tickets (Kafka) | Temporal signals |
+| **UI** | React (`quad-ui`) | REST API (+ bridge from `quad-ui`) | Angular (`agentflow-ui`) |
+| **LLM-free?** | no | core yes (`agent-common`/`orchestrator`/`worker`), LLM only in `quad-workflow-worker` | no (LLM encapsulated in activities) |
 
-**Leitlinie über alle Stufen:** *durable/Graph-Grenzen explizit halten, nicht-idempotente
-Effekte nie ohne Key retryen, Checkpoints schlank halten* — bei jeder Stufe bleibt der Agent
-gleich, nur die Orchestrierung wandert nach außen.
+**Guideline across all stages:** *keep durable/graph boundaries explicit, never retry
+non-idempotent effects without a key, keep checkpoints slim* — the agent stays the same, only
+the orchestration moves outward.
 
 ---
 
-## Projektstruktur
+## Project structure
 
 ```text
 .
-├── pom.xml               # Maven-Aggregator (quad-quarkus, kafka-platform, agentflow)
-├── README.md             # diese Datei
-├── .gitignore            # konsolidiert aus allen Modulen
-├── quad-quarkus/         # QUAD – Agent-Framework (Quarkus + LangChain4j) + React-UI
-├── kafka-platform/       # Event-getriebene Workflow-Plattform (Kafka + quad-core-Worker)
-├── agentflow/            # Durable Agent-Workflows (LangGraph4j + Spring AI + Temporal) + Angular-UI
-└── integration-tests/    # End-to-End-Tests über die Plattform (eigener Reaktor)
+├── pom.xml               # Maven aggregator (quad-quarkus, kafka-platform, agentflow)
+├── README.md             # this file
+├── .gitignore            # consolidated from all modules
+├── quad-quarkus/         # QUAD – agent framework (Quarkus + LangChain4j) + React UI
+├── kafka-platform/       # event-driven workflow platform (Kafka + quad-core worker)
+├── agentflow/            # durable agent workflows (LangGraph4j + Spring AI + Temporal) + Angular UI
+└── integration-tests/    # end-to-end tests across the platform (separate reactor)
 ```
 
-Root-Ebene trackt nur `README.md`, `pom.xml` und `.gitignore`; lokale Hilfsdateien (Makefile,
-`start-*.sh`, Notizen, `.code-workspace`) sind ignoriert.
+The root level tracks only `README.md`, `pom.xml` and `.gitignore`; local helper files (Makefile,
+`start-*.sh`, notes, `.code-workspace`) are ignored.
 
 ---
 
-## Build & Test
+## Build & test
 
-Der Root-Aggregator löst `quad-core` aus dem **Reaktor** auf, damit
-`kafka-platform/quad-workflow-worker` nicht ein veraltetes Jar aus `~/.m2` zieht:
+The root aggregator resolves `quad-core` from the **reactor**, so that
+`kafka-platform/quad-workflow-worker` does not pull a stale jar from `~/.m2`:
 
 ```bash
-# alles (korrekte Reihenfolge, inkl. Tests)
+# everything (correct order, incl. tests)
 mvn -T1C clean install
 
-# einzelne Reaktoren
-cd quad-quarkus    && mvn clean install          # quad-core + Quarkus + UI   (~500 + ~200 Tests)
-cd kafka-platform  && mvn verify                 # Orchestrator/Worker/quad-workflow-worker (~360 Tests)
-cd agentflow       && mvn clean package          # App + UI (quad-core aus ~/.m2)
+# individual reactors
+cd quad-quarkus    && mvn clean install          # quad-core + Quarkus + UI   (~500 + ~200 tests)
+cd kafka-platform  && mvn verify                 # orchestrator/worker/quad-workflow-worker (~360 tests)
+cd agentflow       && mvn clean package          # app + UI (quad-core from ~/.m2)
 
-# Integrationsprojekt (eigener Reaktor, eigene Ports)
-cd integration-tests && ./scripts/run-integration-tests.sh e2e   # L0–L3, 58 Tests
+# integration project (separate reactor, separate ports)
+cd integration-tests && ./scripts/run-integration-tests.sh e2e   # L0–L3, 58 tests
 ```
 
-> **Stale-Jar-Trap:** Nach Änderungen an `quad-core` in den Konsumenten immer
-> `mvn … clean package` bzw. `mvn install` — ohne `clean` wird die alte `quad-core` ins
-> Fat-Jar gebündelt.
+> **Stale-jar trap:** after changes to `quad-core`, always run `mvn … clean package` or
+> `mvn install` in the consumers — without `clean`, the old `quad-core` is bundled into the
+> fat jar.
 
 **Frontends**
 
@@ -227,12 +225,12 @@ cd agentflow/agentflow-ui  && npm install && npm run build
 
 ---
 
-## Ports (lokaler Stack)
+## Ports (local stack)
 
-| Komponente | Port |
+| Component | Port |
 |---|---|
-| quad-quarkus (Quarkus) | `8083` (dev) / `8086` (Default) |
-| quad-ui (React) | `5173` (Vite dev) |
+| quad-quarkus (Quarkus) | `8083` (dev) / `8086` (default) |
+| quad-ui (React, Vite) | `5173` |
 | agent-orchestrator (Kafka) | `8080` |
 | quad-workflow-worker | `8092` |
 | Kafka / Postgres / Redis | `9092` / `5432` / `6379` |
@@ -242,21 +240,21 @@ cd agentflow/agentflow-ui  && npm install && npm run build
 
 ---
 
-## Weiterführend
+## Further reading
 
-| Thema | Dokument |
+| Topic | Document |
 |---|---|
-| Agent-Framework im Detail (Hooks, Guardrails, HITL, PII, Security, Deployment) | [`quad-quarkus/README.md`](quad-quarkus/README.md) |
-| Kafka-Plattform (Topics, Routing, HITL-Tickets, Mock-Verhalten) | [`kafka-platform/README.md`](kafka-platform/README.md) |
-| quad-Workflow → Kafka ausführen (Bridge, Konvertierung) | [`kafka-platform/examples/quad-to-kafka/README.md`](kafka-platform/examples/quad-to-kafka/README.md) |
-| agentflow (Temporal, deklarative v2-Workflows, Guardrails pro Agent) | [`agentflow/README.md`](agentflow/README.md) |
-| End-to-End-Schichten L0–L3 + dokumentierte Befunde | [`integration-tests/README.md`](integration-tests/README.md) |
+| Agent framework in depth (hooks, guardrails, HITL, PII, security, deployment) | [`quad-quarkus/README.md`](quad-quarkus/README.md) |
+| Kafka platform (topics, routing, HITL tickets, mock behavior) | [`kafka-platform/README.md`](kafka-platform/README.md) |
+| Run a quad workflow on Kafka (bridge, conversion) | [`kafka-platform/examples/quad-to-kafka/README.md`](kafka-platform/examples/quad-to-kafka/README.md) |
+| agentflow (Temporal, declarative v2 workflows, per-agent guardrails) | [`agentflow/README.md`](agentflow/README.md) |
+| End-to-end layers L0–L3 + documented findings | [`integration-tests/README.md`](integration-tests/README.md) |
 
 ---
 
-## Hinweise
+## Notes
 
-- **Neue Historie:** Dieses Monorepo wurde aus den vormals getrennten Repositories `quad`,
-  `kafka-platform` und `agentflow` mit **neuer Historie** zusammengeführt; die alten Repositories
-  bleiben als Historie/Backup bestehen.
-- **Secrets:** nur `*.example`-Templates sind getrackt; echte `.env`-Dateien sind ignoriert.
+- **Fresh history:** this monorepo was created by merging the formerly separate repositories
+  `quad`, `kafka-platform` and `agentflow` with **fresh history**; the old repositories remain as
+  history/backup.
+- **Secrets:** only `*.example` templates are tracked; real `.env` files are ignored.
