@@ -8,6 +8,8 @@ public enum BlockAction {
     THROW,
     /** Replace the request/response with a fallback message. */
     FALLBACK,
-    /** Escalate to a human (HITL approval flow). */
-    ESCALATE
+    /** Escalate to a human (HITL approval flow) via {@link GuardrailEscalationException}. */
+    ESCALATE,
+    /** Cancel the call and surface the guardrail reason. */
+    CANCEL
 }

@@ -26,11 +26,20 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Builder pattern for creating agents with sensible defaults.
  */
 public class AgentBuilder<T extends Agent> {
+
+    /**
+     * Default PII guardrail pattern. Case-insensitive — the former {@code [A-Z0-9…]} character
+     * classes only matched upper case, so the common lowercase form ({@code user@example.com})
+     * slipped through unfiltered.
+     */
+    private static final Pattern DEFAULT_PII_PATTERN =
+            Pattern.compile("[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", Pattern.CASE_INSENSITIVE);
 
     private final Class<T> agentClass;
     private T agent;
@@ -451,7 +460,7 @@ public class AgentBuilder<T extends Agent> {
     
     private void applyDefaults() {
         Guardrail noPii = (messages, context) ->
-            messages.toString().matches(".*[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}.*")
+            DEFAULT_PII_PATTERN.matcher(messages.toString()).find()
                 ? GuardrailResult.block("PII detected in prompt")
                 : GuardrailResult.ok();
 

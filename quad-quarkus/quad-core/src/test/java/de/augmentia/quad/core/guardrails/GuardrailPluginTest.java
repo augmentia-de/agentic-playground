@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Guardrails must be enforced by the plugin's before/after-model-call hooks. */
 class GuardrailPluginTest {
@@ -52,9 +53,29 @@ class GuardrailPluginTest {
     }
 
     @Test
-    void throwActionSurfacesGuardrailReason() {
+    void throwAction_throws() {
         GuardrailPlugin plugin = new GuardrailPlugin(List.of(blockOn("secret")), List.of(),
                 BlockAction.THROW, "fallback");
+
+        assertThatThrownBy(() -> plugin.beforeModelCall(beforeCtx("secret")))
+                .isInstanceOf(GuardrailException.class)
+                .hasMessageContaining("matched secret");
+    }
+
+    @Test
+    void escalateAction_escalates() {
+        GuardrailPlugin plugin = new GuardrailPlugin(List.of(blockOn("secret")), List.of(),
+                BlockAction.ESCALATE, "fallback");
+
+        assertThatThrownBy(() -> plugin.beforeModelCall(beforeCtx("secret")))
+                .isInstanceOf(GuardrailEscalationException.class)
+                .hasMessageContaining("matched secret");
+    }
+
+    @Test
+    void cancelAction_cancels() {
+        GuardrailPlugin plugin = new GuardrailPlugin(List.of(blockOn("secret")), List.of(),
+                BlockAction.CANCEL, "fallback");
 
         HookResult result = plugin.beforeModelCall(beforeCtx("secret"));
 

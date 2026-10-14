@@ -1,6 +1,11 @@
 package de.augmentia.quad.core.hook.pipeline;
 
 import dev.langchain4j.agent.tool.ToolSpecification;
+import dev.langchain4j.data.message.ChatMessage;
+import de.augmentia.quad.core.guardrails.GuardrailEscalationException;
+import de.augmentia.quad.core.guardrails.GuardrailException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -15,8 +20,10 @@ import jakarta.enterprise.context.ApplicationScoped;
 @ApplicationScoped
 public class HookRegistry {
 
+    private static final Logger log = LoggerFactory.getLogger(HookRegistry.class);
+
     private final List<AgentHook> hooks = new CopyOnWriteArrayList<>();
-    private HookFailurePolicy failurePolicy = HookFailurePolicy.ISOLATE;
+    private volatile HookFailurePolicy failurePolicy = HookFailurePolicy.ISOLATE;
 
     public void register(AgentHook hook) {
         if (hook != null) hooks.add(hook);
@@ -88,25 +95,38 @@ public class HookRegistry {
     }
 
     /**
-     * Invokes all before-model-call hooks and returns the (possibly modified) tool list.
+     * Invokes all before-model-call hooks and returns the (possibly modified) messages and tool list.
+     *
+     * <p>A hook may return {@link HookResult.Modify} carrying either a {@code List<ChatMessage>}
+     * (anonymization: replaces the messages sent to the model) or a
+     * {@code List<ToolSpecification>} (tool filtering). The running transcript is never mutated.</p>
      */
-    public HookResult triggerBeforeModelCall(HookContexts.BeforeModelCallContext ctx) {
+    public HookContexts.BeforeModelCallUpdate triggerBeforeModelCall(HookContexts.BeforeModelCallContext ctx) {
+        var messages = ctx.messages();
         var currentTools = ctx.tools();
         for (var hook : getSortedHooks()) {
             var result = wrap(() -> hook.beforeModelCall(ctx), hook.name());
             switch (result) {
                 case HookResult.Modify<?> m -> {
                     if (m.value() instanceof List<?> list) {
-                        @SuppressWarnings("unchecked")
-                        var specs = (List<ToolSpecification>) list;
-                        currentTools = specs;
+                        if (!list.isEmpty() && list.get(0) instanceof ChatMessage) {
+                            @SuppressWarnings("unchecked")
+                            var msgs = (List<ChatMessage>) list;
+                            messages = msgs;
+                        } else {
+                            @SuppressWarnings("unchecked")
+                            var specs = (List<ToolSpecification>) list;
+                            currentTools = specs;
+                        }
                     }
                 }
-                case HookResult.Cancel ignored -> { return result; }
+                case HookResult.Cancel c -> {
+                    return new HookContexts.BeforeModelCallUpdate(messages, currentTools, c.reason());
+                }
                 default -> {}
             }
         }
-        return new HookResult.Modify<>(currentTools);
+        return new HookContexts.BeforeModelCallUpdate(messages, currentTools, null);
     }
 
     /**
@@ -163,9 +183,15 @@ public class HookRegistry {
     private HookResult wrap(ThrowingSupplier<HookResult> fn, String hookName) {
         try {
             return fn.get();
+        } catch (GuardrailException | GuardrailEscalationException e) {
+            // Deliberate control flow from a guardrail: never swallow it.
+            throw e;
         } catch (Exception e) {
+            log.warn("Hook '{}' failed (policy {}): {}", hookName, failurePolicy, e.toString(), e);
             if (failurePolicy == HookFailurePolicy.CHAIN_ABORT) {
-                return new HookResult.Cancel("Hook '" + hookName + "' failed: " + e.getMessage());
+                throw e instanceof RuntimeException runtime
+                        ? runtime
+                        : new IllegalStateException("Hook '" + hookName + "' failed", e);
             }
             return HookResult.Continue.INSTANCE;
         }

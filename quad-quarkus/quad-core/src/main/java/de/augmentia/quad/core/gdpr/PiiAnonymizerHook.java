@@ -10,12 +10,18 @@ import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
  * Anonymizes PII in the messages sent to the model before the call.
- * Redaction is applied to the mutable message list of the before-model-call context.
+ *
+ * <p>The hook is <b>non-mutating</b>: it never writes into the running transcript
+ * ({@link HookContexts.BeforeModelCallContext#messages()}). It builds a masked copy and returns it
+ * as {@link HookResult.Modify}, so only the request going to the model is anonymized while the
+ * agent's conversation history keeps the original content.</p>
  */
 public class PiiAnonymizerHook implements AgentHook {
 
@@ -51,17 +57,22 @@ public class PiiAnonymizerHook implements AgentHook {
     @Override
     public HookResult beforeModelCall(HookContexts.BeforeModelCallContext ctx) {
         var messages = ctx.messages();
+        List<ChatMessage> masked = new ArrayList<>(messages.size());
         var modified = false;
 
-        for (int i = 0; i < messages.size(); i++) {
-            var msg = messages.get(i);
+        for (ChatMessage msg : messages) {
             var content = content(msg);
-            if (content == null) continue;
+            if (content == null) {
+                masked.add(msg);
+                continue;
+            }
 
             var sanitized = maskPii(content);
-            if (!sanitized.equals(content)) {
+            if (sanitized.equals(content)) {
+                masked.add(msg);
+            } else {
                 modified = true;
-                messages.set(i, createMaskedMessage(msg, sanitized));
+                masked.add(createMaskedMessage(msg, sanitized));
             }
         }
 
@@ -74,7 +85,7 @@ public class PiiAnonymizerHook implements AgentHook {
                 "Prompt contains personal data: request blocked");
         }
 
-        return new HookResult.Continue();
+        return new HookResult.Modify<>(masked);
     }
 
     private static String content(ChatMessage msg) {

@@ -15,9 +15,18 @@ import java.util.List;
  *
  * <p>Enforcement happens in {@link #beforeModelCall} (input guardrails) and
  * {@link #afterModelCall} (output guardrails) — the lifecycle methods the runtime actually
- * triggers. A blocked request is cancelled via {@link HookResult.Cancel}, which the runtime
- * surfaces as {@code "Request cancelled: …"} (or the configured fallback message for
- * {@link BlockAction#FALLBACK}).</p>
+ * triggers. The configured {@link BlockAction} decides what happens on a block:</p>
+ *
+ * <ul>
+ *   <li>{@link BlockAction#THROW} — a {@link GuardrailException} is thrown (propagates out of the
+ *       hook pipeline; the hook pipeline never swallows it).</li>
+ *   <li>{@link BlockAction#ESCALATE} — the agent is paused and a
+ *       {@link GuardrailEscalationException} is thrown for the caller to route to HITL.</li>
+ *   <li>{@link BlockAction#CANCEL} — {@link HookResult.Cancel} carrying the guardrail reason; the
+ *       runtime surfaces it as {@code "Request cancelled: …"}.</li>
+ *   <li>{@link BlockAction#FALLBACK} — {@link HookResult.Cancel} carrying the configured fallback
+ *       message.</li>
+ * </ul>
  */
 public class GuardrailPlugin implements Plugin {
 
@@ -97,10 +106,21 @@ public class GuardrailPlugin implements Plugin {
     }
 
     private HookResult block(GuardrailResult result) {
-        String message = blockAction == BlockAction.FALLBACK
-                ? fallbackMessage
-                : "Guardrail block: " + result.reason();
-        return new HookResult.Cancel(message);
+        return switch (blockAction) {
+            case THROW -> throw new GuardrailException(result.reason());
+            case ESCALATE -> escalate(result.reason());
+            case CANCEL -> new HookResult.Cancel("Guardrail block: " + result.reason());
+            case FALLBACK -> new HookResult.Cancel(
+                    fallbackMessage != null ? fallbackMessage : "Guardrail block: " + result.reason());
+        };
+    }
+
+    /** Pauses the agent (if attached) and signals the caller to escalate to HITL. */
+    private HookResult escalate(String reason) {
+        if (agent != null) {
+            agent.pauseExecution();
+        }
+        throw new GuardrailEscalationException(reason);
     }
 
     public Agent agent() {

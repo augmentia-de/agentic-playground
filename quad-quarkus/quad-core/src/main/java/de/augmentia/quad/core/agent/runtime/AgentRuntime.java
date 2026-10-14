@@ -355,18 +355,17 @@ public class AgentRuntime {
                 : List.of();
 
         List<ChatMessage> additional = new ArrayList<>();
+        var requestMessages = new ArrayList<>(boundedContext);
         if (hookRegistry != null) {
             var beforeMc = hookRegistry.triggerBeforeModelCall(new HookContexts.BeforeModelCallContext(
                     sessionId(), new StringBuilder(), boundedContext, specs, additional));
-            if (beforeMc instanceof HookResult.Cancel c) {
-                return "Request cancelled: " + c.reason();
+            if (beforeMc.cancelled()) {
+                return "Request cancelled: " + beforeMc.cancelReason();
             }
-            if (beforeMc instanceof HookResult.Modify<?> m && m.value() instanceof List<?> l) {
-                specs = l.stream().map(x -> (ToolSpecification) x).toList();
-            }
+            specs = beforeMc.tools();
+            // A hook may have anonymized the messages; use them for this request only.
+            requestMessages = new ArrayList<>(beforeMc.messages());
         }
-
-        var requestMessages = new ArrayList<>(boundedContext);
         requestMessages.addAll(additional);
 
         if (channelManager != null) {

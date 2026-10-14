@@ -1,5 +1,7 @@
 package de.augmentia.quad.core.agent.runtime;
 
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
@@ -71,10 +73,21 @@ public class OTelAgentTracer {
         span.end();
     }
 
+    /**
+     * Adds a span event, tagging it with the tool name when one is given (the tool identity was
+     * previously dropped, so events were unattributable).
+     */
     public void addEvent(String eventName, String toolName) {
-        var current = tracer;
-        if (current != null) {
-            Span.current().addEvent(eventName);
+        if (tracer == null) return;
+        addEvent(Span.current(), eventName, toolName);
+    }
+
+    /** Package-private seam so tests can assert the tool name lands on the span. */
+    void addEvent(Span span, String eventName, String toolName) {
+        if (toolName == null || toolName.isBlank()) {
+            span.addEvent(eventName);
+        } else {
+            span.addEvent(eventName, Attributes.of(AttributeKey.stringKey("tool.name"), toolName));
         }
     }
 }

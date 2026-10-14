@@ -35,6 +35,23 @@ public final class HookContexts {
         List<ChatMessage> additionalMessages
     ) {}
 
+    /**
+     * Outcome of running all before-model-call hooks.
+     *
+     * <p>{@code messages} are the (possibly anonymized) messages to send to the model; the running
+     * transcript is not modified. {@code tools} is the (possibly filtered) tool list.
+     * {@code cancelReason}, when non-null, aborts the call.</p>
+     */
+    public record BeforeModelCallUpdate(
+        List<ChatMessage> messages,
+        List<ToolSpecification> tools,
+        String cancelReason
+    ) {
+        public boolean cancelled() {
+            return cancelReason != null;
+        }
+    }
+
     public record AfterModelCallContext(
         String sessionId,
         String llmResponse,

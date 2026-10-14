@@ -1,10 +1,15 @@
 package de.augmentia.quad.core.agent;
 
 import de.augmentia.quad.core.annotation.Tool;
+import de.augmentia.quad.core.guardrails.GuardrailPlugin;
+import de.augmentia.quad.core.hook.pipeline.HookContexts;
+import de.augmentia.quad.core.hook.pipeline.HookResult;
 import de.augmentia.quad.core.session.AgentSessionState;
+import dev.langchain4j.data.message.UserMessage;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -72,6 +77,27 @@ class AgentBuilderTest {
             .build();
 
         assertNotNull(agent.getHookRegistry());
+    }
+
+    @Test
+    void piiPatternCaseInsensitive() {
+        Agent agent = AgentBuilder.create(TestAgent.class)
+            .withDefaults()
+            .build();
+
+        GuardrailPlugin plugin = agent.getHookRegistry().getHooks().stream()
+            .filter(GuardrailPlugin.class::isInstance)
+            .map(GuardrailPlugin.class::cast)
+            .findFirst()
+            .orElseThrow();
+
+        var ctx = new HookContexts.BeforeModelCallContext("s", new StringBuilder(),
+            List.of(UserMessage.from("write to user@example.com please")), List.of(), List.of());
+
+        HookResult result = plugin.beforeModelCall(ctx);
+
+        // Lower-case e-mail must be caught like the upper-case form.
+        assertInstanceOf(HookResult.Cancel.class, result);
     }
 
     @Test
