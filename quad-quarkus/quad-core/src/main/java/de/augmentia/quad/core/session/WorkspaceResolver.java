@@ -5,6 +5,8 @@ import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 
 @ApplicationScoped
@@ -13,6 +15,15 @@ public class WorkspaceResolver {
     /** Defaults to the process CWD ('.') so agents work in the current directory. */
     public static final String WORKSPACE_BASE = Path.of(System.getProperty("quad.workspace",
         System.getenv().getOrDefault("QUAD_WORKSPACE", "."))).toAbsolutePath().normalize().toString();
+
+    /**
+     * A session id must be usable as a <em>single</em> path segment below the workspace base.
+     * It therefore must not contain a path separator ({@code "/"}, {@code "\"}), NUL or any
+     * other control character, and must not be exactly {@code "."} or {@code ".."}.
+     * Other printable characters (e.g. {@code ":"} as used by the Kafka worker) are permitted,
+     * because they cannot traverse and stay a single segment on POSIX.
+     */
+    private static final int MAX_SESSION_ID_LENGTH = 255;
 
     @Inject
     CurrentSession currentSession;
@@ -29,22 +40,66 @@ public class WorkspaceResolver {
         return this;
     }
 
-    public static String resolve(String sessionId) {
-        return WORKSPACE_BASE + "/" + sessionId;
+    /**
+     * Validates a session id for use as a single path segment below the workspace base.
+     *
+     * @param sessionId the raw id; {@code null}/blank resolves to {@code "default"}
+     * @return the trimmed, validated id
+     * @throws SecurityException if the id is {@code "."}/{@code ".."}, is too long, or contains a
+     *         path separator, NUL or another control character
+     */
+    public static String sanitizeSessionId(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return "default";
+        }
+        String id = sessionId.trim();
+        if (id.equals(".") || id.equals("..")) {
+            throw new SecurityException("Access denied: invalid session id '" + sessionId + "'");
+        }
+        if (id.length() > MAX_SESSION_ID_LENGTH) {
+            throw new SecurityException("Access denied: session id too long");
+        }
+        for (int i = 0; i < id.length(); i++) {
+            char c = id.charAt(i);
+            if (c == '/' || c == '\\' || c == '\0' || Character.isISOControl(c)) {
+                throw new SecurityException("Access denied: invalid session id '" + sessionId + "'");
+            }
+        }
+        return id;
     }
 
+    /**
+     * Absolute session root (workspace base + validated session id).
+     *
+     * @throws SecurityException if the session id is invalid
+     */
+    public static String resolve(String sessionId) {
+        return Path.of(WORKSPACE_BASE).resolve(sanitizeSessionId(sessionId)).normalize().toString();
+    }
+
+    /**
+     * Resolves a <em>relative</em> sub-path below the session root.
+     *
+     * @throws SecurityException if the path is absolute or escapes the session root
+     */
     public static String resolve(String sessionId, String subPath) {
-        return resolve(sessionId) + "/" + subPath;
+        Path sessionRoot = Path.of(resolve(sessionId));
+        Path target = sessionRoot.resolve(subPath == null ? "" : subPath).normalize();
+        if (!target.startsWith(sessionRoot)) {
+            throw new SecurityException(
+                "Access denied: '" + subPath + "' escapes the session workspace.");
+        }
+        return target.toString();
     }
 
     public Path sessionDir() {
         AgentSessionState current = currentSession != null ? currentSession.get() : CurrentSession.getCurrent();
         String sessionId = current != null ? current.getSessionId() : "default";
-        return baseWorkspace().resolve(sessionId);
+        return sessionDir(sessionId);
     }
 
     public Path sessionDir(String sessionId) {
-        return baseWorkspace().resolve(sessionId);
+        return baseWorkspace().resolve(sanitizeSessionId(sessionId)).normalize();
     }
 
     public Path sessionDir(String sessionId, String subPath) {
@@ -155,16 +210,15 @@ public class WorkspaceResolver {
     }
 
     /**
-     * Real-path containment check against the session root to prevent
-     * symlink escapes. Falls back to lexical check when the path does not exist.
+     * Real-path containment check against the session root to prevent symlink escapes.
+     * Uses a real-path comparison on both the target and the root; there is deliberately
+     * <em>no</em> lexical fallback, because that would let a symlink escape inside a
+     * lexically-contained path.
      */
     private Path symlinkSafe(Path target, Path root) {
-        Path realTarget = real(target);
-        Path realRoot = root.toAbsolutePath().normalize();
+        Path realTarget = realNearest(target);
+        Path realRoot = realNearest(root);
         if (realTarget.startsWith(realRoot)) {
-            return target;
-        }
-        if (target.startsWith(realRoot)) {
             return target;
         }
         throw new SecurityException(
@@ -172,15 +226,9 @@ public class WorkspaceResolver {
     }
 
     private Path symlinkSafeAgainstGrant(Path target, Access access, AgentSessionState state) {
-        Path realTarget = real(target);
+        Path realTarget = realNearest(target);
         for (GrantedDirectory gd : state.grantedDirectories()) {
-            if (realTarget.startsWith(real(gd.path()))) {
-                return target;
-            }
-        }
-        // lexical fallback
-        for (GrantedDirectory gd : state.grantedDirectories()) {
-            if (target.startsWith(gd.path())) {
+            if (realTarget.startsWith(realNearest(gd.path()))) {
                 return target;
             }
         }
@@ -188,14 +236,41 @@ public class WorkspaceResolver {
             "Access denied: real path of '" + target + "' does not reside in any granted directory (symlink).");
     }
 
-    private static Path real(Path p) {
-        try {
-            Path abs = p.toAbsolutePath().normalize();
-            Path rp = abs.toRealPath();
-            return rp == null ? abs : rp;
-        } catch (IOException e) {
-            return p.toAbsolutePath().normalize();
+    /**
+     * Real (symlink-resolved) path of the nearest existing ancestor of {@code p}, with the
+     * non-existing suffix re-appended. This is correct for targets that do not exist yet while
+     * still detecting symlinked parent directories (which a plain {@code toRealPath()} on the
+     * full path could not, because it fails for non-existent targets).
+     */
+    static Path realNearest(Path p) {
+        Path abs = p.toAbsolutePath().normalize();
+        Path existing = abs;
+        Path suffix = null;
+        while (existing != null && !Files.exists(existing, LinkOption.NOFOLLOW_LINKS)) {
+            Path name = existing.getFileName();
+            if (name != null) {
+                suffix = suffix == null ? name : name.resolve(suffix);
+            }
+            existing = existing.getParent();
         }
+        if (existing == null) {
+            return abs;
+        }
+        Path realBase;
+        try {
+            realBase = existing.toRealPath();
+        } catch (IOException e) {
+            realBase = existing.toAbsolutePath().normalize();
+        }
+        return suffix == null ? realBase : realBase.resolve(suffix).normalize();
+    }
+
+    /**
+     * Public real-path helper for callers outside this class (e.g. workflow prefix resolution).
+     * Never returns {@code null}.
+     */
+    public static Path realPath(Path p) {
+        return realNearest(p);
     }
 
     private Path baseWorkspace() {

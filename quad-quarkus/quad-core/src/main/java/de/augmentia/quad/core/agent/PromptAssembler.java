@@ -147,8 +147,11 @@ public class PromptAssembler {
         }
         try {
             return workspaceResolver.sessionDir(state.getSessionId()).toString();
+        } catch (SecurityException e) {
+            // invalid session id -> do not surface a (possibly traversing) path in the prompt
+            return null;
         } catch (Exception e) {
-            return WorkspaceResolver.WORKSPACE_BASE + "/" + state.getSessionId();
+            return WorkspaceResolver.resolve(state.getSessionId());
         }
     }
 

@@ -83,8 +83,16 @@ public class SandboxPoolClient {
         }
         String effectiveSession = sessionId != null ? sessionId : currentSessionId();
 
+        // Resolve the session workspace (validates the session id, fails closed on traversal).
+        Path workspace;
+        try {
+            workspace = workspaceDir(effectiveSession);
+        } catch (SecurityException e) {
+            log.warn("Sandbox run refused: {}", e.getMessage());
+            return "Error: invalid session id for sandbox: " + e.getMessage();
+        }
+
         // Ensure the session workspace exists so the bind mount works.
-        Path workspace = workspaceDir(effectiveSession);
         try {
             Files.createDirectories(workspace);
         } catch (IOException e) {
@@ -260,8 +268,9 @@ public class SandboxPoolClient {
     }
 
     private Path workspaceDir(String sessionId) {
-        String id = sessionId != null ? sessionId : "default";
-        return Path.of(WorkspaceResolver.resolve(id));
+        // WorkspaceResolver.resolve validates the session id (single safe path segment) and
+        // confines the resulting directory below the workspace base.
+        return Path.of(WorkspaceResolver.resolve(sessionId));
     }
 
     private static String trunc(String s, int max) {

@@ -23,4 +23,12 @@ class SandboxPoolClientTest {
         java.nio.file.Path dir = (java.nio.file.Path) method.invoke(pool, (Object) null);
         assertThat(dir.toString()).endsWith(java.nio.file.Path.of("/default").toString());
     }
+
+    @Test
+    void rejectsTraversalSessionId() {
+        SandboxPoolClient pool = new SandboxPoolClient(
+                SandboxConfig.of(true, "img", "512m", 60000, true));
+        String result = pool.run("echo hi", "../../etc");
+        assertThat(result).contains("invalid session id");
+    }
 }

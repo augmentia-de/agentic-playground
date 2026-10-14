@@ -1,8 +1,11 @@
 package de.augmentia.quad.workflow.engine.node;
 
 import de.augmentia.quad.core.session.AgentSessionState;
+import de.augmentia.quad.core.session.WorkspaceResolver;
 import de.augmentia.quad.workflow.engine.internal.WorkflowExecutionContext;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,6 +22,11 @@ class PrefixSourceResolverTest {
     private final AgentSessionState state = new AgentSessionState();
     private final WorkflowExecutionContext ctx = new WorkflowExecutionContext("run", null, "", "",
             state, false, null, true);
+
+    @AfterEach
+    void clearAllowedRoots() {
+        System.clearProperty("quad.prefix.allowed-roots");
+    }
 
     @Test
     void bareStringStaysAsIs() {
@@ -56,12 +64,57 @@ class PrefixSourceResolverTest {
     }
 
     @Test
-    void fileSourceReadsAbsolutePath() throws Exception {
-        Path tmp = Files.createTempFile("prefix-src-", ".md");
-        Files.writeString(tmp, "file block lorem ipsum");
-        String resolved = PrefixSourceResolver.resolve("file://" + tmp, ctx, "n1");
+    void fileSourceReadsAbsolutePathInsideAllowedRoot(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("prefix.md");
+        Files.writeString(file, "file block lorem ipsum");
+        System.setProperty("quad.prefix.allowed-roots", dir.toString());
+        String resolved = PrefixSourceResolver.resolve("file://" + file, ctx, "n1");
         assertEquals("file block lorem ipsum", resolved);
-        Files.deleteIfExists(tmp);
+    }
+
+    @Test
+    void absoluteFileOutsideAllowedRootsIsRejected(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("secret.md");
+        Files.writeString(file, "should not be readable");
+        // dir is deliberately NOT registered as an allowed root
+        assertNull(PrefixSourceResolver.resolve("file://" + file, ctx, "n1"));
+    }
+
+    @Test
+    void relativeFileIsReadInsideWorkspace() throws Exception {
+        Path sessionRoot = Path.of(WorkspaceResolver.resolve(state.getSessionId()));
+        Files.createDirectories(sessionRoot);
+        Path file = sessionRoot.resolve("rel.md");
+        Files.writeString(file, "relative block");
+        try {
+            assertEquals("relative block", PrefixSourceResolver.resolve("file://rel.md", ctx, "n1"));
+        } finally {
+            Files.deleteIfExists(file);
+            Files.deleteIfExists(sessionRoot);
+        }
+    }
+
+    @Test
+    void relativeTraversalOutsideWorkspaceIsRejected() {
+        assertNull(PrefixSourceResolver.resolve(
+                "file://../../../../etc/hostname", ctx, "n1"));
+    }
+
+    @Test
+    void symlinkEscapeFromWorkspaceIsRejected(@TempDir Path outside) throws Exception {
+        Path sessionRoot = Path.of(WorkspaceResolver.resolve(state.getSessionId()));
+        Files.createDirectories(sessionRoot);
+        Path secret = outside.resolve("secret.md");
+        Files.writeString(secret, "symlink secret");
+        Path link = sessionRoot.resolve("escape");
+        Files.deleteIfExists(link);
+        Files.createSymbolicLink(link, outside);
+        try {
+            assertNull(PrefixSourceResolver.resolve("file://escape/secret.md", ctx, "n1"));
+        } finally {
+            Files.deleteIfExists(link);
+            Files.deleteIfExists(sessionRoot);
+        }
     }
 
     @Test
@@ -75,7 +128,32 @@ class PrefixSourceResolverTest {
     }
 
     @Test
-    void mapUrlFieldFetches() throws Exception {
+    void loopbackUrlIsRejected() {
+        assertNull(PrefixSourceResolver.resolve("http://127.0.0.1:9/x", ctx, "n1"));
+        assertNull(PrefixSourceResolver.resolve("http://localhost:9/x", ctx, "n1"));
+    }
+
+    @Test
+    void linkLocalMetadataUrlIsRejected() {
+        assertNull(PrefixSourceResolver.resolve(
+                "http://169.254.169.254/latest/meta-data/", ctx, "n1"));
+    }
+
+    @Test
+    void ipv6LoopbackUrlIsRejected() {
+        assertNull(PrefixSourceResolver.resolve("http://[::1]:9/x", ctx, "n1"));
+    }
+
+    @Test
+    void nonHttpUrlFieldIsRejected() {
+        Map<String, Object> src = Map.of("url", "ftp://example.com/x");
+        assertNull(PrefixSourceResolver.resolve(src, ctx, "n1"));
+        Map<String, Object> fileUrl = Map.of("url", "file:///etc/passwd");
+        assertNull(PrefixSourceResolver.resolve(fileUrl, ctx, "n1"));
+    }
+
+    @Test
+    void mapUrlFieldFetches() {
         // "url" key with a non-URL value -> silent null (no crash)
         Map<String, Object> src = Map.of("url", "not a url");
         assertNull(PrefixSourceResolver.resolve(src, ctx, "n1"));
