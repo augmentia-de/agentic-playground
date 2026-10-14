@@ -129,12 +129,99 @@ class DeclarativeAgentWorkflowTest {
         assertThat(activities.ran).contains("a1", "b1");
     }
 
+    @Test
+    void deterministicContextOrdering() {
+        DeclarativePlan plan = new DeclarativePlan(List.of(
+                agent("a", List.of()),
+                agent("b", List.of()),
+                agent("c", List.of("b", "a")),   // deliberately unsorted
+                end("end", List.of("c"))));
+        startWorker(plan);
+
+        newWorkflow("wf-order").run("def", "task");
+
+        String ctx = activities.tasks.get("c");
+        assertThat(ctx).contains("Previous results:");
+        assertThat(ctx.indexOf("out-a")).isNotNegative();
+        assertThat(ctx.indexOf("out-a")).isLessThan(ctx.indexOf("out-b"));
+    }
+
+    @Test
+    void repeatedRunsProduceIdenticalActivitySequence() {
+        DeclarativePlan plan = new DeclarativePlan(List.of(
+                agent("a", List.of()),
+                agent("b", List.of()),
+                agent("c", List.of("b", "a")),
+                end("end", List.of("c"))));
+        startWorker(plan);
+
+        newWorkflow("wf-run-1").run("def", "task");
+        List<String> first = List.copyOf(activities.ran);
+        activities.ran.clear();
+        newWorkflow("wf-run-2").run("def", "task");
+
+        assertThat(first).containsExactly("a", "b", "c");
+        assertThat(activities.ran).isEqualTo(first);
+    }
+
+    @Test
+    void pruningIsTransitive() {
+        DeclarativePlan plan = new DeclarativePlan(List.of(
+                agent("start", List.of()),
+                decision("pick", List.of("start"), List.of(new Branch("b1", "contains:go", "hi")), "lo"),
+                agent("hi", List.of("pick")),
+                agent("lo", List.of("pick")),
+                agent("lo2", List.of("lo")),
+                agent("lo3", List.of("lo2")),
+                end("end", List.of("hi"))));
+        startWorker(plan);
+        activities.outputs.put("start", t -> "go"); // selects "hi", prunes "lo"
+
+        newWorkflow("wf-prune").run("def", "task");
+
+        assertThat(activities.ran).contains("start", "hi");
+        assertThat(activities.ran).doesNotContain("lo", "lo2", "lo3");
+    }
+
+    @Test
+    void loopRespectsHardCap() {
+        DeclarativePlan plan = new DeclarativePlan(List.of(
+                agent("seed", List.of()),
+                loop("loop", List.of("seed"), 250, "contains:NEVER", List.of("work")),
+                agent("work", List.of("loop")),
+                end("end", List.of("loop"))));
+        startWorker(plan);
+
+        newWorkflow("wf-cap").run("def", "task");
+
+        long runs = activities.ran.stream().filter("work"::equals).count();
+        assertThat(runs).isEqualTo(DeclarativeAgentWorkflow.Impl.MAX_LOOP_ITERATIONS);
+    }
+
+    @Test
+    void unsetIterations_definedBehavior() {
+        DeclarativePlan plan = new DeclarativePlan(List.of(
+                agent("seed", List.of()),
+                loop("loop", List.of("seed"), 0, "contains:NEVER", List.of("work")),
+                agent("work", List.of("loop")),
+                end("end", List.of("loop"))));
+        startWorker(plan);
+
+        newWorkflow("wf-unset").run("def", "task");
+
+        long runs = activities.ran.stream().filter("work"::equals).count();
+        // Documented: unset is bounded by the hard cap, never silently a single iteration.
+        assertThat(runs).isGreaterThan(1);
+        assertThat(runs).isEqualTo(DeclarativeAgentWorkflow.Impl.MAX_LOOP_ITERATIONS);
+    }
+
     // ── fakes + plan builders ─────────────────────────────────────────────────
 
     static class Fake implements DeclarativeActivities {
         final DeclarativePlan plan;
         final List<String> ran = new ArrayList<>();
         final Map<String, Function<String, String>> outputs = new HashMap<>();
+        final Map<String, String> tasks = new HashMap<>();
 
         Fake(DeclarativePlan plan) {
             this.plan = plan;
@@ -148,6 +235,7 @@ class DeclarativeAgentWorkflowTest {
         @Override
         public String runStep(DeclarativeStep step, String task) {
             ran.add(step.nodeId());
+            tasks.put(step.nodeId(), task);
             Function<String, String> f = outputs.get(step.nodeId());
             return f == null ? "out-" + step.nodeId() : f.apply(task);
         }

@@ -6,11 +6,13 @@ import io.temporal.workflow.SignalMethod;
 import io.temporal.workflow.Workflow;
 import io.temporal.workflow.WorkflowInterface;
 import io.temporal.workflow.WorkflowMethod;
+import org.slf4j.Logger;
 
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -23,8 +25,11 @@ import io.temporal.spring.boot.WorkflowImpl;
  * branches/loops/joins are deterministic workflow code.
  *
  * <p>Nodes run when their {@code dependsOn} dependencies are resolved; {@code decision} nodes prune
- * the non-selected branch targets. HITL nodes wait for {@link #decide(String, boolean)} (or a
- * blanket {@link #approve(boolean)}).</p>
+ * the non-selected branch targets (transitively, see {@link Impl#pruneCascade}). HITL nodes wait for
+ * {@link #decide(String, boolean)} (or a blanket {@link #approve(boolean)}).</p>
+ *
+ * <p>All workflow state uses insertion-ordered collections and dependency lists are sorted when a
+ * context is composed, so a replay sees exactly the same inputs (Temporal determinism).</p>
  */
 @WorkflowInterface
 public interface DeclarativeAgentWorkflow {
@@ -43,6 +48,14 @@ public interface DeclarativeAgentWorkflow {
     @WorkflowImpl(taskQueues = "agentflow")
     class Impl implements DeclarativeAgentWorkflow {
 
+        /**
+         * Hard upper bound for any single {@code loop} node, whatever the document declares. Guards
+         * against open-ended loops that never meet their exit condition.
+         */
+        static final int MAX_LOOP_ITERATIONS = 100;
+
+        private final Logger log = Workflow.getLogger(Impl.class);
+
         private final DeclarativeActivities activities = Workflow.newActivityStub(
                 DeclarativeActivities.class,
                 ActivityOptions.newBuilder()
@@ -50,7 +63,7 @@ public interface DeclarativeAgentWorkflow {
                         .setRetryOptions(RetryOptions.newBuilder().setMaximumAttempts(2).build())
                         .build());
 
-        private final Map<String, Boolean> decisions = new HashMap<>();
+        private final Map<String, Boolean> decisions = new LinkedHashMap<>();
         private Boolean approveAll;
         private String rejectedAt;
 
@@ -58,17 +71,17 @@ public interface DeclarativeAgentWorkflow {
         public String run(String workflowId, String task) {
             DeclarativePlan plan = activities.plan(workflowId);
 
-            Map<String, NodeSpec> byId = new HashMap<>();
-            Set<String> owned = new HashSet<>();
+            Map<String, NodeSpec> byId = new LinkedHashMap<>();
+            Set<String> owned = new LinkedHashSet<>();
             for (NodeSpec n : plan.nodes()) {
                 byId.put(n.id(), n);
                 owned.addAll(n.bodySteps());
             }
 
-            Map<String, String> outputs = new HashMap<>();
-            Set<String> done = new HashSet<>();
-            Set<String> skipped = new HashSet<>();
-            Set<String> pruned = new HashSet<>();
+            Map<String, String> outputs = new LinkedHashMap<>();
+            Set<String> done = new LinkedHashSet<>();
+            Set<String> skipped = new LinkedHashSet<>();
+            Set<String> pruned = new LinkedHashSet<>();
 
             boolean progress = true;
             while (progress) {
@@ -126,7 +139,7 @@ public interface DeclarativeAgentWorkflow {
                     String chosen = choose(node, context(node, task, outputs));
                     outputs.put(id, chosen == null ? "" : chosen);
                     done.add(id);
-                    Set<String> targets = new HashSet<>();
+                    Set<String> targets = new LinkedHashSet<>();
                     for (Branch b : node.branches()) {
                         if (b.target() != null) {
                             targets.add(b.target());
@@ -140,37 +153,58 @@ public interface DeclarativeAgentWorkflow {
                             pruned.add(t);
                         }
                     }
+                    pruneCascade(pruned, byId);
                 }
                 case "join" -> {
                     outputs.put(id, context(node, task, outputs));
                     done.add(id);
                 }
                 case "fork" -> done.add(id);
-                case "loop" -> {
-                    String last = "";
-                    for (int i = 0; i < Math.max(1, node.maxIterations()); i++) {
-                        StringBuilder iteration = new StringBuilder();
-                        for (String bodyId : node.bodySteps()) {
-                            NodeSpec body = byId.get(bodyId);
-                            if (body == null) {
-                                continue;
-                            }
-                            String out = activities.runStep(step(body),
-                                    context(body, task, outputs) + "\n" + iteration);
-                            outputs.put(bodyId, out);
-                            done.add(bodyId);
-                            iteration.append("\n").append(out);
-                        }
-                        last = iteration.toString().trim();
-                        if (ConditionEvaluator.matches(node.exitCondition(), last)) {
-                            break;
-                        }
-                    }
-                    outputs.put(id, last);
-                    done.add(id);
-                }
+                case "loop" -> runLoop(node, task, outputs, done, byId);
                 default -> done.add(id);
             }
+        }
+
+        /**
+         * Executes a {@code loop} node: runs its body steps, feeding each iteration's output into the
+         * next, until the exit condition matches or the effective bound is reached. The bound is the
+         * declared {@code maxIterations} clamped to {@link #MAX_LOOP_ITERATIONS}; a non-positive
+         * value means "unset" and is treated as the hard cap (never silently exactly one iteration).
+         * Reaching the cap without meeting the exit condition is logged.
+         */
+        private void runLoop(NodeSpec node, String task, Map<String, String> outputs,
+                             Set<String> done, Map<String, NodeSpec> byId) {
+            int iterations = effectiveMaxIterations(node);
+            if (node.maxIterations() > MAX_LOOP_ITERATIONS) {
+                log.warn("Loop '{}' declares maxIterations={} — capped at the repository limit {}",
+                        node.id(), node.maxIterations(), MAX_LOOP_ITERATIONS);
+            }
+            String last = "";
+            int executed = 0;
+            for (; executed < iterations; executed++) {
+                StringBuilder iteration = new StringBuilder();
+                for (String bodyId : node.bodySteps()) {
+                    NodeSpec body = byId.get(bodyId);
+                    if (body == null) {
+                        continue;
+                    }
+                    String out = activities.runStep(step(body),
+                            context(body, task, outputs) + "\n" + iteration);
+                    outputs.put(bodyId, out);
+                    done.add(bodyId);
+                    iteration.append("\n").append(out);
+                }
+                last = iteration.toString().trim();
+                if (ConditionEvaluator.matches(node.exitCondition(), last)) {
+                    break;
+                }
+            }
+            if (executed == iterations) {
+                log.warn("Loop '{}' stopped at the iteration limit {} without meeting exitCondition '{}'",
+                        node.id(), iterations, node.exitCondition());
+            }
+            outputs.put(node.id(), last);
+            done.add(node.id());
         }
 
         @Override
@@ -214,6 +248,40 @@ public interface DeclarativeAgentWorkflow {
             return deps.stream().anyMatch(skipped::contains);
         }
 
+        /**
+         * Extends the pruned set transitively: a node whose dependencies <b>all</b> lie in a pruned
+         * branch can never run, so it is marked up front — a pruned descendant is never silently left
+         * in limbo. {@code end} nodes are deliberately exempt (they still have to close the workflow
+         * and emit the result), mirroring {@link #shouldSkip}. Joins needing only a subset
+         * ({@code any}/{@code n_of_m}) keep running as long as a non-pruned predecessor exists.
+         */
+        private void pruneCascade(Set<String> pruned, Map<String, NodeSpec> byId) {
+            boolean changed = true;
+            while (changed) {
+                changed = false;
+                for (NodeSpec n : byId.values()) {
+                    if (pruned.contains(n.id()) || "end".equals(n.type())) {
+                        continue;
+                    }
+                    List<String> deps = n.dependsOn();
+                    if (!deps.isEmpty() && deps.stream().allMatch(pruned::contains)) {
+                        pruned.add(n.id());
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        /**
+         * Effective loop bound: the declared {@code maxIterations} clamped to the repository hard cap
+         * ({@link #MAX_LOOP_ITERATIONS}). Non-positive = unset = the hard cap, so an unset loop is
+         * bounded rather than silently run exactly once.
+         */
+        private int effectiveMaxIterations(NodeSpec node) {
+            int declared = node.maxIterations();
+            return declared <= 0 ? MAX_LOOP_ITERATIONS : Math.min(declared, MAX_LOOP_ITERATIONS);
+        }
+
         private int joinNeed(NodeSpec node) {
             String type = node.joinType() == null ? "all" : node.joinType();
             return switch (type) {
@@ -233,8 +301,10 @@ public interface DeclarativeAgentWorkflow {
         }
 
         private String context(NodeSpec node, String task, Map<String, String> outputs) {
+            List<String> deps = new ArrayList<>(node.dependsOn());
+            deps.sort(Comparator.naturalOrder());
             List<String> parts = new ArrayList<>();
-            for (String dep : node.dependsOn()) {
+            for (String dep : deps) {
                 String out = outputs.get(dep);
                 if (out != null && !out.isBlank()) {
                     parts.add(out);
