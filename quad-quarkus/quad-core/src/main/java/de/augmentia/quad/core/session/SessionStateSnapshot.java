@@ -101,7 +101,9 @@ public record SessionStateSnapshot(
             }
         }
         if (memory != null) {
-            var mem = new SessionMemory(memory.maxMessages());
+            // Keep the compacted summary — otherwise the conversation loses everything that was
+            // compacted across invocations on restore (B16).
+            var mem = SessionMemory.restore(memory.maxMessages(), memory.summary());
             state.setMemory(mem);
         }
         return state;

@@ -67,7 +67,10 @@ public record SummarizingSlidingWindowConversationManager(
         }
 
         List<Message> toKeep = selectLastUserMessagesBlock(nonSystemMsgs);
-        if (toKeep == nonSystemMsgs) {
+        // Nothing to summarize: the keep block already covers the whole non-system transcript.
+        // (The former `toKeep == nonSystemMsgs` was a reference comparison against a subList view
+        // and therefore never true — B21.)
+        if (toKeep.size() >= nonSystemMsgs.size()) {
             return messages;
         }
 

@@ -92,6 +92,28 @@ class SummarizingSlidingWindowConversationManagerTest {
     }
 
     @Test
+    void keepsNonSystemMessagesWhenNothingToSummarize() {
+        var summarizer = mockSummarizer("summary");
+        // keepLastUserMessages exceeds the actual number of user turns: the keep block covers the
+        // whole non-system transcript, so there is nothing to summarize.
+        var mgr = new SummarizingSlidingWindowConversationManager(summarizer, 1, 100);
+
+        List<Message> msgs = new ArrayList<>();
+        msgs.add(Message.system("sys"));
+        for (int i = 0; i < 15; i++) {
+            msgs.add(Message.user("q" + i));
+            msgs.add(Message.assistant("a" + i));
+        }
+
+        List<Message> pruned = mgr.prune(msgs);
+
+        // The (formerly dead) "nothing to summarize" branch keeps non-system messages intact.
+        assertEquals(msgs.size(), pruned.size());
+        assertTrue(pruned.stream().anyMatch(m -> m.isUser() && "q14".equals(m.content())));
+        verify(summarizer, never()).chat(any(ChatRequest.class));
+    }
+
+    @Test
     void emptyListReturnsEmpty() {
         var mgr = new SummarizingSlidingWindowConversationManager(mockSummarizer("x"), 100, 2);
         assertTrue(mgr.prune(List.of()).isEmpty());

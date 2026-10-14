@@ -78,6 +78,17 @@ public class SessionMemory {
 
     public HistoryCompactor compactor() { return compactor; }
 
+    /**
+     * Restores a memory from a snapshot: window size plus the previously compacted summary.
+     *
+     * @param summary the stored summary, or {@code null}/blank when the history was never compacted
+     */
+    public static SessionMemory restore(int maxMessages, String summary) {
+        SessionMemory memory = new SessionMemory(maxMessages);
+        memory.summary = summary;
+        return memory;
+    }
+
     /** Appends messages; the overflow is compacted, not discarded. */
     public synchronized void record(List<ChatMessage> messages) {
         if (messages == null || messages.isEmpty()) return;

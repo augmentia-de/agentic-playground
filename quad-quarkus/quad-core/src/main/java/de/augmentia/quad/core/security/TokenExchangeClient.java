@@ -10,9 +10,12 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -39,14 +42,25 @@ public class TokenExchangeClient {
     private final HttpClient httpClient;
     private final ObjectMapper mapper;
 
-    /** Cached tokens keyed by audience. Key = audience, Value = token + expiry. */
-    private final Map<String, CachedToken> tokenCache = new ConcurrentHashMap<>();
+    /**
+     * Cached tokens keyed by audience + subject-token fingerprint + scopes.
+     *
+     * <p>The subject token is stored only as a SHA-256 fingerprint, so an exchanged token is never
+     * served for a different subject (the previous audience-only key leaked tokens across subjects)
+     * and a heap dump does not reveal the raw subject token.</p>
+     */
+    private final Map<CacheKey, CachedToken> tokenCache = new ConcurrentHashMap<>();
 
     public TokenExchangeClient(TokenExchangeConfig config) {
-        this.config = config;
-        this.httpClient = HttpClient.newBuilder()
+        this(config, HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
-            .build();
+            .build());
+    }
+
+    /** Test seam: allows injecting an {@link HttpClient} without a running identity provider. */
+    TokenExchangeClient(TokenExchangeConfig config, HttpClient httpClient) {
+        this.config = config;
+        this.httpClient = httpClient;
         this.mapper = new ObjectMapper();
     }
 
@@ -68,7 +82,9 @@ public class TokenExchangeClient {
             return subjectToken;
         }
 
-        String cacheKey = targetAudience;
+        String[] effectiveScopes = scopes.length > 0 ? scopes : config.scopes();
+        CacheKey cacheKey = new CacheKey(
+            targetAudience, fingerprint(subjectToken), String.join(" ", effectiveScopes));
         CachedToken cached = tokenCache.get(cacheKey);
         if (cached != null && !cached.isExpired()) {
             return cached.token();
@@ -86,7 +102,6 @@ public class TokenExchangeClient {
             body.append("&requested_token_type=").append(encode(config.requestedTokenType()));
             body.append("&audience=").append(encode(targetAudience));
 
-            String[] effectiveScopes = scopes.length > 0 ? scopes : config.scopes();
             if (effectiveScopes.length > 0) {
                 body.append("&scope=").append(encode(String.join(" ", effectiveScopes)));
             }
@@ -144,6 +159,20 @@ public class TokenExchangeClient {
     private static String encode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
+
+    /** SHA-256 fingerprint of the subject token — never the raw token as a cache key. */
+    private static String fingerprint(String subjectToken) {
+        try {
+            byte[] hash = MessageDigest.getInstance("SHA-256")
+                .digest(subjectToken.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            return Integer.toHexString(subjectToken.hashCode());
+        }
+    }
+
+    /** Cache identity: a token is reused only for the same audience, subject and scopes. */
+    private record CacheKey(String audience, String subjectFingerprint, String scopes) {}
 
     private record CachedToken(String token, long expiresAtMs) {
         boolean isExpired() {
