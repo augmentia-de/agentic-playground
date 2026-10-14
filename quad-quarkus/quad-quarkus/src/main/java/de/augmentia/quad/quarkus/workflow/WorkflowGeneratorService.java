@@ -1,8 +1,10 @@
 package de.augmentia.quad.quarkus.workflow;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.augmentia.quad.core.agent.Agent;
+import de.augmentia.quad.core.workflow.generate.WorkflowPlanParser;
+import de.augmentia.quad.core.workflow.generate.WorkflowPlanParser.GeneratedStep;
+import de.augmentia.quad.core.workflow.generate.WorkflowPlanParser.WorkbookResult;
 import de.augmentia.quad.quarkus.mcp.McpManagerService;
 import de.augmentia.quad.quarkus.messaging.ChannelAgentFactory;
 import de.augmentia.quad.quarkus.ui.SharedState;
@@ -117,7 +119,7 @@ public class WorkflowGeneratorService {
         String userMessage = planningMessage(task);
 
         WorkbookResult r = callOrchestrator(userMessage, 0, DEFAULT_MAX_RETRIES);
-        List<GeneratedStep> steps = r.steps;
+        List<GeneratedStep> steps = r.steps();
 
         String sessionId = "chat-" + UUID.randomUUID().toString().substring(0, 8);
         ChatSession s = new ChatSession(sessionId, name, task, steps);
@@ -126,7 +128,7 @@ public class WorkflowGeneratorService {
         sessions.put(sessionId, s);
 
         ApiDtos.WorkflowDef wf = toWorkflowDef(sessionId, name, task, steps);
-        return new ChatDesc(sessionId, wf, r.raw);
+        return new ChatDesc(sessionId, wf, r.raw());
     }
 
     /**
@@ -144,11 +146,11 @@ public class WorkflowGeneratorService {
 
         String userMessage = reviewMessage(s, request);
         WorkbookResult r = callOrchestrator(userMessage, s.transcript.size(), DEFAULT_MAX_RETRIES);
-        s.steps = r.steps;
-        s.transcript.add("ASSISTANT: " + stepsToJson(r.steps));
+        s.steps = r.steps();
+        s.transcript.add("ASSISTANT: " + stepsToJson(r.steps()));
 
-        ApiDtos.WorkflowDef wf = toWorkflowDef(sessionId, s.name, s.task, r.steps);
-        return new ChatDesc(sessionId, wf, r.raw);
+        ApiDtos.WorkflowDef wf = toWorkflowDef(sessionId, s.name, s.task, r.steps());
+        return new ChatDesc(sessionId, wf, r.raw());
     }
 
     public List<Map<String, Object>> chatSessions() {
@@ -308,96 +310,20 @@ public class WorkflowGeneratorService {
     public ApiDtos.WorkflowDef generate(String task, String workflowName, int maxRetries) {
         WorkbookResult r = callOrchestrator(planningMessage(task), 0, maxRetries);
         String name = workflowName != null && !workflowName.isBlank() ? workflowName
-            : (r.workflowName != null && !r.workflowName.isBlank() ? r.workflowName : "Dynamic Workflow");
+            : (r.workflowName() != null && !r.workflowName().isBlank() ? r.workflowName() : "Dynamic Workflow");
 
         String id = "workflow-dyn-" + UUID.randomUUID().toString().substring(0, 8);
-        return toWorkflowDef(id, name, task, r.steps);
+        return toWorkflowDef(id, name, task, r.steps());
     }
 
     /** Parses the Workflow-Architect JSON output into {@link GeneratedStep}s + workflow meta. */
     WorkbookResult parseSteps(String json) {
-        try {
-            JsonNode root = MAPPER.readTree(json);
-            if (root == null || !root.has("steps") || !root.get("steps").isArray()) {
-                throw new IllegalArgumentException("JSON missing 'steps' array");
-            }
-            String workflowName = root.hasNonNull("workflowName")
-                ? root.get("workflowName").asText() : null;
-            String description = root.hasNonNull("description")
-                ? root.get("description").asText() : null;
-            List<GeneratedStep> steps = new ArrayList<>();
-            Map<String, GeneratedStep> byRole = new LinkedHashMap<>();
-            for (JsonNode sn : root.get("steps")) {
-                String agentRole = sn.hasNonNull("agentRole") ? sn.get("agentRole").asText() : "";
-                if (agentRole.isBlank()) {
-                    throw new IllegalArgumentException("Step is missing 'agentRole'");
-                }
-                String instruction = sn.hasNonNull("instruction") ? sn.get("instruction").asText() : "";
-                List<String> tools = new ArrayList<>();
-                if (sn.has("tools") && sn.get("tools").isArray()) {
-                    for (JsonNode t : sn.get("tools")) tools.add(t.asText());
-                }
-                List<String> dependsOn = new ArrayList<>();
-                if (sn.has("dependsOn") && sn.get("dependsOn").isArray()) {
-                    for (JsonNode dep : sn.get("dependsOn")) dependsOn.add(dep.asText());
-                }
-                int timeoutSeconds = sn.hasNonNull("timeoutSeconds") && !sn.get("timeoutSeconds").isNull()
-                    ? sn.get("timeoutSeconds").asInt() : 120;
-                String systemPrompt = sn.hasNonNull("systemPrompt")
-                    ? sn.get("systemPrompt").asText() : null;
-                Map<String, Object> data = null;
-                if (sn.has("data") && sn.get("data").isObject()) {
-                    data = MAPPER.convertValue(sn.get("data"),
-                        new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
-                }
-                GeneratedStep s = new GeneratedStep(
-                    agentRole, instruction, tools, dependsOn, timeoutSeconds, systemPrompt, data);
-                if (byRole.put(agentRole, s) != null) {
-                    throw new IllegalArgumentException("Duplicate agentRole: " + agentRole);
-                }
-                steps.add(s);
-            }
-            if (steps.isEmpty()) throw new IllegalArgumentException("Parsed 0 steps from JSON");
-            validateSteps(steps, byRole);
-            return new WorkbookResult(steps, workflowName, description, json);
-        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
-            throw new IllegalArgumentException("Invalid JSON from planner: " + e.getMessage(), e);
-        }
+        return WorkflowPlanParser.parseSteps(MAPPER, json);
     }
 
     // package-private for unit tests: pure validation over parsed steps, no LLM involved
     void validateSteps(List<GeneratedStep> steps, Map<String, GeneratedStep> byRole) {
-        for (GeneratedStep s : steps) {
-            for (String dep : s.dependsOn()) {
-                if (!byRole.containsKey(dep)) {
-                    throw new IllegalArgumentException(
-                        "Step '" + s.agentRole() + "' depends on non-existent step '" + dep + "'");
-                }
-            }
-        }
-        Set<String> visited = new HashSet<>();
-        Set<String> stack = new HashSet<>();
-        for (GeneratedStep s : steps) {
-            if (hasCycle(s.agentRole(), byRole, visited, stack)) {
-                throw new IllegalArgumentException(
-                    "Cycle detected in DAG involving step '" + s.agentRole() + "'");
-            }
-        }
-    }
-
-    private boolean hasCycle(String role, Map<String, GeneratedStep> byRole, Set<String> visited, Set<String> stack) {
-        if (stack.contains(role)) return true;
-        if (visited.contains(role)) return false;
-        visited.add(role);
-        stack.add(role);
-        GeneratedStep s = byRole.get(role);
-        if (s != null) {
-            for (String dep : s.dependsOn()) {
-                if (hasCycle(dep, byRole, visited, stack)) return true;
-            }
-        }
-        stack.remove(role);
-        return false;
+        WorkflowPlanParser.validateSteps(steps, byRole);
     }
 
     ApiDtos.WorkflowDef toWorkflowDef(String id, String name, String initialTask,
@@ -723,32 +649,12 @@ public class WorkflowGeneratorService {
     /** Strips markdown code fences if the planner wrapped the JSON in ```json ... ```. */
     // package-private for unit tests: this is the LLM output normaliser
     String stripFences(String raw) {
-        if (raw == null) return "";
-        String t = raw.trim();
-        // remove a leading ```json fence and a trailing ```
-        t = t.replaceFirst("(?s)^```(?:json)?\\s*", "");
-        t = t.replaceFirst("(?s)\\s*```\\s*$", "");
-        // DeepSeek/compatible models sometimes ewith a bare 'json' token before the object
-        // without enclosing backticks, e.g. "json\n{...}" instead of "```json\n{...}\n```".
-        t = t.replaceFirst("(?s)^json\\s*(?=\\{)", "");
-        // Reasoning models like to prepend a sentence ("No problem, here is the JSON:").
-        // Fences and a bare 'json' token are not enough, so cut everything before the first
-        // '{' and after the last '}' when the reply is not already pure JSON.
-        int firstBrace = t.indexOf('{');
-        int lastBrace = t.lastIndexOf('}');
-        if (firstBrace >= 0 && lastBrace > firstBrace) {
-            t = t.substring(firstBrace, lastBrace + 1);
-        }
-        return t;
+        return WorkflowPlanParser.stripFences(raw);
     }
 
-    /**
-     * A single step in the generated task DAG, following the Workflow-Architect schema:
-     * {@code agentRole}, {@code instruction}, {@code tools}, {@code dependsOn}, {@code timeoutSeconds}.
-     */
-    public record GeneratedStep(String agentRole, String instruction,
-                                List<String> tools, List<String> dependsOn, int timeoutSeconds,
-                                String systemPrompt, Map<String, Object> data) {}
+    // ── data types ────────────────────────────────────────────────────────────────
+    // GeneratedStep / WorkbookResult are the shared, single-sourced types from
+    // de.augmentia.quad.core.workflow.generate.WorkflowPlanParser (imported above).
 
     /** Server-side state for one interactive chat session (Variante B). */
     static final class ChatSession {
@@ -768,9 +674,4 @@ public class WorkflowGeneratorService {
 
     /** Result descriptor returned to the call for one chat round. */
     public record ChatDesc(String sessionId, ApiDtos.WorkflowDef workflow, String reply) {}
-
-    /** Parsed steps + workflow meta + the last raw (pre-parse) planner reply. */
-    // package-private for unit tests: parseSteps is the seam, its result must be readable
-    record WorkbookResult(List<GeneratedStep> steps, String workflowName,
-                                  String description, String raw) {}
 }

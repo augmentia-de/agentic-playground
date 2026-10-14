@@ -3,6 +3,8 @@ package de.augmentia.agentflow.app.workflow.generate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.augmentia.agentflow.app.workflow.declarative.WorkflowDefinitionLoader;
+import de.augmentia.quad.core.workflow.generate.WorkflowPlanParser.GeneratedStep;
+import de.augmentia.quad.core.workflow.generate.WorkflowPlanParser.WorkbookResult;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -38,7 +40,7 @@ class WorkflowGeneratorServiceTest {
               {"agentRole":"Writer","instruction":"write","tools":[],"dependsOn":["Scout"],"timeoutSeconds":120,
                "data":{"output":{"type":"object","properties":{"text":{"type":"string"}}}}}
             ]}""";
-        WorkflowGeneratorService.WorkbookResult r = service.parseSteps(json);
+        WorkbookResult r = service.parseSteps(json);
         assertEquals("Research", r.workflowName());
         assertEquals(2, r.steps().size());
         assertEquals(List.of("Scout"), r.steps().get(1).dependsOn());
@@ -73,7 +75,7 @@ class WorkflowGeneratorServiceTest {
 
     @Test
     void buildsValidPublishedV2Document() {
-        List<WorkflowGeneratorService.GeneratedStep> steps = List.of(
+        List<GeneratedStep> steps = List.of(
                 step("Classifier", "classify the ticket", List.of(), List.of(), null),
                 step("Researcher", "research", List.of("webSearch", "bogusTool"), List.of("Classifier"), Map.of("output", Map.of("type", "object"))),
                 step("Writer", "write", List.of(), List.of("Researcher"), null));
@@ -113,12 +115,46 @@ class WorkflowGeneratorServiceTest {
         assertTrue(dependsOn(findNode(nodes, "node-writer")).contains("node-researcher"));
     }
 
+    // ── token limit / truncation handling (B11) ──────────────────────────────
+
+    @Test
+    void defaultTokenLimitApplied() {
+        // 0 (the old default) must fall back to a sensible budget so reasoning models fit.
+        var svc = new WorkflowGeneratorService(mapper, "test-model", 0);
+        assertTrue(svc.chatParametersJson().contains("\"maxOutputTokens\":32768"),
+                svc.chatParametersJson());
+    }
+
+    @Test
+    void explicitTokenLimitHonoured() {
+        var svc = new WorkflowGeneratorService(mapper, "test-model", 4096);
+        assertTrue(svc.chatParametersJson().contains("\"maxOutputTokens\":4096"),
+                svc.chatParametersJson());
+    }
+
+    @Test
+    void truncatedPlanGivesActionableError() {
+        var svc = new WorkflowGeneratorService(mapper, "test-model", 128);
+        // The reply was cut off mid-object: the "steps" array is never closed.
+        String truncated = "{\"steps\":[{\"agentRole\":\"A\",\"instruction\":\"do the thing";
+        var ex = assertThrows(IllegalStateException.class, () -> svc.parsePlannerReply(truncated));
+        assertTrue(ex.getMessage().toLowerCase().contains("truncat"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("max-output-tokens"), ex.getMessage());
+    }
+
+    @Test
+    void nonTruncatedBadJsonKeepsParseError() {
+        var svc = new WorkflowGeneratorService(mapper, "test-model", 1024);
+        // Balanced JSON that simply lacks "steps": must stay a normal parse error, not "truncated".
+        assertThrows(IllegalArgumentException.class, () -> svc.parsePlannerReply("{\"nope\":true}"));
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
-    private WorkflowGeneratorService.GeneratedStep step(String role, String instruction,
-                                                        List<String> tools, List<String> dependsOn,
-                                                        Map<String, Object> data) {
-        return new WorkflowGeneratorService.GeneratedStep(role, instruction, tools, dependsOn, 120, null, data);
+    private GeneratedStep step(String role, String instruction,
+                               List<String> tools, List<String> dependsOn,
+                               Map<String, Object> data) {
+        return new GeneratedStep(role, instruction, tools, dependsOn, 120, null, data);
     }
 
     private JsonNode findNode(JsonNode nodes, String id) {

@@ -46,8 +46,10 @@ agentflow:
     state-dir: ${AGENTFLOW_WORKFLOWS_STATE_DIR:target/agentflow-workflow-overrides}
   workflow:
     generator:
-      # Token budget for one LLM planner call of the dynamic workflow generator (0 = model default).
-      max-output-tokens: ${AGENTFLOW_WORKFLOW_GENERATOR_MAX_OUTPUT_TOKENS:0}
+      # Token budget for one LLM planner call of the dynamic workflow generator.
+      # Defaults to 32768 so reasoning models fit (reasoning tokens + JSON answer); a small budget
+      # truncates long plans and makes parsing fail. Values <= 0 fall back to that default.
+      max-output-tokens: ${AGENTFLOW_WORKFLOW_GENERATOR_MAX_OUTPUT_TOKENS:32768}
   security:
     # Opt-in API-key gate for /agentflow/** (health stays open).
     enabled: ${AGENTFLOW_SECURITY_ENABLED:false}

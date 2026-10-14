@@ -1,5 +1,6 @@
 package de.augmentia.quad.quarkus.workflow;
 
+import de.augmentia.quad.core.workflow.generate.WorkflowPlanParser.GeneratedStep;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -49,21 +50,21 @@ class WorkflowGeneratorJoinTest {
         return e;
     }
 
-    private static WorkflowGeneratorService.GeneratedStep step(String role, List<String> deps) {
-        return new WorkflowGeneratorService.GeneratedStep(
+    private static GeneratedStep step(String role, List<String> deps) {
+        return new GeneratedStep(
             role, "do " + role, List.of(), deps, 120, null, null);
     }
 
     /** A graph plus the role→node mapping addJoinNodes expects. */
     private record Graph(List<Map<String, Object>> nodes, List<Map<String, Object>> edges,
                          Map<String, String> roleToNodeId,
-                         List<WorkflowGeneratorService.GeneratedStep> steps) {}
+                         List<GeneratedStep> steps) {}
 
-    private static Graph graphOf(WorkflowGeneratorService.GeneratedStep... steps) {
+    private static Graph graphOf(GeneratedStep... steps) {
         List<Map<String, Object>> nodes = new ArrayList<>();
         List<Map<String, Object>> edges = new ArrayList<>();
         Map<String, String> roleToNodeId = new LinkedHashMap<>();
-        List<WorkflowGeneratorService.GeneratedStep> list = new ArrayList<>();
+        List<GeneratedStep> list = new ArrayList<>();
         for (var s : steps) {
             String nodeId = "node-" + s.agentRole();
             roleToNodeId.put(s.agentRole(), nodeId);

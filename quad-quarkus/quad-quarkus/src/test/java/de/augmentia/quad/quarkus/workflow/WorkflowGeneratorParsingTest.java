@@ -1,5 +1,6 @@
 package de.augmentia.quad.quarkus.workflow;
 
+import de.augmentia.quad.core.workflow.generate.WorkflowPlanParser.GeneratedStep;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -226,22 +227,22 @@ class WorkflowGeneratorParsingTest {
     @DisplayName("validateSteps")
     class ValidateSteps {
 
-        private WorkflowGeneratorService.GeneratedStep[] arr(
-                List<WorkflowGeneratorService.GeneratedStep> steps) {
-            return steps.toArray(new WorkflowGeneratorService.GeneratedStep[0]);
+        private GeneratedStep[] arr(
+                List<GeneratedStep> steps) {
+            return steps.toArray(new GeneratedStep[0]);
         }
 
-        private Map<String, WorkflowGeneratorService.GeneratedStep> byRole(
-                WorkflowGeneratorService.GeneratedStep... steps) {
-            var m = new LinkedHashMap<String, WorkflowGeneratorService.GeneratedStep>();
+        private Map<String, GeneratedStep> byRole(
+                GeneratedStep... steps) {
+            var m = new LinkedHashMap<String, GeneratedStep>();
             for (var s : steps) {
                 m.put(s.agentRole(), s);
             }
             return m;
         }
 
-        private WorkflowGeneratorService.GeneratedStep step(String role, String... deps) {
-            return new WorkflowGeneratorService.GeneratedStep(
+        private GeneratedStep step(String role, String... deps) {
+            return new GeneratedStep(
                 role, "i", List.of(), List.of(deps), 120, null, null);
         }
 
