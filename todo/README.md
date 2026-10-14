@@ -23,7 +23,7 @@ Every WP follows the same flow:
 | [WP01](WP01-security-path-confinement.md) | Security: path confinement & SSRF | Critical | quad-quarkus | – | done |
 | [WP02](WP02-security-auth-secrets-compliance.md) | Security: auth, secrets, compliance | High | kafka-platform, agentflow-ui | – | open |
 | [WP03](WP03-kafka-publish-ack-worker-config.md) | Kafka: publish/ack & worker config | Critical | kafka-platform | – | done |
-| [WP04](WP04-kafka-intake-event-contract.md) | Kafka: intake/event contract | Critical | kafka-platform | – | open |
+| [WP04](WP04-kafka-intake-event-contract.md) | Kafka: intake/event contract | Critical | kafka-platform | – | done |
 | [WP05](WP05-quad-core-guardrails-pii-observability.md) | quad-core: guardrails, PII, observability | Medium | quad-core | – | open |
 | [WP06](WP06-quad-core-session-token-state.md) | quad-core: session, token, state | Medium | quad-core | – | open |
 | [WP07](WP07-workflow-engine-execution-lifecycle.md) | Workflow engine: execution & lifecycle | Medium | quad-quarkus | – | open |
