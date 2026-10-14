@@ -26,7 +26,7 @@ Every WP follows the same flow:
 | [WP04](WP04-kafka-intake-event-contract.md) | Kafka: intake/event contract | Critical | kafka-platform | – | done |
 | [WP05](WP05-quad-core-guardrails-pii-observability.md) | quad-core: guardrails, PII, observability | Medium | quad-core | – | done |
 | [WP06](WP06-quad-core-session-token-state.md) | quad-core: session, token, state | Medium | quad-core | – | done |
-| [WP07](WP07-workflow-engine-execution-lifecycle.md) | Workflow engine: execution & lifecycle | Medium | quad-quarkus | – | open |
+| [WP07](WP07-workflow-engine-execution-lifecycle.md) | Workflow engine: execution & lifecycle | Medium | quad-quarkus | – | done |
 | [WP08](WP08-persistence-config-robustness.md) | Persistence & config robustness | Medium | quad-quarkus | – | open |
 | [WP09](WP09-tool-hardening.md) | Tool hardening | Medium | quad-quarkus | WP01 (containment helper) | open |
 | [WP10](WP10-agentflow-generator-join.md) | agentflow: consolidate generator & join | High | agentflow, quad-quarkus | WP01 (test locations only) | done |
