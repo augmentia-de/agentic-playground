@@ -39,7 +39,6 @@ class ListenerAckModeContractTest {
 
     /** All classes of the orchestrator that use @KafkaListener. */
     private static final List<Class<?>> LISTENER_CLASSES = List.of(
-            IntakeListener.class,
             ConfigUpdateConsumer.class,
             HitlListener.class,
             DagTopicListener.class,
@@ -124,7 +123,7 @@ class ListenerAckModeContractTest {
     }
 
     @Test
-    @DisplayName("The test coverage covers both manual listeners")
+    @DisplayName("The test coverage covers the manual listener")
     void bothManualListenersAreCovered() {
         long withAck = LISTENER_CLASSES.stream()
                 .flatMap(t -> java.util.Arrays.stream(t.getDeclaredMethods()))
@@ -133,7 +132,8 @@ class ListenerAckModeContractTest {
                 .count();
 
         assertThat(withAck)
-                .as("If this value drops, the contract test no longer checks anything")
-                .isEqualTo(2);
+                .as("If this value drops, the contract test no longer checks anything. "
+                    + "IntakeListener (the second manual-ack listener) was removed in WP04.")
+                .isEqualTo(1);
     }
 }

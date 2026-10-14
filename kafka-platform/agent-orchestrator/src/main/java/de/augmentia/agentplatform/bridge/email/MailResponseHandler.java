@@ -1,5 +1,6 @@
 package de.augmentia.agentplatform.bridge.email;
 
+import de.augmentia.agentplatform.bridge.redis.EmailInitiatorStore;
 import de.augmentia.agentplatform.common.event.EventJson;
 import de.augmentia.agentplatform.common.event.ResultEvent;
 import de.augmentia.agentplatform.common.model.ResultStatus;
@@ -40,13 +41,15 @@ public class MailResponseHandler {
     private static final Logger log = LoggerFactory.getLogger(MailResponseHandler.class);
 
     private final JavaMailSender mailSender;
+    private final EmailInitiatorStore initiatorStore;
     @Value("${app.email.address:tasks@quad.local}")
     private String senderAddress;
     @Value("${app.email.approval-url:http://localhost:8080/hitl/approve}")
     private String approvalUrl;
 
-    public MailResponseHandler(JavaMailSender mailSender) {
+    public MailResponseHandler(JavaMailSender mailSender, EmailInitiatorStore initiatorStore) {
         this.mailSender = mailSender;
+        this.initiatorStore = initiatorStore;
     }
 
     /**
@@ -159,9 +162,15 @@ public class MailResponseHandler {
     // ── Helpers ────────────────────────────────────────────────────────
 
     private String lookupInitiatorEmail(String workflowId) {
-        // Placeholder — in production, look up from Redis key: "email:initiator:{workflowId}"
-        log.debug("Looking up initiator email for workflow {}", workflowId);
-        return null;
+        // The mapping was written by EmailInputTransformer at intake, keyed by the workflow
+        // execution id that the orchestrator also reports on the result topic. Redis failures are
+        // non-fatal: a missing mapping simply means "not an email-initiated workflow".
+        try {
+            return initiatorStore.lookupInitiator(workflowId);
+        } catch (RuntimeException e) {
+            log.warn("Could not look up email initiator for workflow {}: {}", workflowId, e.getMessage());
+            return null;
+        }
     }
 
     private ResultMeta parseHeader(String jsonPayload) {

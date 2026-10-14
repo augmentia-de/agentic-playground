@@ -1,7 +1,9 @@
 package de.augmentia.agentplatform.orchestrator.service;
 
 import de.augmentia.agentplatform.common.event.ControlEvents;
+import de.augmentia.agentplatform.common.event.ResultEvent;
 import de.augmentia.agentplatform.common.event.TaskEvent;
+import de.augmentia.agentplatform.common.event.WorkflowStartEvent;
 import de.augmentia.agentplatform.common.kafka.TopicNames;
 import de.augmentia.agentplatform.common.model.CheckpointStatus;
 import de.augmentia.agentplatform.common.model.ExecutionStatus;
@@ -11,6 +13,7 @@ import de.augmentia.agentplatform.orchestrator.domain.WorkflowExecutionRow;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
@@ -440,5 +443,78 @@ class WorkflowEngineCharacterizationTest extends WorkflowEngineTestBase {
                 .as("No STEP may fire when only the END node is left")
                 .hasSize(1);
         assertThat(lastDispatchedTask().stepId()).isEqualTo("trigger");
+    }
+
+    // ── WP04 / B9: validate UUIDs before parsing ─────────────────────
+    //
+    // Before this fix the engine called UUID.fromString(...) on untrusted event fields first and
+    // only then checked for a known checkpoint. A malformed or foreign message therefore threw,
+    // the Kafka adapter sent it to the DLQ and the DLQ filled up with messages that never belonged
+    // to this orchestrator. These tests pin the skip-instead-of-throw contract.
+
+    @Test
+    @DisplayName("onResult ignores a malformed taskId instead of failing into the DLQ")
+    void onResultWithMalformedTaskIdIsIgnored() {
+        engine.onResult(resultWithTaskId("not-a-uuid"));
+
+        assertThat(dispatchedTopics())
+                .as("an unidentifiable result must not become DLQ noise")
+                .doesNotContain(TopicNames.DLQ);
+        assertThat(dlqCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("onResult ignores a missing taskId instead of failing into the DLQ")
+    void onResultWithNullTaskIdIsIgnored() {
+        engine.onResult(resultWithTaskId(null));
+
+        assertThat(dispatchedTopics()).doesNotContain(TopicNames.DLQ);
+        assertThat(dlqCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("onIntake ignores an invalid workflowExecutionId instead of throwing")
+    void onIntakeWithInvalidExecutionIdIsIgnored() {
+        engine.onIntake(startEventFor("not-a-uuid"));
+
+        assertThat(dispatchedTopics()).doesNotContain(TopicNames.DLQ);
+        assertThat(dlqCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("onIntake ignores a missing workflowExecutionId instead of throwing")
+    void onIntakeWithNullExecutionIdIsIgnored() {
+        engine.onIntake(startEventFor(null));
+
+        assertThat(dispatchedTopics()).doesNotContain(TopicNames.DLQ);
+        assertThat(dlqCount()).isZero();
+    }
+
+    private ResultEvent resultWithTaskId(String taskId) {
+        return new ResultEvent(
+                new ResultEvent.Header(null, NOW.toEpochMilli()),
+                UUID.randomUUID().toString(),
+                taskId,
+                "step",
+                0,
+                1,
+                NOW.toEpochMilli(),
+                NOW.toEpochMilli(),
+                Map.of("status", "COMPLETED"));
+    }
+
+    private WorkflowStartEvent startEventFor(String executionId) {
+        return new WorkflowStartEvent(
+                executionId,
+                UUID.randomUUID().toString(),
+                "wf",
+                1,
+                Map.of(),
+                null,
+                Instant.now());
+    }
+
+    private int dlqCount() {
+        return jdbc.queryForObject("SELECT count(*) FROM dlq_messages", Integer.class);
     }
 }

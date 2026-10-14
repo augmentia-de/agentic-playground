@@ -109,7 +109,10 @@ public class WorkflowEngine {
 
     @Transactional
     public void onIntake(WorkflowStartEvent event) {
-        UUID executionId = UUID.fromString(event.workflowExecutionId());
+        UUID executionId = parseUuidOrNull(event.workflowExecutionId(), "workflowExecutionId");
+        if (executionId == null) {
+            return;
+        }
         WorkflowExecutionRow execution = executions.lock(executionId).orElse(null);
         if (execution == null || execution.status().isTerminal()) {
             return;
@@ -136,7 +139,13 @@ public class WorkflowEngine {
 
     @Transactional
     public void onResult(ResultEvent event) {
-        UUID taskId = UUID.fromString(event.taskId());
+        UUID taskId = parseUuidOrNull(event.taskId(), "taskId");
+        if (taskId == null) {
+            // A result we cannot identify is not actionable and must not become DLQ noise:
+            // it never belonged to a task this orchestrator dispatched.
+            metrics.staleResultTotal("invalid_task_id").increment();
+            return;
+        }
         CheckpointRow checkpoint = checkpoints.findByTaskId(taskId).orElse(null);
         if (checkpoint == null) {
             metrics.staleResultTotal("no_checkpoint").increment();
@@ -243,7 +252,10 @@ public class WorkflowEngine {
 
     @Transactional
     public void onLoop(ControlEvents.LoopEvent event) {
-        UUID executionId = UUID.fromString(event.workflowId());
+        UUID executionId = parseUuidOrNull(event.workflowId(), "workflowId");
+        if (executionId == null) {
+            return;
+        }
         WorkflowExecutionRow execution = executions.lock(executionId).orElse(null);
         if (execution == null || execution.status().isTerminal()) {
             return;
@@ -283,7 +295,10 @@ public class WorkflowEngine {
 
     @Transactional
     public void onCancellation(ControlEvents.CancellationEvent event) {
-        UUID executionId = UUID.fromString(event.workflowId());
+        UUID executionId = parseUuidOrNull(event.workflowId(), "workflowId");
+        if (executionId == null) {
+            return;
+        }
         WorkflowExecutionRow execution = executions.lock(executionId).orElse(null);
         if (execution == null || execution.status().isTerminal()) {
             return;
@@ -293,7 +308,10 @@ public class WorkflowEngine {
 
     @Transactional
     public void onHitl(ControlEvents.HitlEvent event) {
-        UUID ticketId = UUID.fromString(event.ticketId());
+        UUID ticketId = parseUuidOrNull(event.ticketId(), "ticketId");
+        if (ticketId == null) {
+            return;
+        }
         HitlTicketRow ticket = ticketStore.findById(ticketId).orElse(null);
         if (ticket == null || ticket.status() != HitlTicketStatus.OPEN) {
             return;
@@ -472,6 +490,27 @@ public class WorkflowEngine {
 
     private static String nullSafe(String value) {
         return value == null ? "" : value;
+    }
+
+    /**
+     * Parses a UUID from an untrusted event field.
+     *
+     * <p>Returns {@code null} for a missing, blank or malformed value. The callers then ignore
+     * the event with a clear warning instead of throwing — a thrown {@link IllegalArgumentException}
+     * would be caught by the Kafka adapter and turned into a DLQ entry, i.e. self-inflicted noise
+     * for a message the orchestrator could never map to a checkpoint anyway.
+     */
+    private static UUID parseUuidOrNull(String raw, String fieldName) {
+        if (raw == null || raw.isBlank()) {
+            log.warn("Ignoring event with missing {}", fieldName);
+            return null;
+        }
+        try {
+            return UUID.fromString(raw);
+        } catch (IllegalArgumentException ex) {
+            log.warn("Ignoring event with invalid {}: '{}'", fieldName, raw);
+            return null;
+        }
     }
 
     public Optional<WorkflowExecutionRow> findExecution(UUID executionId) {

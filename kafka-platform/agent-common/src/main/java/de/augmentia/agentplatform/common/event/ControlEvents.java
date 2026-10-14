@@ -55,7 +55,14 @@ public final class ControlEvents {
             String decidedBy
     ) {}
 
-    /** Email intake event — triggered by inbound email → routed to agent.execution.intake. */
+    /**
+     * Email intake event — the historical email→intake shape.
+     *
+     * @deprecated no longer produced by the platform. Since WP04 the email path starts workflows
+     *     through {@code WorkflowStartService} and publishes a {@link WorkflowStartEvent}, so this
+     *     record exists only for compatibility with external consumers that still bind to it.
+     */
+    @Deprecated
     public record EmailIntakeEvent(
             String workflowId,
             String triggerKey,

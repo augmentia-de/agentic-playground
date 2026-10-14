@@ -1,6 +1,5 @@
 package de.augmentia.agentplatform.bridge.email;
 
-import de.augmentia.agentplatform.common.event.ControlEvents;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,8 +18,8 @@ import java.util.UUID;
 
 /**
  * Polls an IMAP mailbox for inbound emails, deduplicates by message-ID header,
- * and publishes each new email as a {@link ControlEvents.EmailIntakeEvent}
- * to Kafka via {@link EmailInputTransformer}.
+ * and hands each new email to {@link EmailInputTransformer}, which starts the
+ * referenced workflow through the canonical orchestrator start path.
  */
 @Component
 @ConditionalOnProperty(name = "app.email.imap.enabled", havingValue = "true")

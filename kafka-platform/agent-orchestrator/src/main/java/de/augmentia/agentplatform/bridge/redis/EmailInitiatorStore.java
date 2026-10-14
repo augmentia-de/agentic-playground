@@ -14,19 +14,25 @@ import java.time.Duration;
  *
  * <p>Tenant-aware key patterns (when tenant is specified):
  * <ul>
- *   <li>{@code email:initator:{tenant}:{workflowId}} initiator email address</li>
+ *   <li>{@code email:initiator:{tenant}:{workflowId}} initiator email address</li>
  *   <li>{@code email:intake:{tenant}:{intakeMessageId}} workflowId (for dedup / lookup)</li>
  * </ul>
  *
  * <p>Fallback to non-tenant pattern when tenant equals default-tenant.
  * TTL: 7 days (matches workflow execution window).
+ *
+ * <p><b>Migration note:</b> the initiator prefix used to be the typo {@code email:initator:}
+ * (no second {@code i}). Any still-open mapping written by an older build under the old key is
+ * <em>not</em> found after this fix; such executions simply receive no response email. The key is
+ * re-written on the next intake of the same workflow, and the TTL is 7 days, so no manual
+ * migration is required.
  */
 @Service
 public class EmailInitiatorStore {
 
     private static final Logger log = LoggerFactory.getLogger(EmailInitiatorStore.class);
 
-    private static final String INTAINER_PREFIX = "email:initator:";
+    static final String INITIATOR_PREFIX = "email:initiator:";
     private static final String INTAKE_LOOKUP_PREFIX = "email:intake:";
     private static final Duration TTL = Duration.ofDays(7);
 
@@ -48,7 +54,7 @@ public class EmailInitiatorStore {
      * Record that an email was received and links it to a workflow ID with tenant isolation.
      */
     public void storeInitiator(String workflowId, String tenantId, String initiatorEmail) {
-        String key = buildIntainerKey(tenantId, workflowId);
+        String key = buildInitiatorKey(tenantId, workflowId);
         Boolean set = redis.opsForValue().setIfAbsent(key, initiatorEmail, TTL);
         if (Boolean.TRUE.equals(set)) {
             log.debug("Stored email initiator {} for workflow {} [tenant={}] ", initiatorEmail, workflowId, tenantId);
@@ -68,7 +74,7 @@ public class EmailInitiatorStore {
      * Look up the initiator email for a given workflow ID with tenant isolation.
      */
     public String lookupInitiator(String workflowId, String tenantId) {
-        String key = buildIntainerKey(tenantId, workflowId);
+        String key = buildInitiatorKey(tenantId, workflowId);
         return redis.opsForValue().get(key);
     }
 
@@ -114,15 +120,15 @@ public class EmailInitiatorStore {
      * Cleanup: remove all email-related keys for a completed workflow with tenant isolation.
      */
     public void cleanupWorkflow(String workflowId, String tenantId) {
-        String key = buildIntainerKey(tenantId, workflowId);
+        String key = buildInitiatorKey(tenantId, workflowId);
         redis.delete(key);
         log.debug("Cleaned up email keys for workflow {}", workflowId);
     }
 
     // ── Key builders ────────────────────────────────────────────────
 
-    private String buildIntainerKey(String tenantId, String workflowId) {
-        String base = INTAINER_PREFIX;
+    private String buildInitiatorKey(String tenantId, String workflowId) {
+        String base = INITIATOR_PREFIX;
         if (Tenant.DEFAULT_TENANT.equals(tenantId)) {
             return base + workflowId;
         }

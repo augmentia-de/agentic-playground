@@ -1,99 +1,29 @@
 package de.augmentia.agentplatform.orchestrator.kafka;
 
-import de.augmentia.agentplatform.bridge.redis.EmailInitiatorStore;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.InOrder;
 import org.mockito.Mockito;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.support.Acknowledgment;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 /**
- * Intake tracking and config update listener.
+ * Config update listener.
  *
- * <p>Both classes lay completely outside the test coverage. The
- * ConfigUpdateConsumer has an error case that stands out: the listener
- * acknowledges regardless of the result, which on a usable but internally
- * failed update prevents the retry.
+ * <p>The former {@code IntakeListener} (a no-op intake ack plus email-initiator tracking) was
+ * removed in WP04/B1: intake is handled by {@code DagTopicListener}, and the initiator mapping is
+ * now written directly by {@code EmailInputTransformer} keyed by the real execution id (see
+ * {@code EmailInputTransformerTest}).
  */
-@DisplayName("Intake and config listener")
+@DisplayName("Config listener")
 class IntakeAndConfigListenerTest {
-
-    // ── IntakeListener.trackEmailIntake ──────────────────────────────
-
-    @Test
-    @DisplayName("Email intake stores initiator and dedup entry")
-    void emailIntakeStoresInitiatorAndDedup() {
-        EmailInitiatorStore store = mock(EmailInitiatorStore.class);
-        var listener = new IntakeListener(mock(org.springframework.kafka.core.KafkaTemplate.class), store);
-
-        listener.trackEmailIntake("""
-                {"workflowId":"wf-1","initiatorEmail":"a@example.com","messageId":"m-1"}
-                """);
-
-        InOrder order = inOrder(store);
-        order.verify(store).storeInitiator("wf-1", "a@example.com");
-        order.verify(store).registerIntake("m-1", "wf-1");
-    }
-
-    @Test
-    @DisplayName("Without initiatorEmail nothing is stored")
-    void withoutInitiatorEmailNothingIsStored() {
-        EmailInitiatorStore store = mock(EmailInitiatorStore.class);
-        var listener = new IntakeListener(mock(org.springframework.kafka.core.KafkaTemplate.class), store);
-
-        listener.trackEmailIntake("{\"workflowId\":\"wf-1\"}");
-
-        verify(store, never()).storeInitiator(anyString(), anyString());
-    }
-
-    @Test
-    @DisplayName("An empty initiatorEmail is not stored")
-    void blankInitiatorIsIgnored() {
-        EmailInitiatorStore store = mock(EmailInitiatorStore.class);
-        var listener = new IntakeListener(mock(org.springframework.kafka.core.KafkaTemplate.class), store);
-
-        listener.trackEmailIntake("{\"workflowId\":\"wf-1\",\"initiatorEmail\":\"  \"}");
-
-        verify(store, never()).storeInitiator(anyString(), anyString());
-    }
-
-    @Test
-    @DisplayName("Broken JSON is swallowed — the listener must not die")
-    void malformedJsonDoesNotPropagate() {
-        EmailInitiatorStore store = mock(EmailInitiatorStore.class);
-        var listener = new IntakeListener(mock(org.springframework.kafka.core.KafkaTemplate.class), store);
-
-        listener.trackEmailIntake("{ kaputt ,,, }");
-
-        verify(store, never()).storeInitiator(anyString(), anyString());
-    }
-
-    @Test
-    @DisplayName("handleIntake also acknowledges on a broken payload")
-    void handleIntakeAlwaysAcknowledges() {
-        Acknowledgment ack = mock(Acknowledgment.class);
-        var listener = new IntakeListener(
-                mock(org.springframework.kafka.core.KafkaTemplate.class),
-                mock(EmailInitiatorStore.class));
-
-        listener.handleIntake("{ kaputt ,,, }", ack);
-
-        // deliberately: the listener does no domain processing (that is done by
-        // DagTopicListener) and therefore always acknowledges, to avoid
-        // to create an endless loop. This test pins that decision down.
-        verify(ack).acknowledge();
-    }
 
     // ── ConfigUpdateConsumer ─────────────────────────────────────────
 
