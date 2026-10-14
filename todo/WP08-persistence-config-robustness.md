@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | open |
+| **Status** | done |
 | **Severity** | Medium |
 | **Modules** | `quad-quarkus/quad-quarkus` |
 | **Review reference** | B26, B27, B35, B36, §5.4 (JournalService) |
