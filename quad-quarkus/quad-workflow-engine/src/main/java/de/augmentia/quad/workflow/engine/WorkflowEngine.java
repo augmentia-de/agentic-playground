@@ -14,8 +14,12 @@ import de.augmentia.quad.workflow.engine.node.NodeExecutorRegistry;
 import de.augmentia.quad.workflow.engine.node.NodeRunner;
 import org.jboss.logging.Logger;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.time.Instant;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -30,6 +34,8 @@ import java.util.UUID;
 public class WorkflowEngine {
 
     private static final Logger log = Logger.getLogger(WorkflowEngine.class);
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final WorkflowDefinitionPort definitions;
     private final WorkflowSupport support;
@@ -55,7 +61,7 @@ public class WorkflowEngine {
         AgentSessionState sessionState = support.newRunState();
         int initialDataLen = run.initialData != null ? run.initialData.length() : 0;
         runEvents.recordEvent(run.runId, resume ? "RUN_RESUMED" : "RUN_STARTED",
-            "{\"workflow\":\"" + workflow.name + "\",\"initialDataLen\":" + initialDataLen + "}");
+            jsonPayload("workflow", workflow.name, "initialDataLen", initialDataLen));
         runEvents.recordLifecycle(run.runId, resume ? "RUN_RESUMED" : "RUN_STARTED", Instant.now());
         log.infof("══ WORKFLOW ▶ [%s] RUN_%s workflow=\"%s\" (%d nodes, %d edges, initialData=%d chars) ══",
             run.runId, resume ? "RESUMED" : "STARTED", workflow.name,
@@ -95,7 +101,6 @@ public class WorkflowEngine {
                     runNode(node, workflow.nodes, workflow.edges, ctx, skip);
                 }
             }
-            support.removeRun(run.runId);
 
             run.durationMs = System.currentTimeMillis() - startMs;
             run.finishedAt = Instant.now().toString();
@@ -107,7 +112,7 @@ public class WorkflowEngine {
             runEvents.upsertRunSession(run.runId, "Workflow: " + workflow.name,
                 "Run " + run.runId + " completed in " + run.durationMs + "ms",
                 sessionState.memory().hasSummary() ? sessionState.memory().summary() : null, sessionState);
-            runEvents.recordEvent(run.runId, "RUN_COMPLETED", "{\"durationMs\":" + run.durationMs + "}");
+            runEvents.recordEvent(run.runId, "RUN_COMPLETED", jsonPayload("durationMs", run.durationMs));
             runEvents.recordLifecycle(run.runId, "RUN_COMPLETED", Instant.now());
             log.infof("══ WORKFLOW ■ [%s] RUN_COMPLETED in %d ms (status=%s) ══",
                 run.runId, run.durationMs, run.status);
@@ -124,8 +129,30 @@ public class WorkflowEngine {
             runEvents.upsertRunSession(run.runId, "Workflow: " + workflow.name,
                 "Run " + run.runId + " failed: " + e.getMessage(),
                 sessionState.memory().hasSummary() ? sessionState.memory().summary() : null, null);
-            runEvents.recordEvent(run.runId, "RUN_FAILED", "{\"error\":\"" + e.getMessage() + "\"}");
+            runEvents.recordEvent(run.runId, "RUN_FAILED", jsonPayload("error", e.getMessage()));
             runEvents.recordLifecycle(run.runId, "RUN_FAILED", Instant.now());
+        } finally {
+            // Always deregister the run — previously only the success path removed it, so a
+            // failed run left its output registry (and every node output) behind (B23).
+            support.removeRun(run.runId);
+        }
+    }
+
+    /**
+     * Serialises a run-event payload with Jackson so that user-provided text (workflow names,
+     * error messages) containing quotes, backslashes or newlines can never produce invalid
+     * JSON (B25). Takes alternating key/value pairs.
+     */
+    static String jsonPayload(Object... keyValuePairs) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        for (int i = 0; i + 1 < keyValuePairs.length; i += 2) {
+            payload.put(String.valueOf(keyValuePairs[i]), keyValuePairs[i + 1]);
+        }
+        try {
+            return JSON.writeValueAsString(payload);
+        } catch (JsonProcessingException e) {
+            log.warnf("Could not serialise run event payload: %s", e.getMessage());
+            return "{}";
         }
     }
 

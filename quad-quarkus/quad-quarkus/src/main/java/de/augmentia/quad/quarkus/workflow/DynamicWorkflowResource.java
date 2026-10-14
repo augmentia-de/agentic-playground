@@ -104,6 +104,9 @@ public class DynamicWorkflowResource {
             return Response.ok(Map.of("ok", true, "runId", req.runId, "nodeId", req.nodeId)).build();
         } catch (IllegalArgumentException e) {
             return Response.status(404).entity(Map.of("error", e.getMessage())).build();
+        } catch (IllegalStateException e) {
+            // The run is not (or no longer) active — the completion was rejected, do not report "ok" (B24).
+            return Response.status(409).entity(Map.of("error", e.getMessage())).build();
         } catch (Exception e) {
             return Response.status(500).entity(Map.of("error", e.getMessage())).build();
         }

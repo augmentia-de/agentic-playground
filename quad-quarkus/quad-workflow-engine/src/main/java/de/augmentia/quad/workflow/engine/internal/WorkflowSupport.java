@@ -164,15 +164,24 @@ public class WorkflowSupport {
 
     /**
      * Resolves a deferred async completion: writes the result in the run outputs,
-     * marks the node as completed, wakes up the scheduler. Throws if run/node is unknown.
+     * marks the node as completed, wakes up the scheduler.
+     *
+     * @throws IllegalArgumentException if {@code runId}/{@code nodeId} is missing
+     * @throws IllegalStateException    if the run is no longer active (finished or never started);
+     *                                  the completion cannot be delivered and must not be reported
+     *                                  as success to the caller (B24)
      */
     public void completeDeferred(String runId, String nodeId, String output) {
         if (runId == null) throw new IllegalArgumentException("runId required for deferred completion");
+        if (nodeId == null || nodeId.isBlank()) throw new IllegalArgumentException("nodeId required for deferred completion");
         ConcurrentHashMap<String, String> outs = runOutputs.get(runId);
         if (outs == null) {
-            WorkflowRunState r = runPort.load(runId);
-            if (r == null) throw new IllegalArgumentException("Run not found: " + runId);
-            return;
+            // Previously this branch queried the run port and simply returned when the run existed
+            // but was not registered — the caller then reported success even though nothing happened.
+            WorkflowRunState persisted = runPort.load(runId);
+            throw new IllegalStateException(persisted == null
+                ? "Deferred completion rejected: run not found: " + runId
+                : "Deferred completion rejected: run '" + runId + "' is no longer active");
         }
         synchronized (outs) {
             outs.put(nodeId, output);

@@ -53,11 +53,9 @@ public class WorkflowScheduler {
             }
 
             if (allResolved(ordered, ctx)) break;
-            if (fired) {
-                try { Thread.sleep(25); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return; }
-                continue;
-            }
-            long waitMs = nextDeadlineWaitMs(ctx.joinDeadline());
+            // Block on the shared monitor (woken by node completion) instead of busy-waiting
+            // with Thread.sleep.
+            long waitMs = fired ? 25 : nextDeadlineWaitMs(ctx.joinDeadline());
             synchronized (support.monitor) {
                 try { support.monitor.wait(Math.min(Math.max(waitMs, 1), 250)); }
                 catch (InterruptedException ie) { Thread.currentThread().interrupt(); return; }
