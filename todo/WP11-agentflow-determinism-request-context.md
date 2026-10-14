@@ -1,87 +1,87 @@
-# WP11 — agentflow: Determinismus & Request-Context
+# WP11 — agentflow: determinism & request context
 
 | | |
 |---|---|
-| **Status** | offen |
-| **Schwere** | Hoch |
-| **Module** | `agentflow/agentflow-app` |
-| **Review-Referenz** | B12 (§5.2), §6 (Declarative: Replay/Pruning/Loop) |
-| **Abhängigkeit** | – |
-| **Geschätzter Aufwand** | 2–3 Tage |
+| **Status** | open |
+| **Severity** | High |
+| **Modules** | `agentflow/agentflow-app` |
+| **Review reference** | B12 (§5.2), §6 (Declarative: replay/pruning/loop) |
+| **Depends on** | – |
+| **Estimated effort** | 2–3 days |
 
-## Ziel
+## Goal
 
-Temporal-Workflow-Code ist deterministisch (kein `HashMap`-Ordnungseinfluss, stabiles Pruning,
-sinnvolle Loop-Grenzen), und per-Request-Header/Tenant wirken auf **allen** Activity-Pfaden.
+Temporal workflow code is deterministic (no `HashMap` ordering influence, stable pruning, sensible
+loop bounds), and per-request headers/tenant take effect on **all** activity paths.
 
-## Befunde (Ist-Zustand)
+## Findings (as-is)
 
-- **B12 – Request-Context fehlt:** Nur `runAgentGraph` setzt `RequestContext`
+- **B12 – request context missing:** only `runAgentGraph` sets `RequestContext`
   (`AgentFlowActivitiesImpl.java:35,59`); `runQuadAgent`/`runRichAgent`/`runAuthorizedAgent`
-  (`:78,84,95`) nicht → Header/Tenant still ignoriert; potenzielles ThreadLocal-Leck.
-- **§6 – Declarative-Workflow:**
-  - `HashSet`/`HashMap` in Workflow-State (`DeclarativeAgentWorkflow.java:53,71`) — Ordnung kann
-    Eingaben/Replay beeinflussen.
-  - **Nicht-transitives Pruning** (`:138-142`): nur direkte Nicht-Ziele, Nachfahren weder
-    übersprungen noch ausgeführt → stilles Weglassen aus `outputs`.
-  - **Loop-Default** `Math.max(1, maxIterations())` (`:149-171`) → unset läuft genau einmal; kein
-    Repository-weites Iterations-Limit.
+  (`:78,84,95`) do not → headers/tenant silently ignored; potential ThreadLocal leak.
+- **§6 – Declarative workflow:**
+  - `HashSet`/`HashMap` in workflow state (`DeclarativeAgentWorkflow.java:53,71`) — ordering can
+    influence inputs/replay.
+  - **Non-transitive pruning** (`:138-142`): only direct non-targets, descendants neither skipped nor
+    executed → silent omission from `outputs`.
+  - **Loop default** `Math.max(1, maxIterations())` (`:149-171`) → unset runs exactly once; no
+    repository-wide iteration limit.
 
-## 1. Tests zuerst (Red)
+## 1. Tests first (Red)
 
-Testort: `agentflow/agentflow-app/src/test/java/de/augmentia/agentflow/app/workflow/declarative/…`
-(vorhanden: `DeclarativeAgentWorkflowTest`, `ConditionEvaluatorTest`, `DeclarativePlannerTest`)
-und `…/config/AgentFlowLlmHeaderPropertiesTest`, `LlmConfigBridgeTest`.
+Test location: `agentflow/agentflow-app/src/test/java/de/augmentia/agentflow/app/workflow/declarative/…`
+(existing: `DeclarativeAgentWorkflowTest`, `ConditionEvaluatorTest`, `DeclarativePlannerTest`)
+and `…/config/AgentFlowLlmHeaderPropertiesTest`, `LlmConfigBridgeTest`.
 
-| # | Test | Erwartung |
-|---|------|-----------|
-| 1 | `AgentFlowActivitiesImplTest#runQuadAgent_setsRequestContext` | Header/Tenant wirken |
-| 2 | `AgentFlowActivitiesImplTest#runRichAgent_setsRequestContext` | dito |
-| 3 | `AgentFlowActivitiesImplTest#runAuthorizedAgent_setsRequestContext` | dito |
-| 4 | `AgentFlowActivitiesImplTest#contextIsClearedAfterRun` | kein ThreadLocal-Leck |
-| 5 | `DeclarativeAgentWorkflowTest#deterministicContextOrdering` | gleiche Eingabe → gleicher Activity-Input (sortiert) |
-| 6 | `DeclarativeAgentWorkflowTest#pruningIsTransitive` | Nachfahren gepruned werden als `skipped` markiert |
-| 7 | `DeclarativeAgentWorkflowTest#loopRespectsHardCap` | zu hohe Iterationen → hart begrenzt + Hinweis |
-| 8 | `DeclarativeAgentWorkflowTest#unsetIterations_definedBehavior` | `0` → dokumentiertes Verhalten (nicht still 1×) |
+| # | Test | Expectation |
+|---|------|-------------|
+| 1 | `AgentFlowActivitiesImplTest#runQuadAgent_setsRequestContext` | headers/tenant take effect |
+| 2 | `AgentFlowActivitiesImplTest#runRichAgent_setsRequestContext` | ditto |
+| 3 | `AgentFlowActivitiesImplTest#runAuthorizedAgent_setsRequestContext` | ditto |
+| 4 | `AgentFlowActivitiesImplTest#contextIsClearedAfterRun` | no ThreadLocal leak |
+| 5 | `DeclarativeAgentWorkflowTest#deterministicContextOrdering` | same input → same activity input (sorted) |
+| 6 | `DeclarativeAgentWorkflowTest#pruningIsTransitive` | pruned descendants are marked as `skipped` |
+| 7 | `DeclarativeAgentWorkflowTest#loopRespectsHardCap` | excessive iterations → hard-capped + notice |
+| 8 | `DeclarativeAgentWorkflowTest#unsetIterations_definedBehavior` | `0` → documented behaviour (not silently 1×) |
 
-**Abnahme (Red):** 1–3, 5, 6, 8 fehlschlagen.
+**Acceptance (Red):** 1–3, 5, 6, 8 fail.
 
-## 2. Änderungen (Green)
+## 2. Changes (Green)
 
-1. **Request-Context zentral:** gemeinsamer `withRequestContext(runId, action)`-Helper (oder Aspekt),
-   den **alle vier** Activities nutzen; garantiertes Clear im `finally`.
-2. **Determinismus:** `TreeMap`/`LinkedHashMap` + explizite Sortierung in
-   `context(...)`/Ausgabe-Komposition; im Test `WorkflowReplayer` bzw. Wiederholtest nutzen.
-3. **Pruning:** transitiv über Nachfahren propagieren; gepruned Nachfahren explizit als `skipped`
-   in `outputs`/Status führen → nicht still weglassen.
-4. **Loop:** unset-Verhalten klar definieren (z. B. Fehler oder dokumentierter Default),
-   Repository-weites `maxIterations`-Limit mit Log/Ereignis beim Erreichen.
+1. **Central request context:** a shared `withRequestContext(runId, action)` helper (or aspect) used by
+   **all four** activities; guaranteed clear in `finally`.
+2. **Determinism:** `TreeMap`/`LinkedHashMap` + explicit sorting in `context(...)`/output composition;
+   use `WorkflowReplayer` or a repeat test in the test.
+3. **Pruning:** propagate transitively to descendants; list pruned descendants explicitly as `skipped`
+   in `outputs`/status → do not silently omit.
+4. **Loop:** define the unset behaviour clearly (e.g. error or a documented default), with a
+   repository-wide `maxIterations` limit and a log/event on reaching it.
 
-## 3. Verifikation
+## 3. Verification
 
 ```bash
 cd agentflow && mvn -pl agentflow-app test -Dtest='Declarative*,AgentFlowActivities*'
 ```
-- Temporal-Replay-Test: aufgezeichnete History wiedergeben → keine Non-Determinism-Fehler.
+- Temporal replay test: replay recorded history → no non-determinism errors.
 
-## 4. Risiken / Hinweise
+## 4. Risks / notes
 
-- Aspekt-/Helper-Einführung in Activities: Temporal-Activity-Interfaces beachten (kein State
-  über Replays).
-- Pruning-Änderung beeinflusst, welche Knoten in `outputs` erscheinen → bestehende Workflows prüfen.
+- Introducing an aspect/helper into activities: mind the Temporal activity interfaces (no state across
+  replays).
+- The pruning change affects which nodes appear in `outputs` → check existing workflows.
 
 ## Definition of Done
 
-- [ ] Alle Activities setzen/bereinigen den Context (Test 1–4).
-- [ ] Replay-deterministisch (Test 5).
-- [ ] Pruning transitiv und sichtbar (Test 6).
-- [ ] Loop-Grenzen definiert (Test 7, 8).
-- [ ] Fortschrittslog gepflegt.
+- [ ] All activities set/clear the context (tests 1–4).
+- [ ] Replay-deterministic (test 5).
+- [ ] Pruning transitive and visible (test 6).
+- [ ] Loop bounds defined (tests 7, 8).
+- [ ] Progress log maintained.
 
-## Fortschrittslog
+## Progress log
 
-| Datum | Bearbeiter | Schritt | Ergebnis |
-|-------|-----------|---------|----------|
-| | | 1. Tests rot | |
-| | | 2. Umsetzung | |
-| | | 3. Replay-Test | |
+| Date | Author | Step | Result |
+|------|--------|------|--------|
+| | | 1. Tests red | |
+| | | 2. Implementation | |
+| | | 3. Replay test | |

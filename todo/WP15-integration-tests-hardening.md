@@ -1,80 +1,80 @@
-# WP15 — Integrationstests härten
+# WP15 — Harden integration tests
 
 | | |
 |---|---|
-| **Status** | offen |
-| **Schwere** | Mittel |
-| **Module** | `integration-tests` |
-| **Review-Referenz** | §8.5, §B (README-Drift), §3.1 |
-| **Abhängigkeit** | – |
-| **Geschätzter Aufwand** | 1–2 Tage |
+| **Status** | open |
+| **Severity** | Medium |
+| **Modules** | `integration-tests` |
+| **Review reference** | §8.5, §B (README drift), §3.1 |
+| **Depends on** | – |
+| **Estimated effort** | 1–2 days |
 
-## Ziel
+## Goal
 
-Die Integrationstests sind **flakiness-arm**, ihre README stimmt mit dem Code überein, und die
-`@Disabled`-Befunde sind sichtbar dokumentiert.
+The integration tests are **low-flakiness**, their README matches the code, and the `@Disabled`
+findings are visibly documented.
 
-## Befunde (Ist-Zustand)
+## Findings (as-is)
 
-- **README-Drift:** README sagt „58 Tests / 2 documented findings" (`:10,84-90`); real **104 `@Test`**
-  und **3 `@Disabled`**-Befunde; die komplette **`syscapability`-Suite (46 Tests)** fehlt in der
-  README-Tabelle.
-- **Flakiness:** `support/WorkflowRun.java` pollt mit `Thread.sleep(400)`; `support/TestEnv.java`
-  hat hartkodierte Ports; mögliche ungenutzte `uniqueKey`-Map.
-- **Duplikation:** `stackMussLaufen`-Helfer 5–6× in `syscapability/*` kopiert.
-- **Schwache Assertion:** `LastSystemtest.rueckstandIstSichtbar` prüft nur `isNotNegative()`.
+- **README drift:** the README says "58 tests / 2 documented findings" (`:10,84-90`); reality is
+  **104 `@Test`** and **3 `@Disabled`** findings; the entire **`syscapability` suite (46 tests)** is
+  missing from the README table.
+- **Flakiness:** `support/WorkflowRun.java` polls with `Thread.sleep(400)`; `support/TestEnv.java`
+  has hard-coded ports; a possibly unused `uniqueKey` map.
+- **Duplication:** the `stackMussLaufen` helper is copied 5–6× in `syscapability/*`.
+- **Weak assertion:** `LastSystemtest.rueckstandIstSichtbar` only checks `isNotNegative()`.
 
-## 1. Tests zuerst
+## 1. Tests first
 
-Hier sind die Integrationstests selbst der Gegenstand.
+Here the integration tests themselves are the subject.
 
-| # | Aufgabe | Erwartung |
-|---|---------|-----------|
-| 1 | Zähl-Skript `scripts/count-tests.sh` | listet `@Test`/`@Disabled` pro Layer; README daraus generierbar |
-| 2 | Awaitility statt `Thread.sleep` | deterministischere Wartezeiten |
-| 3 | Ports aus `TestEnv`/Env statt hartkodiert | Suite in abweichender Umgebung lauffähig |
-| 4 | `stackMussLaufen` in `support/` zentralisieren | eine Implementierung |
-| 5 | `rueckstandIstSichtbar` schärfen | prüft echten Backlog-Wert |
-| 6 | README-Tabelle regenerieren | enthält `syscapability`, 3 Befunde |
+| # | Task | Expectation |
+|---|------|-------------|
+| 1 | counting script `scripts/count-tests.sh` | lists `@Test`/`@Disabled` per layer; README generatable from it |
+| 2 | Awaitility instead of `Thread.sleep` | more deterministic waits |
+| 3 | Ports from `TestEnv`/env instead of hard-coded | suite runnable in a different environment |
+| 4 | centralise `stackMussLaufen` in `support/` | one implementation |
+| 5 | sharpen `rueckstandIstSichtbar` | checks the real backlog value |
+| 6 | regenerate the README table | includes `syscapability`, 3 findings |
 
-## 2. Änderungen (Green)
+## 2. Changes (Green)
 
-1. **README angleichen** (Zahlen + `syscapability`-Suite + 3 Befunde). Idealerweise aus
-   `count-tests.sh` generieren (Bezug zu WP14-CI).
-2. **`WorkflowRun`** auf Awaitility (`await().atMost(...).pollInterval(...)`) umstellen
-   (Dependency ergänzen, falls nicht vorhanden).
-3. **`TestEnv`:** Ports konfigurierbar machen; toten `uniqueKey` entfernen.
-4. **Helper zentralisieren:** gemeinsame Basisklasse/Utility für Stack-Bereitschaft.
-5. **Assertion schärfen** (echter Erwartungswert).
-6. **Befund-Muster dokumentieren:** `@Disabled`-Befund + Begleittest als Hausstil in die README.
+1. **Align the README** (numbers + `syscapability` suite + 3 findings). Ideally generated from
+   `count-tests.sh` (related to WP14 CI).
+2. **`WorkflowRun`:** switch to Awaitility (`await().atMost(...).pollInterval(...)`) (add the
+   dependency if missing).
+3. **`TestEnv`:** make ports configurable; remove the dead `uniqueKey`.
+4. **Centralise helpers:** a shared base class/utility for stack readiness.
+5. **Sharpen the assertion** (real expected value).
+6. **Document the finding pattern:** the `@Disabled` finding + companion test as a house style in the README.
 
-## 3. Verifikation
+## 3. Verification
 
 ```bash
 cd integration-tests && ./scripts/run-integration-tests.sh e2e
 ./scripts/count-tests.sh
 ```
-- Suite mehrfach hintereinander laufen lassen → stabil grün (keine Sleep-Flakiness).
-- In anderer Umgebung (abweichende Ports) → grün.
+- Run the suite several times in a row → stably green (no sleep flakiness).
+- In a different environment (different ports) → green.
 
-## 4. Risiken / Hinweise
+## 4. Risks / notes
 
-- Awaitility-Umstellung ändert Timeouts → großzügig, aber mit klarer Fehlermeldung.
-- `syscapability`-Suite braucht ggf. laufenden Stack (dokumentieren, welche Layer skippen).
+- The Awaitility switch changes timeouts → generous, but with a clear error message.
+- The `syscapability` suite may need a running stack (document which layers skip).
 
 ## Definition of Done
 
-- [ ] README == Realität (Zahlen, `syscapability`, 3 Befunde).
-- [ ] Kein `Thread.sleep`-Polling mehr; Ports konfigurierbar.
-- [ ] `stackMussLaufen` dedupliziert.
-- [ ] Assertion geschärft.
-- [ ] Zähl-Skript vorhanden (CI-tauglich).
-- [ ] Fortschrittslog gepflegt.
+- [ ] README == reality (numbers, `syscapability`, 3 findings).
+- [ ] No more `Thread.sleep` polling; ports configurable.
+- [ ] `stackMussLaufen` de-duplicated.
+- [ ] Assertion sharpened.
+- [ ] Counting script present (CI-ready).
+- [ ] Progress log maintained.
 
-## Fortschrittslog
+## Progress log
 
-| Datum | Bearbeiter | Schritt | Ergebnis |
-|-------|-----------|---------|----------|
-| | | 1. Zähl-Skript | |
-| | | 2. Awaitility/Ports | |
-| | | 3. README regeneriert | |
+| Date | Author | Step | Result |
+|------|--------|------|--------|
+| | | 1. Counting script | |
+| | | 2. Awaitility/ports | |
+| | | 3. README regenerated | |

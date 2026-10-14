@@ -1,78 +1,79 @@
-# WP06 — quad-core: Session, Token, State
+# WP06 — quad-core: session, token, state
 
 | | |
 |---|---|
-| **Status** | offen |
-| **Schwere** | Mittel |
-| **Module** | `quad-quarkus/quad-core` |
-| **Review-Referenz** | B15, B16, B21 (§5.3, §5.2) |
-| **Abhängigkeit** | – |
-| **Geschätzter Aufwand** | 1–2 Tage |
+| **Status** | open |
+| **Severity** | Medium |
+| **Modules** | `quad-quarkus/quad-core` |
+| **Review reference** | B15, B16, B21 (§5.3, §5.2) |
+| **Depends on** | – |
+| **Estimated effort** | 1–2 days |
 
-## Ziel
+## Goal
 
-Token-Austausch liefert den richtigen Token, Session-Snapshots verlieren keine Daten, und die
-Conversation-Manager-Logik folgt nicht mehr einem toten `==`-Zweig.
+Token exchange returns the correct token, session snapshots lose no data, and the
+conversation-manager logic no longer follows a dead `==` branch.
 
-## Befunde (Ist-Zustand)
+## Findings (as-is)
 
-- **B15 – Token-Cache-Fehler (sicherheitsrelevant):** `TokenExchangeClient` cacht nur nach
-  `audience`, ignoriert `subjectToken`/`scopes` (`TokenExchangeClient.java:71`) → **falscher Token**
-  bei gleicher Audience.
-- **B16 – Snapshot verliert Summary:** `SessionStateSnapshot.toState()` lässt
-  `MemorySnapshot.summary` weg (`:103-106`).
-- **B21 – Referenzvergleich:** `SummarizingSlidingWindowConversationManager` vergleicht
-  `toKeep == nonSystemMsgs` (`subList`-View) → nie wahr, falscher Pfad (`:70`).
+- **B15 – token cache bug (security-relevant):** `TokenExchangeClient` caches only by `audience`,
+  ignoring `subjectToken`/`scopes` (`TokenExchangeClient.java:71`) → **wrong token** for the same
+  audience.
+- **B16 – snapshot loses summary:** `SessionStateSnapshot.toState()` omits `MemorySnapshot.summary`
+  (`:103-106`).
+- **B21 – reference comparison:** `SummarizingSlidingWindowConversationManager` compares
+  `toKeep == nonSystemMsgs` (`subList` view) → never true, wrong branch (`:70`).
 
-## 1. Tests zuerst (Red)
+## 1. Tests first (Red)
 
-Testort: `quad-quarkus/quad-core/src/test/java/de/augmentia/quad/core/…`
+Test location: `quad-quarkus/quad-core/src/test/java/de/augmentia/quad/core/…`
 
-| # | Test | Erwartung |
-|---|------|-----------|
-| 1 | `TokenExchangeClientTest#differentSubject_differentToken` | anderer `subjectToken` → anderer (nicht gecachter) Token |
-| 2 | `TokenExchangeClientTest#differentScopes_differentToken` | andere `scopes` → eigener Cache-Eintrag |
-| 3 | `TokenExchangeClientTest#sameKey_hitsCache` | identische Eingaben → Cache-Treffer |
-| 4 | `SessionStateSnapshotTest#roundTrip_preservesSummary` | `toState`→`from` enthält Summary |
-| 5 | `SummarizingSlidingWindowConversationManagerTest#keepsNonSystemMessages` | korrekte Auswahl der Nachrichten (kein toter Zweig) |
+| # | Test | Expectation |
+|---|------|-------------|
+| 1 | `TokenExchangeClientTest#differentSubject_differentToken` | different `subjectToken` → different (uncached) token |
+| 2 | `TokenExchangeClientTest#differentScopes_differentToken` | different `scopes` → own cache entry |
+| 3 | `TokenExchangeClientTest#sameKey_hitsCache` | identical inputs → cache hit |
+| 4 | `SessionStateSnapshotTest#roundTrip_preservesSummary` | `toState`→`from` contains the summary |
+| 5 | `SummarizingSlidingWindowConversationManagerTest#keepsNonSystemMessages` | correct message selection (no dead branch) |
 
-Testorte ggf. neu: `security/TokenExchangeClientTest.java`, `session/SessionStateSnapshotTest.java`,
+Test locations, possibly new: `security/TokenExchangeClientTest.java`,
+`session/SessionStateSnapshotTest.java`,
 `session/memory/SummarizingSlidingWindowConversationManagerTest.java`.
 
-**Abnahme (Red):** 1, 2, 4, 5 fehlschlagen.
+**Acceptance (Red):** 1, 2, 4, 5 fail.
 
-## 2. Änderungen (Green)
+## 2. Changes (Green)
 
-1. **Cache-Key:** zusammengesetzter Key aus `audience + subjectToken(+Hash) + scopes` (immutable
-   Value-Object als Key, `equals/hashCode` korrekt). Sensible Token nicht im Klartext als Key-Logging.
-2. **Snapshot:** `summary` mit serialisieren/deserialisieren (inkl. Null-/Leerfall).
-3. **Conversation-Manager:** Bedingung auf inhaltliche Prüfung umstellen (z. B. `isEmpty`/`size`,
-   Vergleich mit dem Original-Listenobjekt statt `subList`-View); toten Zweig entfernen.
+1. **Cache key:** a composite key from `audience + subjectToken(+hash) + scopes` (immutable value
+   object as key, correct `equals/hashCode`). Do not log sensitive tokens in plaintext as the key.
+2. **Snapshot:** serialize/deserialize `summary` (including the null/empty case).
+3. **Conversation manager:** replace the condition with a content check (e.g. `isEmpty`/`size`,
+   compare against the original list object instead of the `subList` view); remove the dead branch.
 
-## 3. Verifikation
+## 3. Verification
 
 ```bash
 cd quad-quarkus && mvn -pl quad-core test
 cd quad-quarkus && mvn -pl quad-core test -Dtest='*TokenExchange*,*SessionState*,*ConversationManager*'
 ```
 
-## 4. Risiken / Hinweise
+## 4. Risks / notes
 
-- Cache-Key enthält Token → nicht loggen, ggf. Hash verwenden.
-- Snapshot-Format-Änderung: Rückwärtskompatibilität zu alten Snapshots prüfen (Versionierung).
+- The cache key contains the token → do not log it; use a hash if needed.
+- Snapshot-format change: check backward compatibility with old snapshots (versioning).
 
 ## Definition of Done
 
-- [ ] Tests 1–5 grün.
-- [ ] Token-Cache keyt korrekt (kein Cross-Subject-Leak).
-- [ ] Summary überlebt Round-Trip.
-- [ ] Kein toter Referenzvergleich mehr.
-- [ ] Fortschrittslog gepflegt.
+- [ ] Tests 1–5 green.
+- [ ] Token cache keys correctly (no cross-subject leak).
+- [ ] Summary survives the round-trip.
+- [ ] No dead reference comparison remains.
+- [ ] Progress log maintained.
 
-## Fortschrittslog
+## Progress log
 
-| Datum | Bearbeiter | Schritt | Ergebnis |
-|-------|-----------|---------|----------|
-| | | 1. Tests rot | |
-| | | 2. Umsetzung | |
-| | | 3. Verifikation | |
+| Date | Author | Step | Result |
+|------|--------|------|--------|
+| | | 1. Tests red | |
+| | | 2. Implementation | |
+| | | 3. Verification | |

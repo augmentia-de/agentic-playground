@@ -1,87 +1,87 @@
-# WP10 — agentflow: Generator konsolidieren & Join
+# WP10 — agentflow: consolidate generator & join
 
 | | |
 |---|---|
-| **Status** | offen |
-| **Schwere** | Hoch |
-| **Module** | `agentflow/agentflow-app`, `quad-quarkus/quad-quarkus` |
-| **Review-Referenz** | A1, B6, B11 (§3.2, §5.2) |
-| **Abhängigkeit** | – (Testorte von WP01 unabhängig) |
-| **Geschätzter Aufwand** | 3–4 Tage |
+| **Status** | open |
+| **Severity** | High |
+| **Modules** | `agentflow/agentflow-app`, `quad-quarkus/quad-quarkus` |
+| **Review reference** | A1, B6, B11 (§3.2, §5.2) |
+| **Depends on** | – (test locations independent of WP01) |
+| **Estimated effort** | 3–4 days |
 
-## Ziel
+## Goal
 
-Die zwei `WorkflowGeneratorService`-Implementierungen werden **vereinheitlicht** (kein divergierender
-Copy-Paste-Zweig). Der agentflow-Generator erzeugt bei Fork/Parallel wieder **Join-Nodes**, und der
-Plan wird nicht mehr durch fehlendes Token-Limit abgeschnitten.
+The two `WorkflowGeneratorService` implementations are **unified** (no diverging copy-paste branch).
+The agentflow generator again produces **join nodes** on fork/parallel, and the plan is no longer
+truncated by a missing token limit.
 
-## Befunde (Ist-Zustand)
+## Findings (as-is)
 
-- **A1/B6 – divergierte Kopie:** `agentflow/agentflow-app/src/main/java/de/augmentia/agentflow/app/workflow/generate/WorkflowGeneratorService.java`
-  ist eine near-verbatim-Kopie von
+- **A1/B6 – diverged copy:** `agentflow/agentflow-app/src/main/java/de/augmentia/agentflow/app/workflow/generate/WorkflowGeneratorService.java`
+  is a near-verbatim copy of
   `quad-quarkus/quad-quarkus/src/main/java/de/augmentia/quad/quarkus/workflow/WorkflowGeneratorService.java`
-  (identische private Methodennamen), aber **17 vs. 29** private Methoden und **keine** Join-Logik
-  (`grep 'join'` → 0 Treffer vs. 11 im Original, u. a. `:465 addJoinNodes(...)`, `:548`).
-  Folge: parallele Forks ohne Merge.
-- **B11 – Plan ohne Token-Limit:** `max-output-tokens: 0` (`application.yml:50`, Default `:0` in `:110`);
-  `chatParametersJson` lässt das Feld weg (`:183-184`) → Provider kappt lange Pläne → `parseSteps`
-  scheitert. Das Quad-Original defaultet bewusst groß (`:249-254`).
+  (identical private method names), but **17 vs. 29** private methods and **no** join logic
+  (`grep 'join'` → 0 hits vs. 11 in the original, including `:465 addJoinNodes(...)`, `:548`).
+  Consequence: parallel forks without a merge.
+- **B11 – plan without a token limit:** `max-output-tokens: 0` (`application.yml:50`, default `:0` in
+  `:110`); `chatParametersJson` omits the field (`:183-184`) → the provider truncates long plans →
+  `parseSteps` fails. The Quad original deliberately defaults large (`:249-254`).
 
-## 1. Tests zuerst (Red)
+## 1. Tests first (Red)
 
-Testorte (beide vorhanden):
+Test locations (both exist):
 - `quad-quarkus/quad-quarkus/src/test/java/de/augmentia/quad/quarkus/workflow/WorkflowGeneratorJoinTest.java`
 - `agentflow/agentflow-app/src/test/java/de/augmentia/agentflow/app/workflow/generate/WorkflowGeneratorServiceTest.java`
 
-| # | Test | Erwartung |
-|---|------|-----------|
-| 1 | `WorkflowGeneratorServiceTest#forkMerge_containsJoinNode` (agentflow) | Fork→Merge-Plan enthält Join-Node |
-| 2 | `WorkflowGeneratorJoinTest#sameInput_sameNodeSet` | Beide Generatoren liefern identische Node-Menge (Paritäts-Test) |
-| 3 | `WorkflowGeneratorServiceTest#parallelBranches_downstreamResolves` | Downstream-`dependsOn` löst auf |
-| 4 | `WorkflowGeneratorServiceTest#truncatedPlan_actionableError` | Abschneiden → klarer Fehler (nicht Parserfehler) |
-| 5 | `WorkflowGeneratorServiceTest#defaultTokenLimit_applied` | Default > 0, im Request sichtbar |
-| 6 | `WorkflowGeneratorParsingTest#cyclicPlan_rejected` | Zyklus erkannt (Bestand/Parität) |
+| # | Test | Expectation |
+|---|------|-------------|
+| 1 | `WorkflowGeneratorServiceTest#forkMerge_containsJoinNode` (agentflow) | fork→merge plan contains a join node |
+| 2 | `WorkflowGeneratorJoinTest#sameInput_sameNodeSet` | both generators produce an identical node set (parity test) |
+| 3 | `WorkflowGeneratorServiceTest#parallelBranches_downstreamResolves` | downstream `dependsOn` resolves |
+| 4 | `WorkflowGeneratorServiceTest#truncatedPlan_actionableError` | truncation → clear error (not a parser error) |
+| 5 | `WorkflowGeneratorServiceTest#defaultTokenLimit_applied` | default > 0, visible in the request |
+| 6 | `WorkflowGeneratorParsingTest#cyclicPlan_rejected` | cycle detected (existing/parity) |
 
-**Abnahme (Red):** 1, 2, 3, 5 fehlschlagen.
+**Acceptance (Red):** 1, 2, 3, 5 fail.
 
-## 2. Änderungen (Green)
+## 2. Changes (Green)
 
-1. **Konsolidieren (bevorzugt):** gemeinsamen Generator in ein wiederverwendbares Modul ziehen
-   (z. B. `quad-workflow-core` oder neues `quad-workflow-generate`), das beide Apps nutzen.
-   Fallback, falls Konsolidierung zu groß: Join-Logik exakt portieren **und** Paritäts-Test (2) als
-   Wächter gegen erneute Divergenz.
-2. **Join-Logik:** `addJoinNodes`/`uniqueJoinId`/`addJoinNode` aus dem Original übernehmen
-   (`:465,548-601`), inkl. Timeout-Ableitung.
-3. **Token-Limit:** Default auf sinnvollen Wert (z. B. 32768) setzen; `application.yml:50` anpassen;
-   bei `finish_reason == length` klaren Fehler werfen.
-4. **Paritäts-/Regressions-Test** dauerhaft aufnehmen, damit die Kopien nicht wieder auseinanderlaufen.
+1. **Consolidate (preferred):** move the shared generator into a reusable module
+   (e.g. `quad-workflow-core` or a new `quad-workflow-generate`) used by both apps.
+   Fallback if consolidation is too large: port the join logic exactly **and** keep the parity test (2)
+   as a guard against renewed divergence.
+2. **Join logic:** take `addJoinNodes`/`uniqueJoinId`/`addJoinNode` from the original
+   (`:465,548-601`), including timeout derivation.
+3. **Token limit:** default to a sensible value (e.g. 32768); adjust `application.yml:50`; throw a
+   clear error on `finish_reason == length`.
+4. **Keep a permanent parity/regression test** so the copies do not drift apart again.
 
-## 3. Verifikation
+## 3. Verification
 
 ```bash
 cd quad-quarkus && mvn -pl quad-quarkus test -Dtest='WorkflowGenerator*'
 cd agentflow && mvn -pl agentflow-app test -Dtest='WorkflowGenerator*'
 ```
-- Manuell: Fork-Prompt generieren, erzeugten Graphen im Editor prüfen (Join vorhanden).
-- End-to-End: agentflow generiert → ausführt (falls UI/Engine verfügbar).
+- Manual: generate a fork prompt, inspect the produced graph in the editor (join present).
+- End-to-end: agentflow generates → executes (if UI/engine available).
 
-## 4. Risiken / Hinweise
+## 4. Risks / notes
 
-- Konsolidierung berührt Build-Reihenfolge/POMs → Root-Reaktor-Test (`mvn -T1C clean install`).
-- Prompt-Texte unterscheiden sich evtl. → beim Zusammenführen bewusst wählen und dokumentieren.
+- Consolidation affects build order/POMs → root-reactor test (`mvn -T1C clean install`).
+- Prompt texts may differ → choose deliberately during the merge and document it.
 
 ## Definition of Done
 
-- [ ] Kein divergierender Generator mehr (gemeinsame Quelle **oder** Paritäts-Wächter grün).
-- [ ] Fork→Merge erzeugt Join (Test 1, 3).
-- [ ] Kein Token-Abschneiden ohne klaren Fehler (Test 4, 5).
-- [ ] Fortschrittslog gepflegt.
+- [ ] No diverging generator remains (shared source **or** parity guard green).
+- [ ] Fork→merge produces a join (tests 1, 3).
+- [ ] No token truncation without a clear error (tests 4, 5).
+- [ ] Progress log maintained.
 
-## Fortschrittslog
+## Progress log
 
-| Datum | Bearbeiter | Schritt | Ergebnis |
-|-------|-----------|---------|----------|
-| | | 1. Entscheidung Konsolidierung vs. Port | |
-| | | 2. Tests rot | |
-| | | 3. Umsetzung | |
-| | | 4. Verifikation | |
+| Date | Author | Step | Result |
+|------|--------|------|--------|
+| | | 1. Decision consolidation vs. port | |
+| | | 2. Tests red | |
+| | | 3. Implementation | |
+| | | 4. Verification | |

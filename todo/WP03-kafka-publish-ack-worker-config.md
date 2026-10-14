@@ -1,95 +1,94 @@
-# WP03 — Kafka: Publish/Ack & Worker-Konfiguration
+# WP03 — Kafka: publish/ack & worker config
 
 | | |
 |---|---|
-| **Status** | offen |
-| **Schwere** | Kritisch |
-| **Module** | `kafka-platform/quad-workflow-worker` |
-| **Review-Referenz** | B2, B37, B38, B39, B40 (§5.1, §5.3) |
-| **Abhängigkeit** | – |
-| **Geschätzter Aufwand** | 1–2 Tage |
+| **Status** | open |
+| **Severity** | Critical |
+| **Modules** | `kafka-platform/quad-workflow-worker` |
+| **Review reference** | B2, B37, B38, B39, B40 (§5.1, §5.3) |
+| **Depends on** | – |
+| **Estimated effort** | 1–2 days |
 
-## Ziel
+## Goal
 
-Ein Arbeitsergebnis gilt erst dann als „verarbeitet", wenn es **bestätigt** in Kafka liegt.
-Zusätzlich: konsistente Konfiguration, korrekte Metriken, keine doppelten Beans.
+A work result counts as "processed" only once it is **confirmed** to be in Kafka.
+Additionally: consistent configuration, correct metrics, no duplicate beans.
 
-## Befunde (Ist-Zustand)
+## Findings (as-is)
 
-- **B2 – Ack vor bestätigtem Publish:** `WorkflowResultPublisher.send` und
-  `WorkflowDlqPublisher.send` nutzen asynchrones `producer.send(...)` ohne `.get()`/Flush;
-  `TaskExecutor.safeExecute` liefert danach sofort `true`; `WorkflowTaskListener` ackt
+- **B2 – ack before confirmed publish:** `WorkflowResultPublisher.send` and `WorkflowDlqPublisher.send`
+  use asynchronous `producer.send(...)` without `.get()`/flush; `TaskExecutor.safeExecute` then
+  returns `true` immediately; `WorkflowTaskListener` acks
   (`WorkflowResultPublisher.java:36-41`, `WorkflowDlqPublisher.java:46`,
-  `TaskExecutor.java:140-183`, `WorkflowTaskListener.java:107-132`). Kein Shutdown-Flush.
-- **B37 – Metrik-Mismatch:** `WorkerMetrics` registriert `…completed_total{status="failed"}`, der
-  Failure-Pfad inkrementiert `…failed_total` (`:46-49,90-94`).
-- **B38 – doppelte Beans:** `GracefulShutdown`, `WorkerMetrics` je als `@Component` **und** `@Bean`
-  (`QuadWorkerConfig.java:428-455`) → nur wegen `allow-bean-definition-overriding: true` bootbar (`application.yml:20`).
-- **B39 – Bootstrap-Defaults inkonsistent:** Producer `localhost:9092` (`QuadWorkerConfig.java:52-58`)
-  vs. Consumer `kafka:9092` (`KafkaConfig.java:26`); nicht-transaktionaler Producer bei
+  `TaskExecutor.java:140-183`, `WorkflowTaskListener.java:107-132`). No shutdown flush.
+- **B37 – metric mismatch:** `WorkerMetrics` registers `…completed_total{status="failed"}`, while the
+  failure path increments `…failed_total` (`:46-49,90-94`).
+- **B38 – duplicate beans:** `GracefulShutdown`, `WorkerMetrics` each as `@Component` **and** `@Bean`
+  (`QuadWorkerConfig.java:428-455`) → only bootable because of `allow-bean-definition-overriding: true`
+  (`application.yml:20`).
+- **B39 – inconsistent bootstrap defaults:** producer `localhost:9092` (`QuadWorkerConfig.java:52-58`)
+  vs. consumer `kafka:9092` (`KafkaConfig.java:26`); non-transactional producer with
   `read_committed` (`KafkaConfig.java:61`).
-- **B40 – `worker.quad.concurrency` ungenutzt:** gebunden, aber nirgends gelesen
-  (`application.yml:51`, echte Grenze `TaskExecutor.java:97`).
+- **B40 – `worker.quad.concurrency` unused:** bound but never read
+  (`application.yml:51`, real limit `TaskExecutor.java:97`).
 
-## 1. Tests zuerst (Red)
+## 1. Tests first (Red)
 
-Testort: `kafka-platform/quad-workflow-worker/src/test/java/de/augmentia/quad/worker/…`
-(vorhandener Rahmen: `WorkflowTaskListenerTest`, `WorkerTestFixtures`, `QuadIntegrationContractTest`).
+Test location: `kafka-platform/quad-workflow-worker/src/test/java/de/augmentia/quad/worker/…`
+(existing harness: `WorkflowTaskListenerTest`, `WorkerTestFixtures`, `QuadIntegrationContractTest`).
 
-| # | Test | Erwartung |
-|---|------|-----------|
-| 1 | `ResultPublisherAckTest#ackOnlyAfterSendConfirmed` | `safeExecute` liefert erst `true`, wenn Publish bestätigt |
-| 2 | `ResultPublisherAckTest#sendFailure_returnsFalse_noAck` | Publish schlägt fehl → `false` → kein Ack |
-| 3 | `ResultPublisherAckTest#flushOnShutdown` | gepufferte Nachrichten werden beim Shutdown geflusht |
-| 4 | `WorkerMetricsTest#failureIncrementsRegisteredCounter` | Failure erhöht **genau** den exportierten Zähler |
-| 5 | `WorkerContextTest#noDuplicateBeans` | Kontext startet auch ohne `allow-bean-definition-overriding` |
-| 6 | `KafkaConfigTest#bootstrapDefaultsConsistent` | Producer- und Consumer-Default identisch |
-| 7 | `WorkerPropertiesBindingTest#concurrency_isApplied` | `concurrency` steuert die Listener-Parallelität |
+| # | Test | Expectation |
+|---|------|-------------|
+| 1 | `ResultPublisherAckTest#ackOnlyAfterSendConfirmed` | `safeExecute` returns `true` only once the publish is confirmed |
+| 2 | `ResultPublisherAckTest#sendFailure_returnsFalse_noAck` | publish fails → `false` → no ack |
+| 3 | `ResultPublisherAckTest#flushOnShutdown` | buffered messages are flushed on shutdown |
+| 4 | `WorkerMetricsTest#failureIncrementsRegisteredCounter` | failure increments **exactly** the exported counter |
+| 5 | `WorkerContextTest#noDuplicateBeans` | context starts even without `allow-bean-definition-overriding` |
+| 6 | `KafkaConfigTest#bootstrapDefaultsConsistent` | producer and consumer defaults are identical |
+| 7 | `WorkerPropertiesBindingTest#concurrency_isApplied` | `concurrency` drives listener parallelism |
 
-**Abnahme (Red):** 1, 2, 4, 5, 7 fehlschlagen.
+**Acceptance (Red):** 1, 2, 4, 5, 7 fail.
 
-## 2. Änderungen (Green)
+## 2. Changes (Green)
 
-1. **Bestätigtes Senden:** `WorkflowResultPublisher`/`WorkflowDlqPublisher` synchronisieren die
-   Bestätigung (`.get(timeout)` oder Callback + `CountDownLatch`), `TaskExecutor` gibt erst nach
-   erfolgreicher Bestätigung `true` zurück. `KafkaTemplate.flush()` in einen Shutdown-Hook
-   (`GracefulShutdown`).
-2. **Metrik:** einen Zähler pro Status (`completed_total{status=…}`) verwenden, keine zweiseitige
-   Registrierung; Felder statt Neu-`register` nutzen.
-3. **Beans:** Doppel-Definitionen entfernen; `allow-bean-definition-overriding` auf `false`.
-4. **Config:** gemeinsamen Bootstrap-Default (Property mit klarem Default); Producer
-   transaktional/replay-konsistent zu `read_committed` machen oder `isolation.level` anpassen.
-5. **`concurrency`:** entweder Listener-Concurrency daraus setzen **oder** Property entfernen und
-   Doku korrigieren.
+1. **Confirmed send:** `WorkflowResultPublisher`/`WorkflowDlqPublisher` wait for the confirmation
+   (`.get(timeout)` or callback + `CountDownLatch`); `TaskExecutor` returns `true` only after a
+   successful confirmation. `KafkaTemplate.flush()` in a shutdown hook (`GracefulShutdown`).
+2. **Metric:** use one counter per status (`completed_total{status=…}`), no two-sided registration;
+   use fields instead of re-`register`.
+3. **Beans:** remove duplicate definitions; set `allow-bean-definition-overriding` to `false`.
+4. **Config:** a shared bootstrap default (property with a clear default); make the producer
+   transactional/replay-consistent with `read_committed`, or adjust `isolation.level`.
+5. **`concurrency`:** either set listener concurrency from it **or** remove the property and fix the docs.
 
-## 3. Verifikation
+## 3. Verification
 
 ```bash
 mvn -pl kafka-platform/quad-workflow-worker -am test
 cd kafka-platform && mvn -pl quad-workflow-worker test
 ```
-- Lasttest: Producer-Ausfall simulieren (Broker kurz stoppen) → Record wird redelivered, kein Verlust.
-- Shutdown-Test: Worker bei ausstehenden Nachrichten stoppen → keine Verluste im Log.
+- Load test: simulate producer failure (briefly stop the broker) → the record is redelivered, no loss.
+- Shutdown test: stop the worker with pending messages → no losses in the log.
 
-## 4. Risiken / Hinweise
+## 4. Risks / notes
 
-- Synchrones `.get()` reduziert Durchsatz; Timeout und Batch-Größe abwägen
-  (Alternative: Callback + Semaphore pro Record).
-- Redelivery setzt Idempotenz auf Orchestrator-Seite voraus (vorhanden, aber prüfen).
+- Synchronous `.get()` reduces throughput; weigh timeout and batch size
+  (alternative: callback + semaphore per record).
+- Redelivery requires idempotency on the orchestrator side (present, but verify).
 
 ## Definition of Done
 
-- [ ] Ack erst nach bestätigtem Publish (Tests 1–3 grün).
-- [ ] Shutdown-Flush vorhanden.
-- [ ] Metrik eindeutig und exportiert (Test 4).
-- [ ] Keine doppelten Beans, kein `allow-bean-definition-overriding` (Test 5).
-- [ ] Bootstrap-/Isolation-Konsistenz (Test 6), `concurrency` wirkt oder entfernt (Test 7).
-- [ ] Fortschrittslog gepflegt.
+- [ ] Ack only after a confirmed publish (tests 1–3 green).
+- [ ] Shutdown flush present.
+- [ ] Metric unambiguous and exported (test 4).
+- [ ] No duplicate beans, no `allow-bean-definition-overriding` (test 5).
+- [ ] Bootstrap/isolation consistency (test 6), `concurrency` effective or removed (test 7).
+- [ ] Progress log maintained.
 
-## Fortschrittslog
+## Progress log
 
-| Datum | Bearbeiter | Schritt | Ergebnis |
-|-------|-----------|---------|----------|
-| | | 1. Tests rot | |
-| | | 2. Umsetzung | |
-| | | 3. Verifikation | |
+| Date | Author | Step | Result |
+|------|--------|------|--------|
+| | | 1. Tests red | |
+| | | 2. Implementation | |
+| | | 3. Verification | |

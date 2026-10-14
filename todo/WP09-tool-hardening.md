@@ -1,84 +1,83 @@
-# WP09 — Werkzeuge härten
+# WP09 — Tool hardening
 
 | | |
 |---|---|
-| **Status** | offen |
-| **Schwere** | Mittel |
-| **Module** | `quad-quarkus/quad-tool-builtin`, `quad-quarkus/quad-workflow-*` (Tool-Klassen) |
-| **Review-Referenz** | B31, B32, B33, B34 (§5.3) |
-| **Abhängigkeit** | WP01 (Containment-Helfer) |
-| **Geschätzter Aufwand** | 2 Tage |
+| **Status** | open |
+| **Severity** | Medium |
+| **Modules** | `quad-quarkus/quad-tool-builtin`, `quad-quarkus/quad-workflow-*` (tool classes) |
+| **Review reference** | B31, B32, B33, B34 (§5.3) |
+| **Depends on** | WP01 (containment helper) |
+| **Estimated effort** | 2 days |
 
-## Ziel
+## Goal
 
-Datei-/Suchwerkzeuge sind robust gegen DoS, verlieren keine Fehler, brechen Dateien nicht halb
-um, und erfüllen ihre dokumentierten Garantien (z. B. „atomic").
+File/search tools are robust against DoS, lose no errors, do not half-modify files, and fulfil their
+documented guarantees (e.g. "atomic").
 
-## Befunde (Ist-Zustand)
+## Findings (as-is)
 
-- **B31 – GrepTool:** Pattern ohne Timeout (ReDoS), `readAllLines` je Datei, naive Include-Glob
+- **B31 – GrepTool:** pattern without a timeout (ReDoS), `readAllLines` per file, naive include glob
   (`GrepTool.java:71,84,95`).
-- **B32 – FindTool:** leerer `catch {}`, sammelt ganzen Baum in-memory (`:79,88-94`).
-- **B33 – MultiEditTool:** beschreibt „atomic", schreibt aber inkrementell; Teilzustand bei Fehler
+- **B32 – FindTool:** empty `catch {}`, collects the whole tree in memory (`:79,88-94`).
+- **B33 – MultiEditTool:** documents "atomic" but writes incrementally; partial state on error
   (`MultiEditTool.java:36,81`).
-- **B34 – ApplyPatchTool:** fragil; `-` entfernt ersten `indexOf`, IOExceptions verschluckt, ADD
-  überschreibt (`ApplyPatchTool.java:55-133`).
+- **B34 – ApplyPatchTool:** fragile; `-` removes the first `indexOf`, IOExceptions swallowed, ADD
+  overwrites (`ApplyPatchTool.java:55-133`).
 
-## 1. Tests zuerst (Red)
+## 1. Tests first (Red)
 
-Testorte je Tool (neu, falls nicht vorhanden):
+Test locations per tool (new if not present):
 `quad-quarkus/quad-tool-builtin/src/test/java/de/augmentia/quad/core/tool/…`
 
-| # | Test | Erwartung |
-|---|------|-----------|
-| 1 | `GrepToolTest#catastrophicPattern_timesOut` | bösartiges Pattern → Timeout, kein Hängen |
-| 2 | `GrepToolTest#binaryFiles_skipped` | `.jar`/`.class`/`.so` werden übersprungen |
-| 3 | `GrepToolTest#includeGlob_escapesRegexMeta` | `*.txt` matcht nicht `xtxt` etc. |
-| 4 | `FindToolTest#unreadableDir_logsAndContinues` | Fehler wird gemeldet, nicht verschluckt |
-| 5 | `MultiEditToolTest#failure_leavesNoPartialEdits` | Fehler → keine Teiländerung (oder klare Doku „best effort") |
-| 6 | `ApplyPatchToolTest#removalUsesContext` | `-` mit Kontext entfernt die richtige Stelle |
-| 7 | `ApplyPatchToolTest#addRefusesExisting` | ADD auf existierende Datei → Fehler |
-| 8 | `ApplyPatchToolTest#ioErrorPropagated` | IOException wird propagiert |
+| # | Test | Expectation |
+|---|------|-------------|
+| 1 | `GrepToolTest#catastrophicPattern_timesOut` | malicious pattern → timeout, no hang |
+| 2 | `GrepToolTest#binaryFiles_skipped` | `.jar`/`.class`/`.so` are skipped |
+| 3 | `GrepToolTest#includeGlob_escapesRegexMeta` | `*.txt` does not match `xtxt` etc. |
+| 4 | `FindToolTest#unreadableDir_logsAndContinues` | error reported, not swallowed |
+| 5 | `MultiEditToolTest#failure_leavesNoPartialEdits` | failure → no partial change (or clear "best effort" docs) |
+| 6 | `ApplyPatchToolTest#removalUsesContext` | `-` with context removes the correct position |
+| 7 | `ApplyPatchToolTest#addRefusesExisting` | ADD to an existing file → error |
+| 8 | `ApplyPatchToolTest#ioErrorPropagated` | IOException is propagated |
 
-**Abnahme (Red):** 1–8 fehlschlagen bzw. legen Fehlverhalten offen.
+**Acceptance (Red):** 1–8 fail or expose the misbehaviour.
 
-## 2. Änderungen (Green)
+## 2. Changes (Green)
 
-1. **GrepTool:** Such-Timeout/limitiertes Matching (Zeilen-/Byte-Limit), Binärerkennung erweitern,
-   Include-Glob korrekt escapen (`Pattern.quote` für Literale).
-2. **FindTool:** `catch` loggen; Ergebnis-Stream/`limit` statt vollem In-Memory-Baum.
-3. **MultiEditTool:** entweder echte Atomarität (erst alle validieren, dann schreiben; Backup/Rollback)
-   oder Doku/Name korrigieren („best effort").
-4. **ApplyPatchTool:** Parser robust machen (Kontext berücksichtigen, Konflikte melden), Overflow/Edge
-   Cases prüfen, I/O-Fehler propagieren, ADD-Kollision verweigern.
-5. **Path-Sicherheit:** alle Dateizugriffe über den Containment-Helfer aus WP01.
+1. **GrepTool:** search timeout/limited matching (line/byte limit), extend binary detection, escape the
+   include glob correctly (`Pattern.quote` for literals).
+2. **FindTool:** log the `catch`; result stream/`limit` instead of the full in-memory tree.
+3. **MultiEditTool:** either real atomicity (validate all, then write; backup/rollback) or correct the
+   docs/name ("best effort").
+4. **ApplyPatchTool:** make the parser robust (consider context, report conflicts), check overflow/edge
+   cases, propagate I/O errors, refuse ADD collisions.
+5. **Path safety:** all file access via the containment helper from WP01.
 
-## 3. Verifikation
+## 3. Verification
 
 ```bash
 cd quad-quarkus && mvn -pl quad-tool-builtin test
 cd quad-quarkus && mvn -pl quad-quarkus test -Dtest='*Tool*'
 ```
-- Fuzz-/Property-Tests für den Patch-Parser in Erwägung ziehen.
+- Consider fuzz/property tests for the patch parser.
 
-## 4. Risiken / Hinweise
+## 4. Risks / notes
 
-- Verhaltensänderung an MultiEdit/ApplyPatch kann Agentenprompts betreffen → Tool-Beschreibungen
-  mitziehen.
-- Timeout-Wert konfigurierbar machen.
+- Behaviour changes in MultiEdit/ApplyPatch can affect agent prompts → update the tool descriptions.
+- Make the timeout value configurable.
 
 ## Definition of Done
 
-- [ ] Tests 1–8 grün.
-- [ ] Kein ReDoS/kein Hängen bei Grep.
-- [ ] Fehler werden nicht mehr verschluckt.
-- [ ] Tool-Garantien stimmen mit der Implementierung überein.
-- [ ] Fortschrittslog gepflegt.
+- [ ] Tests 1–8 green.
+- [ ] No ReDoS/no hang in Grep.
+- [ ] Errors no longer swallowed.
+- [ ] Tool guarantees match the implementation.
+- [ ] Progress log maintained.
 
-## Fortschrittslog
+## Progress log
 
-| Datum | Bearbeiter | Schritt | Ergebnis |
-|-------|-----------|---------|----------|
-| | | 1. Tests rot | |
-| | | 2. Umsetzung | |
-| | | 3. Verifikation | |
+| Date | Author | Step | Result |
+|------|--------|------|--------|
+| | | 1. Tests red | |
+| | | 2. Implementation | |
+| | | 3. Verification | |

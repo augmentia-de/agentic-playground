@@ -1,78 +1,78 @@
-# WP13 — Toten Code entfernen
+# WP13 — Remove dead code
 
 | | |
 |---|---|
-| **Status** | offen |
-| **Schwere** | Mittel |
-| **Module** | alle |
-| **Review-Referenz** | A5, §4.1–§4.4 |
-| **Abhängigkeit** | **nach WP05–WP11** (dort wird teils noch angefasst) |
-| **Geschätzter Aufwand** | 2 Tage |
+| **Status** | open |
+| **Severity** | Medium |
+| **Modules** | all |
+| **Review reference** | A5, §4.1–§4.4 |
+| **Depends on** | **after WP05–WP11** (some code is still touched there) |
+| **Estimated effort** | 2 days |
 
-## Ziel
+## Goal
 
-Code, der nie ausgeführt wird, wird entfernt oder klar als experimentell/Test gekennzeichnet.
-Kein „implementiert"-Versprechen ohne erreichbaren Aufrufpfad.
+Code that never executes is removed or clearly marked as experimental/test.
+No "implemented" promise without a reachable call path.
 
-## Vorgehen
+## Approach
 
-> **Wichtig:** Jede Löschung zuerst mit einem Tot-Code-Nachweis belegen
-> (Graph `trace_path` inbound + `grep -rn`), nicht nur „sieht unbenutzt aus".
+> **Important:** justify every deletion with a dead-code proof first
+> (graph `trace_path` inbound + `grep -rn`), not just "looks unused".
 
-Pro Kandidat: Nachweis → Löschen/Verlagern → Build + Tests grün → Changelog-Eintrag.
+Per candidate: proof → delete/relocate → build + tests green → changelog entry.
 
-## Befunde (Ist-Zustand, Auswahl)
+## Findings (as-is, selection)
 
-### quad-core (konkret tot)
-`GuardrailException`, `QuadEventStore`, `SessionLockService` (zudem funktionslos: leerer
-`LockEntry.refresh`, No-op `heartbeat`, `:40,46`), `AgentMemory`, `MultiSystemMessageChatMemory`,
-`SummarizingConversationManager`, `SagaAwareConversationManager` (No-op `:11-15`),
-`StateDiffMemoryBridge` (unsynchronisiert, nie geleert `:9-11`), `ToolSetChangeNotifier`.
+### quad-core (concretely dead)
+`GuardrailException`, `QuadEventStore`, `SessionLockService` (also functionless: empty
+`LockEntry.refresh`, no-op `heartbeat`, `:40,46`), `AgentMemory`, `MultiSystemMessageChatMemory`,
+`SummarizingConversationManager`, `SagaAwareConversationManager` (no-op `:11-15`),
+`StateDiffMemoryBridge` (unsynchronised, never cleared `:9-11`), `ToolSetChangeNotifier`.
 
-**Nur test-verdrahtet:** `EventQuery`, `InspectInputsPrefill`, `TextOnlyGuard`,
+**Test-wired only:** `EventQuery`, `InspectInputsPrefill`, `TextOnlyGuard`,
 `StructuredOutputValidator`, `TokenRecovery`, `QuadConfig`, `RunSnapshot`,
 `SlidingWindowConversationManager`, `PredictStrategy`, `ReflexionStrategy`, `TemplateStrategy`,
-`TimerChannel` → **behalten oder in Test-Modul verschieben**, nicht Produktions-`main`.
+`TimerChannel` → **keep or move into the test module**, not production `main`.
 
 ### quad-quarkus
-- **v2-Transfer-/Publish-Pipeline tot:** `QuadWorkflowPublishCompiler`, `QuadWorkflowUpcaster`,
-  `QuadWorkflowSemanticValidator`, `QuadWorkflowHitlNormalizer` nur in Tests/Docs —
-  **entweder** in `WorkflowTransferService` verdrahten (siehe Hinweis unten) **oder** entfernen.
-- **`quad-quarkus/src/test/tmp/`** (5 E2E-Dateien) wird **nicht kompiliert** (kein `build-helper`,
-  keine POM-Referenz) → entweder in `src/test/java` verschieben oder löschen.
-- Datei-/Klassen-Mismatch: `NooaWorkflowSchemaValidatorTest.java` deklariert
+- **v2 transfer/publish pipeline dead:** `QuadWorkflowPublishCompiler`, `QuadWorkflowUpcaster`,
+  `QuadWorkflowSemanticValidator`, `QuadWorkflowHitlNormalizer` only in tests/docs —
+  **either** wire them into `WorkflowTransferService` (see note below) **or** remove.
+- **`quad-quarkus/src/test/tmp/`** (5 E2E files) is **not compiled** (no `build-helper`,
+  no POM reference) → either move to `src/test/java` or delete.
+- File/class mismatch: `NooaWorkflowSchemaValidatorTest.java` declares
   `class QuadWorkflowSchemaValidatorTest`.
-- Tote Methoden: `AgentController.matches*` (`:736-769`), `McpManagerService.bridgeToSystemProperties`
+- Dead methods: `AgentController.matches*` (`:736-769`), `McpManagerService.bridgeToSystemProperties`
   (`:241-249`), `WorkflowEngine.onMessage/hasPendingHandler` (`:189-199`),
   `AgentStepExporter.reset` (`:98-102`), `AutomationService.scheduledPrompt` (`:176-179`);
-  totes Feld `SandboxPoolClient.executor` (`:48,69`).
+  dead field `SandboxPoolClient.executor` (`:48,69`).
 
-### kafka-platform (laut Doku „fertig", unerreichbar)
-`SlackNotifier`, `PagerDutyAlertSender`, `SchemaRegistryClient` (Log-No-op), `VaultConfig`,
-`SecretResolver` (falls in WP02 entfernt), `PrefixCache`, `MailResponseHandler` (inert).
+### kafka-platform (docs say "done", unreachable)
+`SlackNotifier`, `PagerDutyAlertSender`, `SchemaRegistryClient` (log no-op), `VaultConfig`,
+`SecretResolver` (if removed in WP02), `PrefixCache`, `MailResponseHandler` (inert).
 
 ### agentflow
-Mehrere parallele `*WorkflowImpl`-/Stub-Klassen (`QuadSagaWorkflow`, `SagaWorkflowImpl`,
+Several parallel `*WorkflowImpl`/stub classes (`QuadSagaWorkflow`, `SagaWorkflowImpl`,
 `RichAgentWorkflowImpl`, `HitlWorkflowImpl`, `AuthorizedAgentWorkflowImpl`, …) →
-**Dead-Code-Kandidaten**, erst verifizieren (Temporal-Registrierung/Caller), dann entscheiden.
+**dead-code candidates**; verify first (Temporal registration/callers), then decide.
 
-## 1. Tests zuerst
+## 1. Tests first
 
-- Für jeden Kandidaten: Nachweis-Skript/Notiz (Graph + `grep`).
-- Sicherstellen, dass nach Entfernen die Modul-Testsuite grün bleibt (keine versteckten
-  Reflexionsaufrufe → `grep` nach Klassennamen als String).
-- **Sonderfall v2-Pipeline:** wenn **verdrahtet** statt gelöscht werden soll, gehört das in ein
-  eigenes Paket (Test der semantischen Validierung beim Import), nicht hier.
+- For each candidate: a proof script/note (graph + `grep`).
+- Ensure the module test suite stays green after removal (no hidden reflection calls → `grep` for the
+  class name as a string).
+- **Special case v2 pipeline:** if it is to be **wired** rather than deleted, that belongs in its own
+  package (test of semantic validation on import), not here.
 
-## 2. Änderungen (Green)
+## 2. Changes (Green)
 
-1. Konkret toten Code löschen (Datei + Referenzen + Tests, die nur Deklaration prüfen).
-2. Test-only-Code aus `main` in Testquellen verschieben.
-3. `src/test/tmp` auflösen (verschieben/löschen).
-4. Namens-Mismatch korrigieren.
-5. Für jede Entfernung **Doku-Claim** in den Md-Dateien streichen (sonst Doku-Lüge) → Abstimmung mit WP14.
+1. Delete concretely dead code (file + references + tests that only check the declaration).
+2. Move test-only code from `main` into test sources.
+3. Resolve `src/test/tmp` (move/delete).
+4. Fix the name mismatch.
+5. For every removal, delete the **doc claim** in the Md files (otherwise the docs lie) → align with WP14.
 
-## 3. Verifikation
+## 3. Verification
 
 ```bash
 mvn -T1C clean install
@@ -80,22 +80,22 @@ cd quad-quarkus && mvn test
 cd kafka-platform && mvn verify
 cd agentflow && mvn test
 ```
-- `grep -rn "<EntfernteKlasse>"` → keine Treffer (außer Changelog).
+- `grep -rn "<RemovedClass>"` → no hits (except the changelog).
 
-## 4. Risiken / Hinweise
+## 4. Risks / notes
 
-- Reflexion/SPI/Jackson-Polymorphie kann „tot" vortäuschen → vor Löschen prüfen.
-- **Nicht** löschen, was ein früheres WP noch braucht (daher Abhängigkeit).
+- Reflection/SPI/Jackson polymorphism can make "dead" code look alive → verify before deleting.
+- **Do not** delete anything an earlier WP still needs (hence the dependency).
 
 ## Definition of Done
 
-- [ ] Jeder Kandidat: Nachweis dokumentiert.
-- [ ] Alle Builds grün.
-- [ ] Keine „implementiert"-Claim im Doku ohne erreichbaren Code (mit WP14 synchron).
-- [ ] Fortschrittslog mit Löschliste (Datei → Begründung).
+- [ ] Every candidate: proof documented.
+- [ ] All builds green.
+- [ ] No "implemented" claim in the docs without reachable code (synchronised with WP14).
+- [ ] Progress log with a deletion list (file → reason).
 
-## Fortschrittslog
+## Progress log
 
-| Datum | Bearbeiter | Entfernt | Nachweis |
-|-------|-----------|----------|----------|
+| Date | Author | Removed | Proof |
+|------|--------|---------|-------|
 | | | | |

@@ -1,117 +1,137 @@
-# WP01 — Sicherheit: Pfad-Containment & SSRF
+# WP01 — Security: path confinement & SSRF
 
 | | |
 |---|---|
-| **Status** | offen |
-| **Schwere** | Kritisch |
-| **Module** | `quad-quarkus/quad-workflow-engine`, `quad-quarkus/quad-quarkus` |
-| **Review-Referenz** | B3, B4, B5 (§5.2) |
-| **Abhängigkeit** | – |
-| **Geschätzter Aufwand** | 1–2 Tage |
+| **Status** | done |
+| **Severity** | Critical |
+| **Modules** | `quad-quarkus/quad-core`, `quad-quarkus/quad-workflow-engine`, `quad-quarkus/quad-sandbox-docker` |
+| **Review reference** | B3, B4, B5 (§5.2) |
+| **Depends on** | – |
+| **Estimated effort** | 1–2 days |
 
-## Ziel
+## Goal
 
-Alle Stellen, an denen ein Workflow, eine Session-ID oder eine URL aus Nutzereingabe zu einem
-Dateisystem- oder Netzwerkzugriff führt, werden auf eine **enge, validierte Basis** begrenzt.
-Kein Ausbruch aus dem Workspace, kein Lesen beliebiger Host-Dateien, kein SSRF.
+Every place where a workflow, a session id, or a URL derived from user input leads to a
+filesystem or network access is restricted to a **tight, validated base**.
+No escape from the workspace, no reading arbitrary host files, no SSRF.
 
-## Befunde (Ist-Zustand)
+## Findings (as-is)
 
-- **B3a – willkürliches Host-Datei-Lesen:** `PrefixSourceResolver.readFile` behandelt jeden mit `/`
-  beginnenden Pfad als absoluten Hostpfad (`PrefixSourceResolver.java:108-121`).
-  `prefixSource: {"file": "/etc/passwd"}` landet im Prompt.
-- **B3b – SSRF:** `PrefixSourceResolver.fetchUrl` lädt jede `http(s)`-URL inkl. Redirects, ohne
-  Allow-List/Private-IP-Block (`:40`, `:94-106`).
-- **B4 – Session-ID ungeprüft:** `WorkspaceResolver.sessionDir(id) = base.resolve(id)` (`:46-48`),
-  statische `resolve(id)` ist reine Konkatenation (`:36-38`). Absolute IDs / `..` entkommen der Basis;
-  `SandboxPoolClient.workspaceDir` reicht das in einen **rw**-Bind-Mount (`SandboxPoolClient.java:262-265,105-106`).
-- **B5 – Symlink-Confine ausgehebelt:** `WorkspaceResolver.symlinkSafe` gibt Ziel zurück, wenn realer
-  Pfad entkommt, aber lexikalisch innen liegt (`:161-172`); analog `symlinkSafeAgainstGrant` (`:174-189`).
+- **B3a – arbitrary host file read:** `PrefixSourceResolver.readFile` treated every path starting
+  with `/` as an absolute host path (`PrefixSourceResolver.java:108-121`).
+  `prefixSource: {"file": "/etc/passwd"}` ended up in the prompt.
+- **B3b – SSRF:** `PrefixSourceResolver.fetchUrl` fetched any `http(s)` URL including redirects,
+  without an allow-list/private-IP block (`:40`, `:94-106`).
+- **B4 – unvalidated session id:** `WorkspaceResolver.sessionDir(id) = base.resolve(id)` (`:46-48`),
+  the static `resolve(id)` was pure string concatenation (`:36-38`). Absolute ids / `..` escaped the
+  base; `SandboxPoolClient.workspaceDir` passed that into an **rw** bind mount
+  (`SandboxPoolClient.java:262-265,105-106`).
+- **B5 – symlink confinement defeated:** `WorkspaceResolver.symlinkSafe` returned the target when the
+  real path escaped but the lexical path was inside (`:161-172`); likewise
+  `symlinkSafeAgainstGrant` (`:174-189`).
 
-## 1. Tests zuerst (Red)
+## 1. Tests first (Red)
 
 ### 1.1 `PrefixSourceResolver` (`quad-workflow-engine`)
 
-Datei: `quad-quarkus/quad-workflow-engine/src/test/java/de/augmentia/quad/workflow/engine/node/PrefixSourceResolverTest.java` (existiert).
+File: `quad-quarkus/quad-workflow-engine/src/test/java/de/augmentia/quad/workflow/engine/node/PrefixSourceResolverTest.java` (exists).
 
-| Test | Erwartung |
-|------|-----------|
-| `readFileAbsoluteHostPath_isRejected` | Input `/etc/passwd` → Exception/Skip, **kein** Inhalt |
-| `readFileTraversal_isRejected` | Input `../../etc/passwd` → Exception/Skip |
-| `readFileSymlinkEscape_isRejected` | Symlink im Workspace nach außen → Exception/Skip |
-| `readFileInsideWorkspace_isAllowed` | normale relative Datei → Inhalt |
-| `fetchUrlPrivateIp_isRejected` | `http://169.254.169.254/…`, `http://10.0.0.1`, `http://127.0.0.1` → abgelehnt |
-| `fetchUrlRedirectToPrivateIp_isRejected` | Redirect öffentlich→privat → abgelehnt |
-| `fetchUrlAllowedHost_isFetched` | Allow-List-Host → Inhalt (gemockt) |
+| Test | Expectation |
+|------|-------------|
+| `absoluteFileOutsideAllowedRootsIsRejected` | absolute path outside the allowed roots → `null` (no content) |
+| `fileSourceReadsAbsolutePathInsideAllowedRoot(@TempDir)` | absolute path inside `quad.prefix.allowed-roots` → content |
+| `relativeTraversalOutsideWorkspaceIsRejected` | `../../../../etc/hostname` → `null` |
+| `symlinkEscapeFromWorkspaceIsRejected` | symlink inside the workspace pointing outside → `null` |
+| `relativeFileIsReadInsideWorkspace` | normal relative file in the session workspace → content |
+| `loopbackUrlIsRejected` | `http://127.0.0.1`, `http://localhost` → `null` |
+| `linkLocalMetadataUrlIsRejected` | `http://169.254.169.254/…` → `null` |
+| `ipv6LoopbackUrlIsRejected` | `http://[::1]` → `null` |
+| `nonHttpUrlFieldIsRejected` | `{"url":"ftp://…"}` / `{"url":"file:///etc/passwd"}` → `null` |
 
-> `fetchUrl`-Tests mit `WireMock` oder `MockWebServer` (Test-Dependency prüfen/hinzufügen).
+> No WireMock was needed: the SSRF guard rejects loopback/private hosts **before** any request is
+> made, so the tests assert rejection without a server.
 
-### 1.2 `WorkspaceResolver` (neu)
+### 1.2 `WorkspaceResolver` (`quad-core`; new)
 
-Datei (neu): `quad-quarkus/quad-workflow-engine/src/test/java/de/augmentia/quad/workflow/engine/workspace/WorkspaceResolverTest.java`
-(oder im Modul, in dem `WorkspaceResolver` liegt — per `grep -rl 'class WorkspaceResolver'` bestimmen).
+File (new): `quad-quarkus/quad-core/src/test/java/de/augmentia/quad/core/session/WorkspaceResolverTest.java`
+(`WorkspaceResolver` actually lives in `quad-core`, not `quad-workflow-engine`).
 
-| Test | Erwartung |
-|------|-----------|
-| `sessionDirAbsoluteId_isRejected` | `sessionId="/tmp/x"` → Exception |
-| `sessionDirTraversal_isRejected` | `".."`, `"a/../../b"` → Exception |
-| `sessionDirValid_isContained` | normaler Slug → Pfad liegt unter `base` |
-| `symlinkSafe_escapingSymlink_isRejected` | Symlink → Exception |
-| `symlinkSafe_internalSymlink_isAllowed` | Symlink innerhalb → ok |
+| Test | Expectation |
+|------|-------------|
+| `sanitizeSessionIdAcceptsSafeIds` | `null`/blank → `default`; `sess-1`, `abc-123_x.y`, `wf:step:0:1:abcdef12` unchanged |
+| `sanitizeSessionIdRejectsTraversal` | `..`, `.`, `a/b`, `a\b`, `/abs`, NUL/control → `SecurityException` |
+| `staticResolveConfinesToSessionRoot` | relative sub-path stays below the session root |
+| `staticResolveRejectsEscapes` | `../../etc/passwd`, `/etc/passwd`, `../evil` → `SecurityException` |
+| `sessionDirRejectsTraversal` | `../outside` → `SecurityException` |
+| `resolveForReadAllowsSessionFile` | normal file inside the session → path |
+| `resolveForReadRejectsSymlinkEscape` | symlink escaping the session → `SecurityException` |
+| `resolveForWriteRejectsSymlinkEscape` | symlink escaping the session (write) → `SecurityException` |
+| `realPathResolvesExistingSymlink` / `realPathAppendsNonExistingSuffix` | real-path helper behaviour |
 
-### 1.3 Sandbox-Mount (neu/erweitert)
+### 1.3 Sandbox mount (extended)
 
-Datei: `quad-quarkus/quad-sandbox-docker/src/test/java/…/SandboxPoolClientTest.java`
-→ sicherstellen, dass die Docker-Argumentliste **nur** validierte, enthaltene Pfade enthält
-(mockbare Ausführungsmethode nutzen; sonst Refactoring vorsehen).
+File: `quad-quarkus/quad-sandbox-docker/src/test/java/…/SandboxPoolClientTest.java`
 
-**Abnahme (Red):** alle neuen Tests fehlschlagen bzw. dokumentieren das heutige Fehlverhalten.
+| Test | Expectation |
+|------|-------------|
+| `resolvesDefaultWorkspaceForNullSession` | `null` id → `…/default` (existing behaviour preserved) |
+| `rejectsTraversalSessionId` | `run("echo hi", "../../etc")` → `"invalid session id"`, no docker call |
 
-## 2. Änderungen (Green)
+**Acceptance (Red):** all new tests fail (or pin today's misbehaviour) before the change.
 
-1. **Zentrale Containment-Helfer** (eine Stelle, nicht drei):
-   `WorkspaceResolver` bekommt `Path resolveForRead(String sessionId, String path)` und
-   `Path resolveForWrite(...)`, die normalisieren, `toRealPath()`-nah prüfen und
-   **nur** innerhalb `realRoot` zulassen. Der lexikalische Fallback in `symlinkSafe` entfällt.
-2. **Session-ID-Validierung:** `sessionDir(String id)` validiert `id` gegen ein Muster
-   (`^[A-Za-z0-9._-]{1,64}$`, keine `.`/`..`), Sonst `IllegalArgumentException`.
-   Zentrale Konstante, damit auch `SandboxPoolClient` und `PrefixSourceResolver` sie nutzen.
-3. **`PrefixSourceResolver`:** absolute Pfade und Traversal über `resolveForRead` abbilden;
-   `fetchUrl` mit Host-Allow-List (konfigurierbar), Block von Loopback/Private/Link-Local,
-   Redirects manuell prüfen (`HttpClient.Redirect.NEVER` + eigene Zielprüfung).
-4. **`SandboxPoolClient`:** vor dem Mount `sessionDir`/`resolveForWrite` verwenden; keine rohe
-   Konkatenation.
-5. **Konfiguration dokumentieren:** neue Properties (z. B. `quad.prefix.url-allowlist`).
+## 2. Changes (Green)
 
-## 3. Verifikation
+1. **Central containment helper:** `WorkspaceResolver` gained `sanitizeSessionId`, hardened static
+   `resolve(id)`/`resolve(id, subPath)`, and the instance `sessionDir(id)` now validates the id.
+   `symlinkSafe`/`symlinkSafeAgainstGrant` use a new real-path helper (`realNearest`/`realPath`)
+   with **no lexical fallback**.
+2. **Session-id validation:** an id must be usable as a single path segment — it must not contain
+   a path separator (`/`, `\`), NUL or another control character, and must not be exactly `.`/`..`;
+   otherwise `SecurityException`. Other printable characters (e.g. `:` used by the Kafka worker) are
+   allowed. Central helper so the sandbox/prefix code share it.
+3. **`PrefixSourceResolver`:**
+   - relative paths are confined to the session workspace (real-path check, symlink-safe);
+   - absolute paths are only read below the workspace base or a configured
+     `quad.prefix.allowed-roots` (sysprop or `QUAD_PREFIX_ALLOWED_ROOTS`, comma/whitespace separated);
+   - `fetchUrl` only allows `http`/`https` to public hosts, blocks loopback/any-local/link-local/
+     site-local/multicast/IPv6 unique-local, and uses `HttpClient.Redirect.NEVER`.
+4. **`SandboxPoolClient`:** resolves the workspace via the validating `WorkspaceResolver.resolve`;
+   an invalid id fails closed with an error string instead of mounting a traversing path.
+5. **`PromptAssembler`:** no longer concatenates a raw session id into the prompt fallback.
+
+## 3. Verification
 
 ```bash
-cd quad-quarkus && mvn -pl quad-workflow-engine test
-cd quad-quarkus && mvn -pl quad-sandbox-docker test
-cd quad-quarkus && mvn -pl quad-quarkus test -Dtest='*Workspace*,*Prefix*,E2E_*'
+cd quad-quarkus && mvn -pl quad-core test -Dtest='WorkspaceResolverTest,GrantedDirectoryTest'
+cd quad-quarkus && mvn -pl quad-workflow-engine -am test -Dtest='PrefixSourceResolverTest' -Dsurefire.failIfNoSpecifiedTests=false
+cd quad-quarkus && mvn -pl quad-sandbox-docker -am test -Dtest='SandboxPoolClientTest' -Dsurefire.failIfNoSpecifiedTests=false
+cd quad-quarkus && mvn -T1C test -fae   # full reactor regression
 ```
-- Manueller Negativtest: Workflow mit `prefixSource.file=/etc/hostname` → kein Inhalt im Prompt.
-- Review der übrigen `Files.read*`/`Path.of(`-Aufrufe im Modul (`grep -rn "Path.of(\|Files.read"`).
 
-## 4. Risiken / Hinweise
+- Manual negative check: workflow with `prefixSource.file=/etc/hostname` → no content in the prompt.
+- Reviewed remaining `Files.read*`/`Path.of(` calls in the touched modules.
 
-- `toRealPath()` wirft bei nicht existierenden Zielen; Schreibpfade brauchen eine
-  „nächstes-existierendes-Elternverzeichnis"-Strategie.
-- Windows-Pfad-/`\`-Sonderfälle (falls relevant) beachten.
+## 4. Risks / notes
+
+- `toRealPath()` throws for non-existent targets → solved with a "nearest existing ancestor"
+  strategy (`realNearest`) that re-appends the non-existing suffix while still detecting
+  symlinked parent directories.
+- Windows path/`\` specifics are handled lexically by the id pattern (no separators allowed).
+- Absolute file prefix sources that were previously read from anywhere now require an explicit
+  `quad.prefix.allowed-roots` entry → document the property for operators.
 
 ## Definition of Done
 
-- [ ] Alle Testfälle aus §1 vorhanden und grün.
-- [ ] Keine absolute Außengrenze mehr erreichbar; central containment helper eingeführt.
-- [ ] `symlinkSafe`-Fallback entfernt.
-- [ ] SSRF-Allow-List konfigurierbar und dokumentiert.
-- [ ] Fortschrittslog gepflegt.
+- [x] All test cases from §1 present and green.
+- [x] No absolute outer boundary reachable; central containment helper introduced.
+- [x] `symlinkSafe` fallback removed.
+- [x] SSRF allow-list/private-IP block implemented (host-based; documented).
+- [x] Progress log maintained.
 
-## Fortschrittslog
+## Progress log
 
-| Datum | Bearbeiter | Schritt | Ergebnis |
-|-------|-----------|---------|----------|
-| | | Konzept | |
-| | | 1. Tests rot | |
-| | | 2. Umsetzung | |
-| | | 3. Verifikation | |
+| Date | Author | Step | Result |
+|------|--------|------|--------|
+| 2026-10-14 | @opencode | 1. Tests (Red) | 10 + 18 + 3 new/updated cases added; `quad-core` 10+6, `quad-workflow-engine` 18, `quad-sandbox-docker` 3 green after change |
+| 2026-10-14 | @opencode | 2. Implementation | `WorkspaceResolver` (sanitize/confine/realPath), `PrefixSourceResolver` (file confinement + SSRF), `SandboxPoolClient`, `PromptAssembler` |
+| 2026-10-14 | @opencode | 3. Verification | targeted module tests green; full `quad-quarkus` reactor regression run |

@@ -1,82 +1,83 @@
-# WP14 — Doku konsolidieren & CI
+# WP14 — Consolidate docs & CI
 
 | | |
 |---|---|
-| **Status** | offen |
-| **Schwere** | Mittel |
-| **Module** | `kafka-platform` (Docs), Root, `.github` |
-| **Review-Referenz** | A3, A4, §9 |
-| **Abhängigkeit** | – (Doku-Teile nach WP13 spiegeln) |
-| **Geschätzter Aufwand** | 2 Tage |
+| **Status** | open |
+| **Severity** | Medium |
+| **Modules** | `kafka-platform` (docs), root, `.github` |
+| **Review reference** | A3, A4, §9 |
+| **Depends on** | – (mirror the doc parts after WP13) |
+| **Estimated effort** | 2 days |
 
-## Ziel
+## Goal
 
-Dokumentation beschreibt den **Ist-Zustand**; Testzahlen kommen aus der CI, nicht aus Prosa.
-Das Monorepo wird **ganzheitlich** gebaut/getestet.
+Documentation describes the **current state**; test counts come from CI, not from prose.
+The monorepo is built/tested **as a whole**.
 
-## Befunde (Ist-Zustand)
+## Findings (as-is)
 
-- **A4 – kein monorepo-weites CI:** Einzige CI ist `kafka-platform/.github/workflows/ci.yml`
-  (nur `kafka-platform`). `quad-quarkus` und `agentflow` haben gar keine.
-- **§9 – Doku-Drift:** sechs Top-Level-Docs in `kafka-platform` nennen nicht existente Pakete
-  (`com.agentplatform.*`, `com.platform.*`), Module und Testzahlen; `spec.md` ist ein KI-Artefakt
-  (Traceback, doppelte Spec); `IMPLEMENTATION_COMPLETE.md` nennt `TracingProducerInterceptor.java`
-  (existiert nicht), Testzahlen 41/84; `IMPL_STATUS.md` behauptet E-Mail-Responder/Vault/Alerting
-  „implemented"; `README.md` sagt „359", `TODO.md` „270".
-- **A3 – Root-Aggregator ohne Parent** (`pom.xml:3-19`) → keine zentrale Dependency-/Plugin-Verwaltung.
-- **`TODO2.md`** (untracked, 918 Z.) ist ein realer Issue-Tracker außerhalb der Versionskontrolle.
+- **A4 – no monorepo-wide CI:** the only CI is `kafka-platform/.github/workflows/ci.yml`
+  (`kafka-platform` only). `quad-quarkus` and `agentflow` have none.
+- **§9 – doc drift:** six top-level docs in `kafka-platform` mention non-existent packages
+  (`com.agentplatform.*`, `com.platform.*`), modules and test counts; `spec.md` is an AI artefact
+  (traceback, duplicated spec); `IMPLEMENTATION_COMPLETE.md` mentions
+  `TracingProducerInterceptor.java` (does not exist), test counts 41/84; `IMPL_STATUS.md` claims the
+  email responder/Vault/alerting are "implemented"; `README.md` says "359", `TODO.md` "270".
+- **A3 – root aggregator without a parent** (`pom.xml:3-19`) → no central dependency/plugin management.
+- **`TODO2.md`** (untracked, 918 lines) is a real issue tracker outside version control.
 
-## 1. Tests/Validierung zuerst
+## 1. Tests/validation first
 
-Es gibt hier keine Unit-Tests im engen Sinn — „Tests" sind **Doku-Checks**:
+There are no unit tests in the narrow sense here — the "tests" are **doc checks**:
 
-| # | Check | Erwartung |
-|---|-------|-----------|
-| 1 | `ci.yml` läuft für `quad-quarkus` + `agentflow` + Root | grün bei PR |
-| 2 | Testzahlen im README == CI-Report | aus CI generiert/verlinkt |
-| 3 | Paketnamen in Docs == `grep '^package '`-Realität | keine `com.agentplatform`/`com.platform` mehr |
-| 4 | genannte Dateien/Klassen existieren | `TracingProducerInterceptor` existiert nicht → entfernen |
-| 5 | `spec.md` entfernt/ersetzt | kein KI-Artefakt im Repo |
+| # | Check | Expectation |
+|---|-------|-------------|
+| 1 | `ci.yml` runs for `quad-quarkus` + `agentflow` + root | green on PR |
+| 2 | Test counts in the README == CI report | generated/linked from CI |
+| 3 | Package names in docs == `grep '^package '` reality | no `com.agentplatform`/`com.platform` |
+| 4 | Referenced files/classes exist | `TracingProducerInterceptor` does not exist → remove |
+| 5 | `spec.md` removed/replaced | no AI artefact in the repo |
 
-## 2. Änderungen (Green)
+## 2. Changes (Green)
 
-1. **CI ausbauen:** Workflows für `quad-quarkus` (`mvn -pl … test`), `agentflow` (`mvn -pl agentflow-app test`)
-   und einen Root-Job (`mvn -T1C clean install`) ergänzen; Testzahlen in `$GITHUB_STEP_SUMMARY`.
-2. **Doku konsolidieren:** ein kanonisches Statusdokument pro Modul; überflüssige/widersprüchliche
-   entfernen (`IMPLEMENTATION_COMPLETE.md` vs. `IMPL_STATUS.md` zusammenführen).
-   `spec.md` löschen (oder in `docs/history/` verschieben).
-3. **Paket-/Datei-Referenzen korrigieren**; Testzahlen durch CI-verlinkte Angabe ersetzen.
-4. **Claims mit Code abgleichen** (mit WP13): „implementiert" nur, wenn erreichbar.
-5. **`TODO2.md` → getrackte Issues** (GitHub Issues oder `todo/`-WPs) überführen; die wichtigsten
-   Befunde (leerer Workflow akzeptiert, KafkaTopicInitializer create-only, Nebenläufigkeit) sind
-   bereits als `@Disabled`-Tests erfasst.
-6. **Root-Parent (A3, optional):** prüfen, ob ein `dependencyManagement`/BOM im Root ohne Aufgeben
-   der Modul-Eltern möglich ist — als Vorschlag dokumentieren, nicht überstürzt umbauen.
+1. **Extend CI:** add workflows for `quad-quarkus` (`mvn -pl … test`), `agentflow`
+   (`mvn -pl agentflow-app test`) and a root job (`mvn -T1C clean install`); write the test counts into
+   `$GITHUB_STEP_SUMMARY`.
+2. **Consolidate docs:** one canonical status document per module; remove redundant/contradictory ones
+   (merge `IMPLEMENTATION_COMPLETE.md` vs. `IMPL_STATUS.md`). Delete `spec.md` (or move it to
+   `docs/history/`).
+3. **Fix package/file references**; replace test counts with a CI-linked figure.
+4. **Align claims with code** (with WP13): "implemented" only when reachable.
+5. **Convert `TODO2.md` → tracked issues** (GitHub Issues or `todo/` WPs); the most important findings
+   (empty workflow accepted, KafkaTopicInitializer create-only, concurrency) are already captured as
+   `@Disabled` tests.
+6. **Root parent (A3, optional):** check whether a `dependencyManagement`/BOM at the root is possible
+   without abandoning the module parents — document as a proposal, do not rush the refactor.
 
-## 3. Verifikation
+## 3. Verification
 
-- CI-PR grün für alle drei Reaktoren.
-- `grep -rn 'com\.agentplatform\|com\.platform' kafka-platform/*.md` → keine Treffer.
-- `grep -rn 'TracingProducerInterceptor'` → keine Treffer (außer Changelog).
+- CI PR green for all three reactors.
+- `grep -rn 'com\.agentplatform\|com\.platform' kafka-platform/*.md` → no hits.
+- `grep -rn 'TracingProducerInterceptor'` → no hits (except the changelog).
 
-## 4. Risiken / Hinweise
+## 4. Risks / notes
 
-- Doku-Änderungen sind umfangreich → in kleineren PRs pro Datei, damit Reviews möglich bleiben.
-- CI-Laufzeit: Kafka-Tests brauchen Docker (siehe bestehende `ci.yml`).
+- Doc changes are extensive → smaller PRs per file so reviews stay possible.
+- CI runtime: Kafka tests need Docker (see the existing `ci.yml`).
 
 ## Definition of Done
 
-- [ ] CI für alle Reaktoren vorhanden und grün.
-- [ ] Testzahlen CI-generiert.
-- [ ] Keine falschen Paket-/Datei-Referenzen.
-- [ ] `spec.md` entfernt; Statusdoks konsolidiert.
-- [ ] `TODO2.md`-Befunde getrackt.
-- [ ] Fortschrittslog gepflegt.
+- [ ] CI present for all reactors and green.
+- [ ] Test counts CI-generated.
+- [ ] No wrong package/file references.
+- [ ] `spec.md` removed; status docs consolidated.
+- [ ] `TODO2.md` findings tracked.
+- [ ] Progress log maintained.
 
-## Fortschrittslog
+## Progress log
 
-| Datum | Bearbeiter | Schritt | Ergebnis |
-|-------|-----------|---------|----------|
-| | | 1. CI erweitert | |
-| | | 2. Docs korrigiert | |
-| | | 3. TODO2 überführt | |
+| Date | Author | Step | Result |
+|------|--------|------|--------|
+| | | 1. CI extended | |
+| | | 2. Docs corrected | |
+| | | 3. TODO2 migrated | |

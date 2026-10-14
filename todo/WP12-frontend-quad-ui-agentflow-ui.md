@@ -2,62 +2,62 @@
 
 | | |
 |---|---|
-| **Status** | offen |
-| **Schwere** | Mittel |
-| **Module** | `quad-quarkus/quad-ui` (React), `agentflow/agentflow-ui` (Angular) |
-| **Review-Referenz** | C1, C2 (§8.6), C3 (siehe WP02) |
-| **Abhängigkeit** | C3 → WP02 |
-| **Geschätzter Aufwand** | 3–5 Tage |
+| **Status** | open |
+| **Severity** | Medium |
+| **Modules** | `quad-quarkus/quad-ui` (React), `agentflow/agentflow-ui` (Angular) |
+| **Review reference** | C1, C2 (§8.6), C3 (see WP02) |
+| **Depends on** | C3 → WP02 |
+| **Estimated effort** | 3–5 days |
 
-> Der Sicherheitsaspekt **C3** (API-Key in `localStorage`) wird in **WP02** behandelt.
-> Dieses WP kümmert sich um Struktur & Duplikate.
+> The security aspect **C3** (API key in `localStorage`) is handled in **WP02**.
+> This WP is about structure & duplicates.
 
-## Ziel
+## Goal
 
-Der `WorkflowComposer` und der Angular-Graph-Editor sind in wartbare Einheiten zerlegt, der
-quad-ui-API-Client ist dedupliziert, und die Kern-UI hat angemessene Testabdeckung.
+`WorkflowComposer` and the Angular graph editor are broken into maintainable units, the quad-ui API
+client is de-duplicated, and the core UI has reasonable test coverage.
 
-## Befunde (Ist-Zustand)
+## Findings (as-is)
 
-- **C1 – God-Components:** `quad-ui/src/components/WorkflowComposer.tsx` **1.669 Zeilen**,
-  **26 `useState`** (`:226-565`), vier `useEffect` (`:569,580,603,621`);
-  `agentflow-ui/src/app/ui/graph-editor.ts` **593 Zeilen**.
-- **C2 – Duplikate:** `api.ts` `fetchSkills` (`:437`) und `fetchSkillList` (`:504`) byte-identisch;
-  `createAgent`/`updateAgent` duplizieren einen 19-Feld-`flat`-Block (`:154-201`).
-- **Abdeckung:** `WorkflowComposer.test.tsx` (168 Z.) ist klein relativ zur 1.669-Zeilen-Komponente.
+- **C1 – god components:** `quad-ui/src/components/WorkflowComposer.tsx` is **1,669 lines**,
+  **26 `useState`** (`:226-565`), four `useEffect` (`:569,580,603,621`);
+  `agentflow-ui/src/app/ui/graph-editor.ts` is **593 lines**.
+- **C2 – duplicates:** `api.ts` `fetchSkills` (`:437`) and `fetchSkillList` (`:504`) are byte-identical;
+  `createAgent`/`updateAgent` duplicate a 19-field `flat` block (`:154-201`).
+- **Coverage:** `WorkflowComposer.test.tsx` (168 lines) is small relative to the 1,669-line component.
 
-## 1. Tests zuerst (Red/Charakterisierung)
+## 1. Tests first (Red/characterisation)
 
-Zuerst **Charakterisierungstests** ergänzen, die das heutige Verhalten der großen Komponente
-festhalten — dann refactoren, ohne Verhalten zu ändern.
+First add **characterisation tests** that pin the current behaviour of the large component — then
+refactor without changing behaviour.
 
-| # | Test | Zweck |
-|---|------|-------|
-| 1 | `WorkflowComposer.test.tsx#rendersAndEditsBaseline` | Grundverhalten fixieren (vor Refactoring) |
-| 2 | `WorkflowComposer.test.tsx#forkMergeRoundTrip` | Fork→Merge durch den Composer |
-| 3 | `api.test.ts#fetchSkills_equals_fetchSkillList` | Duplikate identisch (Ziel: eines entfernen) |
-| 4 | `api.test.ts#agentCreateUpdate_useSharedMapper` | ein Mapper für create/update |
-| 5 | `graph-editor.spec.ts#baseline` (Angular) | Grundverhalten fixieren |
-| 6 | `agentflow-ui settings.spec.ts` | siehe WP02 (lokale Speicherung) |
+| # | Test | Purpose |
+|---|------|---------|
+| 1 | `WorkflowComposer.test.tsx#rendersAndEditsBaseline` | pin basic behaviour (before refactoring) |
+| 2 | `WorkflowComposer.test.tsx#forkMergeRoundTrip` | fork→merge through the composer |
+| 3 | `api.test.ts#fetchSkills_equals_fetchSkillList` | duplicates identical (goal: remove one) |
+| 4 | `api.test.ts#agentCreateUpdate_useSharedMapper` | one mapper for create/update |
+| 5 | `graph-editor.spec.ts#baseline` (Angular) | pin basic behaviour |
+| 6 | `agentflow-ui settings.spec.ts` | see WP02 (local storage) |
 
-Testorte: `quad-quarkus/quad-ui/src/components/*.test.tsx`, `quad-quarkus/quad-ui/src/services/*.test.ts`,
-`agentflow/agentflow-ui/src/app/**/*.spec.ts`.
+Test locations: `quad-quarkus/quad-ui/src/components/*.test.tsx`,
+`quad-quarkus/quad-ui/src/services/*.test.ts`, `agentflow/agentflow-ui/src/app/**/*.spec.ts`.
 
-**Abnahme (Red):** Charakterisierungstests laufen grün (Ist-Zustand); Duplikat-Tests (3,4) decken
-die Duplikate auf.
+**Acceptance (Red):** characterisation tests run green (current state); duplicate tests (3, 4) expose
+the duplicates.
 
-## 2. Änderungen (Green)
+## 2. Changes (Green)
 
-1. **Composer zerlegen:** in Teilkomponenten/-Hooks mit klaren Verantwortlichkeiten:
-   Canvas, Inspector, Run-Panel, Backend-Selector, Materialisierung. Gemeinsamen Zustand in einen
-   Reducer/Context ziehen (bestehender `WorkflowContext` als Basis).
-2. **API-Client:** `fetchSkills` **oder** `fetchSkillList` entfernen (Aufrufer umstellen);
-   `toFlatAgentRequest(agent)` für create+update extrahieren.
-3. **Angular-Editor:** `graph-editor.ts` in kleinere Bausteine/Services trennen.
-4. **Abdeckung:** für die zentralen Interaktionen des Composers Tests ergänzen (Ziel: die kritischen
-   Pfade sind abgedeckt, nicht 100 %).
+1. **Break up the composer:** into subcomponents/hooks with clear responsibilities:
+   canvas, inspector, run panel, backend selector, materialisation. Move shared state into a
+   reducer/context (building on the existing `WorkflowContext`).
+2. **API client:** remove `fetchSkills` **or** `fetchSkillList` (update callers);
+   extract `toFlatAgentRequest(agent)` for create+update.
+3. **Angular editor:** split `graph-editor.ts` into smaller building blocks/services.
+4. **Coverage:** add tests for the composer's central interactions (goal: the critical paths are
+   covered, not 100%).
 
-## 3. Verifikation
+## 3. Verification
 
 ```bash
 cd quad-quarkus/quad-ui && npm test
@@ -66,27 +66,27 @@ cd agentflow/agentflow-ui && npm test
 cd quad-quarkus/quad-ui && npm run build
 cd agentflow/agentflow-ui && npm run build
 ```
-- Manuelle Sichtprüfung: Composer-Funktionen unverändert (Fork/Merge, Agent einfügen, Run starten).
+- Manual visual check: composer functions unchanged (fork/merge, insert agent, start run).
 
-## 4. Risiken / Hinweise
+## 4. Risks / notes
 
-- Reines Refactoring → Charakterisierungstests zuerst, Verhalten einfrieren.
-- `quad-ui` nutzt Context + `useState` (kein Store): bei Zerlegung Konsistenz wahren, nicht
-  über-engineeren.
+- Pure refactoring → characterisation tests first, freeze behaviour.
+- `quad-ui` uses context + `useState` (no store): preserve consistency when splitting, do not
+  over-engineer.
 
 ## Definition of Done
 
-- [ ] Charakterisierungstests vorhanden und grün.
-- [ ] Composer in klar benannte Einheiten zerlegt (keine Datei > ~400 Z.).
-- [ ] API-Duplikate entfernt; gemeinsamer Agent-Mapper.
-- [ ] `graph-editor.ts` zerlegt.
-- [ ] Kernpfade getestet; Builds grün.
-- [ ] Fortschrittslog gepflegt.
+- [ ] Characterisation tests present and green.
+- [ ] Composer split into clearly named units (no file > ~400 lines).
+- [ ] API duplicates removed; shared agent mapper.
+- [ ] `graph-editor.ts` split.
+- [ ] Core paths tested; builds green.
+- [ ] Progress log maintained.
 
-## Fortschrittslog
+## Progress log
 
-| Datum | Bearbeiter | Schritt | Ergebnis |
-|-------|-----------|---------|----------|
-| | | 1. Charakterisierungstests | |
+| Date | Author | Step | Result |
+|------|--------|------|--------|
+| | | 1. Characterisation tests | |
 | | | 2. Refactoring | |
-| | | 3. Verifikation | |
+| | | 3. Verification | |

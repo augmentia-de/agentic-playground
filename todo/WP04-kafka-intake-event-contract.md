@@ -1,93 +1,94 @@
-# WP04 — Kafka: Intake-/Event-Vertrag
+# WP04 — Kafka: intake/event contract
 
 | | |
 |---|---|
-| **Status** | offen |
-| **Schwere** | Kritisch |
-| **Module** | `kafka-platform/agent-orchestrator`, `kafka-platform/agent-common` |
-| **Review-Referenz** | B1, B9, §5.4 (IntakeListener-No-op, Redis-Typo) |
-| **Abhängigkeit** | – (nach WP03 empfohlen) |
-| **Geschätzter Aufwand** | 1–2 Tage |
+| **Status** | open |
+| **Severity** | Critical |
+| **Modules** | `kafka-platform/agent-orchestrator`, `kafka-platform/agent-common` |
+| **Review reference** | B1, B9, §5.4 (IntakeListener no-op, Redis typo) |
+| **Depends on** | – (WP03 recommended first) |
+| **Estimated effort** | 1–2 days |
 
-## Ziel
+## Goal
 
-E-Mail- (und allgemein Fremd-)Ereignisse erreichen den Intake in einer Form, die der Orchestrator
-**versteht** und validiert; fehlerhafte Nachrichten führen zu klaren Fehlern statt zu DLQ-Rauschen.
+Email (and generally foreign) events reach the intake in a form the orchestrator **understands** and
+validates; malformed messages lead to clear errors instead of DLQ noise.
 
-## Befunde (Ist-Zustand)
+## Findings (as-is)
 
-- **B1 – Eventform inkompatibel:** `EmailInputTransformer` publiziert `ControlEvents.EmailIntakeEvent`
-  (`workflowId, triggerKey, emailBody, initiatorEmail, receivedAt`) auf `TopicNames.INTAKE`
-  (`EmailInputTransformer.java:58-59`, Record `ControlEvents.java:59-66`). Der Orchestrator liest
-  dasselbe Topic als `WorkflowStartEvent` (`DagTopicListener.java:36`), Felder überschneiden sich
-  nicht → `workflowExecutionId == null` → `UUID.fromString(...)` wirft (`WorkflowEngine.java:112`) → DLQ.
-  Das Feature ist damit vollständig tot.
-- **B9 – UUID vor Validierung:** `WorkflowEngine.onResult` parst `UUID` vor dem Null-/Blank-Check
-  (`:139`); der Start-Selfcheck erzeugt ein synthetisches Event → DLQ-Rauschen bei **jedem** Boot.
-- **§5.4 – `IntakeListener.handleIntake` ist No-op** (ackt nur, `:38-47`); baut pro Nachricht einen
-  neuen `ObjectMapper` (`:59`).
-- **§5.4 – Redis-Key-Typo** `email:initator:` (`EmailInitiatorStore.java:29`).
+- **B1 – incompatible event shape:** `EmailInputTransformer` publishes `ControlEvents.EmailIntakeEvent`
+  (`workflowId, triggerKey, emailBody, initiatorEmail, receivedAt`) to `TopicNames.INTAKE`
+  (`EmailInputTransformer.java:58-59`, record `ControlEvents.java:59-66`). The orchestrator reads the
+  same topic as a `WorkflowStartEvent` (`DagTopicListener.java:36`); the fields do not overlap →
+  `workflowExecutionId == null` → `UUID.fromString(...)` throws (`WorkflowEngine.java:112`) → DLQ.
+  The feature is therefore completely dead.
+- **B9 – UUID before validation:** `WorkflowEngine.onResult` parses the `UUID` before the null/blank
+  check (`:139`); the start self-check produces a synthetic event → DLQ noise on **every** boot.
+- **§5.4 – `IntakeListener.handleIntake` is a no-op** (only acks, `:38-47`); builds a new
+  `ObjectMapper` per message (`:59`).
+- **§5.4 – Redis key typo** `email:initator:` (`EmailInitiatorStore.java:29`).
 
-## 1. Tests zuerst (Red)
+## 1. Tests first (Red)
 
-Testort: `kafka-platform/agent-orchestrator/src/test/java/de/augmentia/agentplatform/orchestrator/…`
-(Rahmen: `IntakeAndConfigListenerTest`, `WorkflowEngineCharacterizationTest`, `WorkflowEngineTestBase`).
+Test location: `kafka-platform/agent-orchestrator/src/test/java/de/augmentia/agentplatform/orchestrator/…`
+(harness: `IntakeAndConfigListenerTest`, `WorkflowEngineCharacterizationTest`, `WorkflowEngineTestBase`).
 
-| # | Test | Erwartung |
-|---|------|-----------|
-| 1 | `EmailIntakeContractTest#emailEvent_startsWorkflow` | `EmailIntakeEvent` auf `INTAKE` → Workflow startet mit korrektem Input |
-| 2 | `EmailIntakeContractTest#emailEvent_roundTripsThroughKafkaSerialization` | Producer-JSON → Consumer-Objekt verlustfrei |
-| 3 | `WorkflowEngineTest#onIntake_missingWorkflowExecutionId_clearError` | fehlende ID → fachlicher Fehler/Bad-Request, nicht `NumberFormatException` |
-| 4 | `WorkflowEngineTest#onResult_invalidUuid_noDlqNoise` | ungültige `taskId` → klare Validierung, kein Selbstverursachter DLQ |
-| 5 | `WorkflowEngineTest#startupSelfCheck_doesNotThrow` | Boot ohne DLQ-Eintrag |
-| 6 | `IntakeListenerTest#handleIntake_doesRealWork_orRemoved` | echtes Routing oder Listener entfernt |
-| 7 | `EmailInitiatorStoreTest#keyUsesCorrectSpelling` | Key `email:initiator:` (falls öffentlich) inkl. Migration |
+| # | Test | Expectation |
+|---|------|-------------|
+| 1 | `EmailIntakeContractTest#emailEvent_startsWorkflow` | `EmailIntakeEvent` on `INTAKE` → workflow starts with the correct input |
+| 2 | `EmailIntakeContractTest#emailEvent_roundTripsThroughKafkaSerialization` | producer JSON → consumer object lossless |
+| 3 | `WorkflowEngineTest#onIntake_missingWorkflowExecutionId_clearError` | missing ID → domain error/bad request, not `NumberFormatException` |
+| 4 | `WorkflowEngineTest#onResult_invalidUuid_noDlqNoise` | invalid `taskId` → clear validation, no self-inflicted DLQ |
+| 5 | `WorkflowEngineTest#startupSelfCheck_doesNotThrow` | boot without a DLQ entry |
+| 6 | `IntakeListenerTest#handleIntake_doesRealWork_orRemoved` | real routing or the listener is removed |
+| 7 | `EmailInitiatorStoreTest#keyUsesCorrectSpelling` | key `email:initiator:` (if public) incl. migration |
 
-**Abnahme (Red):** Test 1, 3, 4, 5, 6 fehlschlagen bzw. dokumentieren Fehlverhalten.
+**Acceptance (Red):** tests 1, 3, 4, 5, 6 fail or pin the misbehaviour.
 
-## 2. Änderungen (Green)
+## 2. Changes (Green)
 
-1. **Vertrag festlegen (eine Wahrheit):** entweder
-   - (A) Intake konsumiert ein eigenes `EmailIntakeEvent` in einem separaten Listener und mappt auf
-     den Workflow-Start, **oder**
-   - (B) `WorkflowStartEvent` bekommt ein Korrelationsfeld `initiatorEmail`/`source`, und
-     `EmailInputTransformer` erzeugt ein vollständiges `WorkflowStartEvent`.
-   Empfehlung: (B) – ein Event-Typ, weniger Topics.
-2. **Robuste Validierung:** `UUID.fromString` erst nach Null-/Blank-/Format-Check; bei Fehler
-   `DLQ` mit klarer Fehlermeldung **nur** für echte Fremdfehler, nicht für den Selfcheck.
-3. **Selfcheck:** synthetisches Event ohne UUID-Pflicht (eigener Marker) oder Selfcheck abschaltbar.
-4. **`IntakeListener`:** entweder echte Arbeit oder Listener + Consumer-Group entfernen
-   (sonst verwirrende Lag-Metriken). `ObjectMapper` einmalig als Bean.
-5. **Redis-Key:** korrekte Schreibweise; Migrations-/Kompatibilitätshinweis dokumentieren.
+1. **Define the contract (one truth):** either
+   - (A) the intake consumes its own `EmailIntakeEvent` in a separate listener and maps it to the
+     workflow start, **or**
+   - (B) `WorkflowStartEvent` gets a correlation field `initiatorEmail`/`source`, and
+     `EmailInputTransformer` produces a complete `WorkflowStartEvent`.
+   Recommendation: (B) — one event type, fewer topics.
+2. **Robust validation:** call `UUID.fromString` only after a null/blank/format check; on error, send
+   to the DLQ with a clear message **only** for genuine foreign errors, not for the self-check.
+3. **Self-check:** synthetic event without the UUID requirement (own marker), or make the self-check
+   switchable off.
+4. **`IntakeListener`:** either real work or remove the listener + consumer group (otherwise confusing
+   lag metrics). Register a single `ObjectMapper` bean.
+5. **Redis key:** correct spelling; document a migration/compatibility note.
 
-## 3. Verifikation
+## 3. Verification
 
 ```bash
 mvn -pl kafka-platform/agent-orchestrator -am test
 cd kafka-platform && mvn -pl agent-orchestrator test
 ```
-- End-to-End mit Testcontainers: E-Mail-Event publizieren → Workflow läuft bis ENDE.
-- Boot-Log prüfen: keine DLQ-Einträge durch Selfcheck.
+- End-to-end with Testcontainers: publish an email event → workflow runs to completion.
+- Check the boot log: no DLQ entries from the self-check.
 
-## 4. Risiken / Hinweise
+## 4. Risks / notes
 
-- Bestehende Konsumenten des `INTAKE`-Topics (quad-Bridge) dürfen nicht brechen →
-  Kompatibilitätstest (`QuadUiPayloadCompatibilityTest` als Vorbild).
-- Redis-Key-Änderung ist nicht rückwärtskompatibel → Migration oder Dual-Read.
+- Existing consumers of the `INTAKE` topic (quad bridge) must not break →
+  a compatibility test (`QuadUiPayloadCompatibilityTest` as a template).
+- The Redis key change is not backward-compatible → migration or dual-read.
 
 ## Definition of Done
 
-- [ ] E-Mail-Event startet real einen Workflow (Test 1, 2).
-- [ ] Keine `NumberFormatException`-DLQ bei ungültigen/fehlenden IDs (Test 3–5).
-- [ ] No-op-Intake-Listener beseitigt oder sinnvoll (Test 6).
-- [ ] Redis-Key korrekt bzw. migriert (Test 7).
-- [ ] Fortschrittslog gepflegt.
+- [ ] Email event really starts a workflow (tests 1, 2).
+- [ ] No `NumberFormatException` DLQ on invalid/missing IDs (tests 3–5).
+- [ ] No-op intake listener removed or made meaningful (test 6).
+- [ ] Redis key correct or migrated (test 7).
+- [ ] Progress log maintained.
 
-## Fortschrittslog
+## Progress log
 
-| Datum | Bearbeiter | Schritt | Ergebnis |
-|-------|-----------|---------|----------|
-| | | 1. Vertragsentscheidung (A/B) | |
-| | | 2. Tests rot | |
-| | | 3. Umsetzung | |
-| | | 4. Verifikation | |
+| Date | Author | Step | Result |
+|------|--------|------|--------|
+| | | 1. Contract decision (A/B) | |
+| | | 2. Tests red | |
+| | | 3. Implementation | |
+| | | 4. Verification | |
