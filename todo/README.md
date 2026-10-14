@@ -25,7 +25,7 @@ Every WP follows the same flow:
 | [WP03](WP03-kafka-publish-ack-worker-config.md) | Kafka: publish/ack & worker config | Critical | kafka-platform | – | done |
 | [WP04](WP04-kafka-intake-event-contract.md) | Kafka: intake/event contract | Critical | kafka-platform | – | done |
 | [WP05](WP05-quad-core-guardrails-pii-observability.md) | quad-core: guardrails, PII, observability | Medium | quad-core | – | done |
-| [WP06](WP06-quad-core-session-token-state.md) | quad-core: session, token, state | Medium | quad-core | – | open |
+| [WP06](WP06-quad-core-session-token-state.md) | quad-core: session, token, state | Medium | quad-core | – | done |
 | [WP07](WP07-workflow-engine-execution-lifecycle.md) | Workflow engine: execution & lifecycle | Medium | quad-quarkus | – | open |
 | [WP08](WP08-persistence-config-robustness.md) | Persistence & config robustness | Medium | quad-quarkus | – | open |
 | [WP09](WP09-tool-hardening.md) | Tool hardening | Medium | quad-quarkus | WP01 (containment helper) | open |
