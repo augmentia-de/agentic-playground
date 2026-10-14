@@ -34,8 +34,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String BEARER_PREFIX = "Bearer ";
 
-    @Value("${app.security.jwt.secret-base64}")
+    @Value("${app.security.jwt.secret-base64:}")
     private String secretBase64;
+    @Value("${app.security.enabled:false}")
+    private boolean securityEnabled;
 
     /** Paths that bypass authentication checks entirely */
     private static final String[] PUBLIC_PATHS = {
@@ -59,41 +61,62 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // 2. Extract Bearer token from header
         String token = extractToken(req);
         if (token == null || token.isBlank()) {
+            // Whether an unauthenticated request is allowed is decided by the authorization
+            // rules in SecurityConfig, not here.
             chain.doFilter(req, resp);
             return;
         }
 
-        // 3. Validate & populate SecurityContext
+        // 3. Validate & populate SecurityContext. token validation only.
         try {
-            SecretKey key = Keys.hmacShaKeyFor(Base64.getDecoder().decode(secretBase64));
-            
-            Claims claims = Jwts.parser()
-                    .verifyWith(key)
-                    .build()
-                    .parseSignedClaims(token)
-                    .getPayload();
-
-            String subject = claims.getSubject();
-            String tenant = claims.get("tenant", String.class);
-
-            if (subject != null && !subject.isBlank()) {
-                UsernamePasswordAuthenticationToken auth =
-                        new UsernamePasswordAuthenticationToken(subject, null, List.of());
-                auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(req));
-                
-                // Propagate tenant to thread-local for TenantAwareJdbcTemplate
-                TenantContext.setCurrentTenant(tenant);
-                
-                SecurityContextHolder.getContext().setAuthentication(auth);
-                log.debug("Authenticated user '{}' tenant '{}'", subject, tenant);
-            }
-            
-            chain.doFilter(req, resp);
+            authenticate(req, token);
         } catch (Exception e) {
-            log.warn("JWT validation failed: {}", e.getMessage());
-            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            resp.setContentType("application/json");
-            resp.getWriter().write("{\"error\":\"Invalid or expired token\"}");
+            if (securityEnabled) {
+                log.warn("JWT validation failed: {}", e.getMessage());
+                resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                resp.setContentType("application/json");
+                resp.getWriter().write("{\"error\":\"Invalid or expired token\"}");
+                return;
+            }
+            // Security is disabled: a bad/stale token must not lock the API. Ignore it and
+            // continue unauthenticated instead of turning the request into a 401.
+            log.debug("Ignoring invalid token (app.security.enabled=false): {}", e.getMessage());
+            SecurityContextHolder.clearContext();
+            TenantContext.clear();
+        }
+
+        // 4. Continue the chain OUTSIDE the try. A downstream exception (e.g. a controller
+        //    500) must propagate as-is; the previous version caught it here and rewrote it as a
+        //    401, which masked server errors.
+        chain.doFilter(req, resp);
+    }
+
+    /** Validates the token and, on success, populates SecurityContext + TenantContext. */
+    private void authenticate(HttpServletRequest req, String token) {
+        if (secretBase64 == null || secretBase64.isBlank()) {
+            throw new IllegalStateException("app.security.jwt.secret-base64 is not configured");
+        }
+        SecretKey key = Keys.hmacShaKeyFor(Base64.getDecoder().decode(secretBase64));
+
+        Claims claims = Jwts.parser()
+                .verifyWith(key)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+
+        String subject = claims.getSubject();
+        String tenant = claims.get("tenant", String.class);
+
+        if (subject != null && !subject.isBlank()) {
+            UsernamePasswordAuthenticationToken auth =
+                    new UsernamePasswordAuthenticationToken(subject, null, List.of());
+            auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(req));
+
+            // Propagate tenant to thread-local for TenantAwareJdbcTemplate
+            TenantContext.setCurrentTenant(tenant);
+
+            SecurityContextHolder.getContext().setAuthentication(auth);
+            log.debug("Authenticated user '{}' tenant '{}'", subject, tenant);
         }
     }
 

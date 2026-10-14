@@ -1,5 +1,7 @@
 package de.augmentia.agentplatform.orchestrator.web;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import de.augmentia.agentplatform.common.event.ControlEvents;
 import de.augmentia.agentplatform.common.event.EventJson;
 import de.augmentia.agentplatform.common.kafka.TopicNames;
@@ -7,13 +9,17 @@ import de.augmentia.agentplatform.common.model.HitlAction;
 import de.augmentia.agentplatform.orchestrator.domain.HitlTicketRow;
 import de.augmentia.agentplatform.orchestrator.kafka.OrchestratorEventPublisher;
 import de.augmentia.agentplatform.orchestrator.service.WorkflowQueryService;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -224,6 +230,10 @@ public class HitlPortalController {
 
     private final WorkflowQueryService queryService;
     private final OrchestratorEventPublisher publisher;
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    @Value("${app.hitl.slack.signing-secret:}")
+    private String slackSigningSecret;
 
     public HitlPortalController(WorkflowQueryService queryService, OrchestratorEventPublisher publisher) {
         this.queryService = queryService;
@@ -237,10 +247,30 @@ public class HitlPortalController {
                 .body(PORTAL_HTML);
     }
 
+    /**
+     * Slack interactive-callback endpoint. The request is authenticated by verifying Slack's
+     * request signature (HMAC over the raw body) — the previous version accepted any payload.
+     * The raw body is required for verification, so it is taken as a {@code String} and parsed
+     * afterwards.
+     */
     @PostMapping("/callback/slack")
-    public ResponseEntity<Map<String, String>> slackCallback(@RequestBody(required = false) Map<String, Object> payload) {
-        if (payload == null) {
+    public ResponseEntity<Map<String, String>> slackCallback(
+            @RequestBody(required = false) String rawBody,
+            @RequestHeader(value = "X-Slack-Signature", required = false) String slackSignature,
+            @RequestHeader(value = "X-Slack-Request-Timestamp", required = false) String slackTimestamp) {
+        if (rawBody == null || rawBody.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Empty payload"));
+        }
+
+        if (!SlackSignatureVerifier.isValid(slackSigningSecret, slackSignature, slackTimestamp,
+                rawBody, Instant.now().getEpochSecond())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Invalid or missing Slack signature"));
+        }
+
+        Map<String, Object> payload = parseSlackPayload(rawBody);
+        if (payload == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Malformed payload"));
         }
 
         String value = extractSlackValue(payload);
@@ -251,7 +281,6 @@ public class HitlPortalController {
         Map<String, String> params = parseSlackValue(value);
         String actionStr = params.get("action");
         String ticketIdStr = params.get("ticketId");
-        String workflowIdStr = params.get("workflowId");
 
         if (actionStr == null || ticketIdStr == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "Missing required fields in value"));
@@ -279,6 +308,14 @@ public class HitlPortalController {
         response.put("response_type", "ephemeral");
         response.put("text", "Action `" + actionStr + "` processed for ticket " + ticketIdStr);
         return ResponseEntity.ok(response);
+    }
+
+    private Map<String, Object> parseSlackPayload(String rawBody) {
+        try {
+            return OBJECT_MAPPER.readValue(rawBody, new TypeReference<Map<String, Object>>() {});
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @SuppressWarnings("unchecked")

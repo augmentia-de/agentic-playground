@@ -64,6 +64,11 @@ app:
   hitl:
     ttl-hours: 24
     max-escalations: 3
+    slack:
+      # Slack request-signing secret (https://api.slack.com/authentication/verifying-requests-from-slack).
+      # Empty by default => Slack callbacks are rejected (fail closed). Set this in any environment
+      # that receives Slack interactions.
+      signing-secret: ${SLACK_SIGNING_SECRET:}
   seeding:
     enabled: true
     locations: classpath*:workflows/*.json

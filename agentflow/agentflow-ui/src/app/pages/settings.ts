@@ -1,6 +1,7 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../core/api.service';
+import { ClientHeaderStore } from '../core/client-header.store';
 import { Settings } from '../core/models';
 import { ToastService } from '../core/toast.service';
 
@@ -43,7 +44,8 @@ interface Section {
         <h3>Client (dieser Browser)</h3>
         <p class="small dim">
           Optional: API-Key/Header für die opt-in Sicherheits- und Tenant-Features des Backends.
-          Wird nur lokal (localStorage) gespeichert und an Requests angehängt.
+          Wird nur für diese Sitzung im Speicher gehalten (nicht in localStorage) und an Requests
+          angehängt — nach einem Reload müssen die Werte neu eingegeben werden.
         </p>
         <div class="field"><label>X-API-Key</label><input [(ngModel)]="apiKey" [ngModelOptions]="{ standalone: true }" /></div>
         <div class="field"><label>X-Tenant-Id</label><input [(ngModel)]="tenant" [ngModelOptions]="{ standalone: true }" /></div>
@@ -58,11 +60,12 @@ interface Section {
 export class SettingsPage {
   private readonly api = inject(ApiService);
   private readonly toast = inject(ToastService);
+  private readonly clientHeaders = inject(ClientHeaderStore);
 
   readonly settings = signal<Settings | null>(null);
 
-  apiKey = localStorage.getItem('agentflow.apiKey') ?? '';
-  tenant = localStorage.getItem('agentflow.tenant') ?? '';
+  apiKey = this.clientHeaders.apiKey();
+  tenant = this.clientHeaders.tenant();
 
   readonly sections = computed<Section[]>(() => {
     const s = this.settings();
@@ -123,16 +126,16 @@ export class SettingsPage {
   }
 
   saveClient(): void {
-    localStorage.setItem('agentflow.apiKey', this.apiKey.trim());
-    localStorage.setItem('agentflow.tenant', this.tenant.trim());
-    this.toast.success('Client-Header gespeichert');
+    this.clientHeaders.set(this.tenant, this.apiKey);
+    this.apiKey = this.clientHeaders.apiKey();
+    this.tenant = this.clientHeaders.tenant();
+    this.toast.success('Client-Header gespeichert (nur für diese Sitzung)');
   }
 
   clearClient(): void {
     this.apiKey = '';
     this.tenant = '';
-    localStorage.removeItem('agentflow.apiKey');
-    localStorage.removeItem('agentflow.tenant');
+    this.clientHeaders.clear();
     this.toast.info('Client-Header geleert');
   }
 }

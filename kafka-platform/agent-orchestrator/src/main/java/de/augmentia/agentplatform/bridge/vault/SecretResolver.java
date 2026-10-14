@@ -55,22 +55,28 @@ public class SecretResolver {
 
     private static final Logger log = LoggerFactory.getLogger(SecretResolver.class);
 
-    @Value("${app.vault.url:http://vault:8200}")
-    private String vaultUrl;
-    @Value("${app.vault.token:${VAULT_TOKEN}}")
-    private String authToken;
-    @Value("${app.vault.path-prefix:secret/data}")
-    private String pathPrefix;
-    @Value("${app.vault.cache-ttl-minutes:60}")
-    private long cacheTtlMinutes;
-    @Value("${app.vault.timeout-seconds:10}")
-    private int timeoutSeconds;
-
     private final WebClient webClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Map<String, CachedSecret> secretCache = new ConcurrentHashMap<>();
+    private final String pathPrefix;
+    private final long cacheTtlMinutes;
+    private final int timeoutSeconds;
 
-    public SecretResolver(WebClient.Builder webClientBuilder) {
+    /**
+     * Configuration is injected as constructor parameters, not as {@code @Value} fields: field
+     * injection happens <em>after</em> the constructor, so the previous implementation built the
+     * {@link WebClient} from still-{@code null} {@code vaultUrl}/{@code authToken} fields and every
+     * request went to the wrong place.
+     */
+    public SecretResolver(WebClient.Builder webClientBuilder,
+                          @Value("${app.vault.url:http://vault:8200}") String vaultUrl,
+                          @Value("${app.vault.token:${VAULT_TOKEN:}}") String authToken,
+                          @Value("${app.vault.path-prefix:secret/data}") String pathPrefix,
+                          @Value("${app.vault.cache-ttl-minutes:60}") long cacheTtlMinutes,
+                          @Value("${app.vault.timeout-seconds:10}") int timeoutSeconds) {
+        this.pathPrefix = pathPrefix;
+        this.cacheTtlMinutes = cacheTtlMinutes;
+        this.timeoutSeconds = timeoutSeconds;
         this.webClient = webClientBuilder
                 .baseUrl(vaultUrl)
                 .defaultHeader("X-Vault-Token", authToken)
@@ -93,12 +99,7 @@ public class SecretResolver {
         }
 
         try {
-            JsonNode response = webClient.get()
-                    .uri("/{path}", pathPrefix + "/" + secretPath)
-                    .retrieve()
-                    .bodyToMono(JsonNode.class)
-                    .timeout(Duration.ofSeconds(timeoutSeconds))
-                    .block();
+            JsonNode response = fetchJson("/" + pathPrefix + "/" + secretPath);
 
             String value = extractValue(response, secretKey);
             if (value == null) {
@@ -134,12 +135,7 @@ public class SecretResolver {
         }
 
         try {
-            JsonNode response = webClient.get()
-                    .uri("/{path}", pathPrefix + "/" + secretPath)
-                    .retrieve()
-                    .bodyToMono(JsonNode.class)
-                    .timeout(Duration.ofSeconds(timeoutSeconds))
-                    .block();
+            JsonNode response = fetchJson("/" + pathPrefix + "/" + secretPath);
 
             JsonNode data = response.path("data");
             StringBuilder sb = new StringBuilder();
@@ -181,18 +177,37 @@ public class SecretResolver {
      */
     public boolean isConnected() {
         try {
-            JsonNode response = webClient.get()
-                    .uri("/v1/sys/health")
-                    .retrieve()
-                    .bodyToMono(JsonNode.class)
-                    .timeout(Duration.ofSeconds(timeoutSeconds))
-                    .block();
+            JsonNode response = fetchJson("/v1/sys/health");
 
-            return response.path("initialized").asBoolean(false) && 
-                   response.path("sealed").asBoolean(true);
+            return response.path("initialized").asBoolean(false) &&
+                   !response.path("sealed").asBoolean(true);
         } catch (Exception e) {
             log.warn("Vault health check failed: {}", e.getMessage());
             return false;
+        }
+    }
+
+    /**
+     * Reads a Vault response as JSON.
+     *
+     * <p>The path is passed <b>literally</b>, not as a {@code {path}} URI variable: URI variables are
+     * encoded, so the slashes in e.g. {@code secret/data/agent-platform/db} became {@code %2F} and
+     * Vault received one bogus segment. The body is read as text and parsed explicitly because on
+     * Spring Boot 4 the WebFlux codecs are Jackson 3 ({@code tools.jackson}), which cannot construct
+     * the Jackson 2 {@code com.fasterxml.jackson.databind.JsonNode} this class works with; decoding
+     * straight into {@code JsonNode} fails with {@code Type definition error}.
+     */
+    private JsonNode fetchJson(String path) {
+        String json = webClient.get()
+                .uri(path)
+                .retrieve()
+                .bodyToMono(String.class)
+                .timeout(Duration.ofSeconds(timeoutSeconds))
+                .block();
+        try {
+            return objectMapper.readTree(json);
+        } catch (Exception e) {
+            throw new IllegalStateException("Invalid JSON from Vault: " + e.getMessage(), e);
         }
     }
 

@@ -51,6 +51,9 @@ public class SecurityConfig {
                             .requestMatchers("/health").permitAll()
                             .requestMatchers(HttpMethod.GET, "/favicon.ico").permitAll()
                             .requestMatchers("/api/v1/auth/**").permitAll()
+                            // Slack callbacks authenticate themselves via the request signature;
+                            // they cannot present a JWT.
+                            .requestMatchers(HttpMethod.POST, "/api/v1/hitl/callback/slack").permitAll()
                             .anyRequest().authenticated();
                 })
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)

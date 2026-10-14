@@ -1,6 +1,7 @@
 package de.augmentia.agentplatform.orchestrator.web;
 
 import de.augmentia.agentplatform.orchestrator.service.WorkflowQueryService;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -12,6 +13,11 @@ import java.util.UUID;
 /**
  * GDPR compliance endpoints: export and delete personal data / session data.
  * Covers both workflow execution data (checkpoints, results) and session metadata.
+ *
+ * <p>{@code /export} for a {@code workflowId} returns real execution data. Deletion and
+ * anonymisation are <b>not implemented</b> and return {@code 501 Not Implemented} — the earlier
+ * versions returned {@code 200} with a success message while doing nothing, which is a compliance
+ * hazard, not a feature.
  */
 @RestController
 @RequestMapping("/api/v1/gdpr")
@@ -80,13 +86,17 @@ public class GdprController {
 
     /**
      * Delete all personal data associated with a session or workflow ID.
-     * This is irreversible — confirm via a confirmation token if needed.
      *
-     * DELETE /api/v1/gdpr/delete?session={sessionId} OR ?workflowId={workflowId}&confirm=true
+     * <p><b>Not implemented (501).</b> Real deletion must remove checkpoints, HITL tickets and the
+     * execution row across several stores; until that exists, this endpoint refuses honestly
+     * instead of returning a false {@code 200 deleted:true}.
+     *
+     * DELETE /api/v1/gdpr/delete?session={sessionId} OR ?workflowId={uuid}&confirm=true
      */
     @DeleteMapping("/delete")
     public ResponseEntity<Map<String, Object>> deletePersonalData(
             @RequestParam(required = false) String sessionId,
+            @RequestParam(required = false) String workflowId,
             @RequestParam(required = false, defaultValue = "false") boolean confirm
     ) {
         if (!confirm) {
@@ -96,27 +106,19 @@ public class GdprController {
             ));
         }
 
-        if (sessionId == null || sessionId.isBlank()) {
+        if ((sessionId == null || sessionId.isBlank()) && (workflowId == null || workflowId.isBlank())) {
             return ResponseEntity.badRequest().body(Map.of(
                     "error", "Provide either session or workflowId parameter."
             ));
         }
 
-        // TODO: actual deletion logic — currently placeholder
-        return ResponseEntity.ok(Map.of(
-                "deleted", true,
-                "dataType", sessionId.startsWith("wf-") ? "workflow" : "session",
-                "identifier", sessionId,
-                "deletedAt", Instant.now().toString(),
-                "message", "Personal data deleted successfully."
-        ));
+        return notImplemented("Deleting personal data is not implemented yet.");
     }
 
     /**
      * Anonymize data instead of deleting it (retains analytics while removing PII).
-     * Useful for keeping aggregate metrics without personal identifiers.
      *
-     * POST /api/v1/gdpr/anonymize?session={sessionId}
+     * <p><b>Not implemented (501)</b> — see {@link #deletePersonalData}.
      */
     @PostMapping("/anonymize")
     public ResponseEntity<Map<String, Object>> anonymizePersonalData(
@@ -126,12 +128,13 @@ public class GdprController {
             return ResponseEntity.badRequest().body(Map.of("error", "Provide session parameter."));
         }
 
-        // TODO: replace real names/emails with hashed placeholders in session records
-        return ResponseEntity.ok(Map.of(
-                "anonymized", true,
-                "sessionId", sessionId,
-                "method", "hash-replacement",
-                "anonymizedAt", Instant.now().toString()
+        return notImplemented("Anonymizing personal data is not implemented yet.");
+    }
+
+    private static ResponseEntity<Map<String, Object>> notImplemented(String message) {
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(Map.of(
+                "error", message,
+                "status", "not_implemented"
         ));
     }
 }

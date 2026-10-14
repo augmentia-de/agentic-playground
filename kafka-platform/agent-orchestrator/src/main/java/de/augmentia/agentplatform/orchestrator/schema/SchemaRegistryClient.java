@@ -12,7 +12,14 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Confluent Schema Registry client for managing JSON Schemas for Kafka topics.
+ * Confluent Schema Registry client — read-only operations.
+ *
+ * <p>Configuration is injected via the constructor (the previous {@code @Value} fields were read
+ * before injection, so {@code baseUrl} was always {@code null}).
+ *
+ * <p>Schema <em>registration</em> is deliberately not offered: the former
+ * {@code registerAll()} only logged a message and registered nothing, which is worse than no method
+ * at all. Only {@link #listSubjects(String)} (a real HTTP call) remains.
  */
 @Component
 @ConditionalOnProperty(name = "app.schema-registry.enabled", havingValue = "true")
@@ -20,24 +27,14 @@ public class SchemaRegistryClient {
 
     private static final Logger log = LoggerFactory.getLogger(SchemaRegistryClient.class);
 
-    @Value("${app.schema-registry.url:http://schema-registry:8081}")
-    private String schemaRegistryUrl;
-    @Value("${app.schema-registry.compatibility-mode:BACKWARD}")
-    private String compatibilityMode;
-    @Value("${app.schema-registry.auto-register:true}")
-    private boolean autoRegister;
-
     private final WebClient webClient;
 
-    public SchemaRegistryClient(WebClient.Builder webClientBuilder) {
+    public SchemaRegistryClient(WebClient.Builder webClientBuilder,
+                                @Value("${app.schema-registry.url:http://schema-registry:8081}") String schemaRegistryUrl) {
         this.webClient = webClientBuilder.baseUrl(schemaRegistryUrl).build();
     }
 
-    public void registerAll() {
-        log.info("Schema registration — configure subjects in subclass");
-    }
-
-    /** Check if schema list exists on registry. */
+    /** List the subjects known to the registry, optionally filtered by {@code topicPrefix}. */
     public Set<String> listSubjects(String topicPrefix) {
         try {
             List<?> raw = webClient.get().uri("/subjects").retrieve().bodyToMono(List.class).block();
