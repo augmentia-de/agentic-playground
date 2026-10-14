@@ -29,7 +29,7 @@ Every WP follows the same flow:
 | [WP07](WP07-workflow-engine-execution-lifecycle.md) | Workflow engine: execution & lifecycle | Medium | quad-quarkus | – | open |
 | [WP08](WP08-persistence-config-robustness.md) | Persistence & config robustness | Medium | quad-quarkus | – | open |
 | [WP09](WP09-tool-hardening.md) | Tool hardening | Medium | quad-quarkus | WP01 (containment helper) | open |
-| [WP10](WP10-agentflow-generator-join.md) | agentflow: consolidate generator & join | High | agentflow, quad-quarkus | WP01 (test locations only) | open |
+| [WP10](WP10-agentflow-generator-join.md) | agentflow: consolidate generator & join | High | agentflow, quad-quarkus | WP01 (test locations only) | done |
 | [WP11](WP11-agentflow-determinism-request-context.md) | agentflow: determinism & request context | High | agentflow | – | open |
 | [WP12](WP12-frontend-quad-ui-agentflow-ui.md) | Frontend: quad-ui & agentflow-ui | Medium | quad-ui, agentflow-ui | – | open |
 | [WP13](WP13-remove-dead-code.md) | Remove dead code | Medium | all | after WP05–WP11 | open |

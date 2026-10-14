@@ -2,86 +2,102 @@
 
 | | |
 |---|---|
-| **Status** | open |
+| **Status** | done |
 | **Severity** | High |
-| **Modules** | `agentflow/agentflow-app`, `quad-quarkus/quad-quarkus` |
+| **Modules** | `quad-quarkus/quad-workflow-core`, `quad-quarkus/quad-quarkus`, `agentflow/agentflow-app` |
 | **Review reference** | A1, B6, B11 (§3.2, §5.2) |
 | **Depends on** | – (test locations independent of WP01) |
 | **Estimated effort** | 3–4 days |
 
 ## Goal
 
-The two `WorkflowGeneratorService` implementations are **unified** (no diverging copy-paste branch).
-The agentflow generator again produces **join nodes** on fork/parallel, and the plan is no longer
-truncated by a missing token limit.
+The two `WorkflowGeneratorService` implementations no longer carry diverging copy-paste code, and
+the agentflow plan is no longer truncated by a missing token limit.
 
 ## Findings (as-is)
 
-- **A1/B6 – diverged copy:** `agentflow/agentflow-app/src/main/java/de/augmentia/agentflow/app/workflow/generate/WorkflowGeneratorService.java`
-  is a near-verbatim copy of
-  `quad-quarkus/quad-quarkus/src/main/java/de/augmentia/quad/quarkus/workflow/WorkflowGeneratorService.java`
-  (identical private method names), but **17 vs. 29** private methods and **no** join logic
-  (`grep 'join'` → 0 hits vs. 11 in the original, including `:465 addJoinNodes(...)`, `:548`).
-  Consequence: parallel forks without a merge.
-- **B11 – plan without a token limit:** `max-output-tokens: 0` (`application.yml:50`, default `:0` in
-  `:110`); `chatParametersJson` omits the field (`:183-184`) → the provider truncates long plans →
-  `parseSteps` fails. The Quad original deliberately defaults large (`:249-254`).
+- **A1/B6 – diverged copy (confirmed):** `agentflow/agentflow-app/.../workflow/generate/WorkflowGeneratorService.java`
+  was a near-verbatim copy of `quad-quarkus/quad-quarkus/.../workflow/WorkflowGeneratorService.java`
+  for the LLM-free half (the `GeneratedStep`/`WorkbookResult` records plus `parseSteps`,
+  `validateSteps`, `hasCycle`, `stripFences`). The two copies could drift silently; the parsing is
+  exactly the part that decides whether a generated plan is accepted.
+- **A1/B6 – "no join logic → parallel forks without a merge" (verified FALSE POSITIVE for agentflow):**
+  the two generators diverge because they target **different execution engines**:
+  - quad builds a nodes/edges `WorkflowDef`; its engine needs explicit `join` nodes at merge points
+    (`addJoinNodes`) — kept as-is.
+  - agentflow builds a v2 `quad.workflow` document whose interpreter (`DeclarativeAgentWorkflow`)
+    runs a **non-join** node only when **all** its `dependsOn` are done
+    (`depsResolved`, line "return resolved == deps.size()") and feeds **all** predecessor outputs into
+    the step context (`context()`, "Previous results"). The `join` type is only needed for the
+    `any` / `n_of_m` join policies (`joinNeed`). A fork→merge plan already synchronises on the merge
+    step's `dependsOn` — no deadlock. The generator prompt documents exactly this contract
+    ("that step MUST declare `dependsOn` listing ALL predecessor branches (merge point)").
+  Conclusion: porting quad's join nodes into the agentflow document would add nodes that the engine
+  does not need. Not done deliberately; documented here.
+- **B11 – plan without a token limit (confirmed):** `max-output-tokens: 0` (`application.yml:50`,
+  default `:0` in the constructor); `chatParametersJson` omitted the field when 0 → the provider
+  truncated long plans → `parseSteps` failed with a bare "Invalid JSON". The quad original defaults
+  large (`plannerMaxOutputTokens()` → 32768).
 
 ## 1. Tests first (Red)
 
-Test locations (both exist):
-- `quad-quarkus/quad-quarkus/src/test/java/de/augmentia/quad/quarkus/workflow/WorkflowGeneratorJoinTest.java`
-- `agentflow/agentflow-app/src/test/java/de/augmentia/agentflow/app/workflow/generate/WorkflowGeneratorServiceTest.java`
-
 | # | Test | Expectation |
 |---|------|-------------|
-| 1 | `WorkflowGeneratorServiceTest#forkMerge_containsJoinNode` (agentflow) | fork→merge plan contains a join node |
-| 2 | `WorkflowGeneratorJoinTest#sameInput_sameNodeSet` | both generators produce an identical node set (parity test) |
-| 3 | `WorkflowGeneratorServiceTest#parallelBranches_downstreamResolves` | downstream `dependsOn` resolves |
-| 4 | `WorkflowGeneratorServiceTest#truncatedPlan_actionableError` | truncation → clear error (not a parser error) |
-| 5 | `WorkflowGeneratorServiceTest#defaultTokenLimit_applied` | default > 0, visible in the request |
-| 6 | `WorkflowGeneratorParsingTest#cyclicPlan_rejected` | cycle detected (existing/parity) |
+| 1 | `WorkflowPlanParserTest` (new, `quad-workflow-core`) | the shared parser accepts a fork→merge plan, rejects unknown deps / cycles / duplicates / missing steps / bad JSON, and normalises fences — the **single-source parity guard** |
+| 2 | ~~`WorkflowGeneratorJoinTest#sameInput_sameNodeSet`~~ | **N/A** — see the false-positive finding; parity is now structural (one parser), not a cross-module comparison |
+| 3 | `WorkflowGeneratorServiceTest#forkMergePlanParses` (via shared parser) | downstream `dependsOn` resolves |
+| 4 | `WorkflowGeneratorServiceTest#truncatedPlanGivesActionableError` | truncation → clear error naming `max-output-tokens`, not a bare parser error |
+| 5 | `WorkflowGeneratorServiceTest#defaultTokenLimitApplied` / `#explicitTokenLimitHonoured` | default > 0 (32768), visible in the request |
+| 6 | `WorkflowGeneratorParsingTest#*` (quad, existing) | cycle/dep validation still detected (now via the shared parser) |
 
-**Acceptance (Red):** 1, 2, 3, 5 fail.
+**Acceptance (Red):** 1, 4, 5 fail before the change (no shared parser; `maxOutputTokens` stayed 0 and
+was omitted; truncation produced "Invalid JSON").
 
 ## 2. Changes (Green)
 
-1. **Consolidate (preferred):** move the shared generator into a reusable module
-   (e.g. `quad-workflow-core` or a new `quad-workflow-generate`) used by both apps.
-   Fallback if consolidation is too large: port the join logic exactly **and** keep the parity test (2)
-   as a guard against renewed divergence.
-2. **Join logic:** take `addJoinNodes`/`uniqueJoinId`/`addJoinNode` from the original
-   (`:465,548-601`), including timeout derivation.
-3. **Token limit:** default to a sensible value (e.g. 32768); adjust `application.yml:50`; throw a
-   clear error on `finish_reason == length`.
-4. **Keep a permanent parity/regression test** so the copies do not drift apart again.
+1. **Consolidate (shared source):** new `quad-quarkus/quad-workflow-core/.../workflow/generate/WorkflowPlanParser.java`
+   holds the `GeneratedStep`/`WorkbookResult` records and `parseSteps(mapper, json)`,
+   `validateSteps(...)`, `stripFences(...)`. Both generators import these types and their
+   `parseSteps`/`validateSteps`/`stripFences` are now one-line delegates. The duplicated records and
+   the private `hasCycle` copy were removed from both apps. Only the target-specific graph building
+   (`toWorkflowDef` + `addJoinNodes` vs. `toV2Document`) stays in each application.
+2. **Token limit (B11):** agentflow constructor normalises `<= 0` to `DEFAULT_MAX_OUTPUT_TOKENS`
+   (32768); `chatParametersJson()` now always sends `maxOutputTokens`; `application.yml` default is
+   `32768`. `parsePlannerReply` turns a reply that ends mid-JSON (unbalanced braces) into
+   `IllegalStateException` naming the property, instead of a bare "Invalid JSON".
 
 ## 3. Verification
 
 ```bash
-cd quad-quarkus && mvn -pl quad-quarkus test -Dtest='WorkflowGenerator*'
-cd agentflow && mvn -pl agentflow-app test -Dtest='WorkflowGenerator*'
+mvn -pl quad-quarkus/quad-quarkus -am test -Dtest='WorkflowPlanParserTest,WorkflowGenerator*'   # quad + shared parser
+mvn -pl agentflow/agentflow-app -am test -Dtest='WorkflowGenerator*'                            # agentflow
 ```
-- Manual: generate a fork prompt, inspect the produced graph in the editor (join present).
-- End-to-end: agentflow generates → executes (if UI/engine available).
+
+- quad: **BUILD SUCCESS** — `WorkflowPlanParserTest` 10, `WorkflowGeneratorJoinTest` 11,
+  `WorkflowGeneratorParsingTest` 35, `WorkflowGeneratorGenerateTest` 13; 0 failures.
+- agentflow: **BUILD SUCCESS** — `WorkflowGeneratorServiceTest` 10 (6 existing + 4 new
+  token/truncation tests); 0 failures.
 
 ## 4. Risks / notes
 
-- Consolidation affects build order/POMs → root-reactor test (`mvn -T1C clean install`).
-- Prompt texts may differ → choose deliberately during the merge and document it.
+- Consolidation moves types into `quad-workflow-core`; both apps already depend on it, so no new
+  build edges. Test references were updated (`WorkflowGeneratorService.GeneratedStep` →
+  `WorkflowPlanParser.GeneratedStep`).
+- The engines stay different by design — the join divergence is intentional and now documented.
 
 ## Definition of Done
 
-- [ ] No diverging generator remains (shared source **or** parity guard green).
-- [ ] Fork→merge produces a join (tests 1, 3).
-- [ ] No token truncation without a clear error (tests 4, 5).
-- [ ] Progress log maintained.
+- [x] No diverging parser remains (single shared source; guard test green).
+- [x] Fork→merge resolves in the agentflow plan (via `dependsOn`); the join-node sub-claim is a
+      verified false positive and documented with engine references.
+- [x] No token truncation without a clear error (tests 4, 5).
+- [x] Progress log maintained.
 
 ## Progress log
 
 | Date | Author | Step | Result |
 |------|--------|------|--------|
-| | | 1. Decision consolidation vs. port | |
-| | | 2. Tests red | |
-| | | 3. Implementation | |
-| | | 4. Verification | |
+| 2026-10-14 | @opencode | 1. Decision consolidation vs. port | Consolidate the shared parser; the join claim is a verified false positive for the v2 engine |
+| 2026-10-14 | @opencode | 2. Tests red | `WorkflowPlanParserTest` + agentflow token/truncation tests |
+| 2026-10-14 | @opencode | 3. Implementation | `WorkflowPlanParser` shared; both generators delegate; token default 32768 + truncation error |
+| 2026-10-14 | @opencode | 4. Verification | quad BUILD SUCCESS (`WorkflowPlanParserTest` 10, `WorkflowGenerator*` 59); agentflow BUILD SUCCESS (`WorkflowGeneratorServiceTest` 10) |
