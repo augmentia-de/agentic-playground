@@ -21,7 +21,7 @@ Every WP follows the same flow:
 | WP | Title | Severity | Modules | Depends on | Status |
 |----|-------|----------|---------|------------|--------|
 | [WP01](WP01-security-path-confinement.md) | Security: path confinement & SSRF | Critical | quad-quarkus | – | done |
-| [WP02](WP02-security-auth-secrets-compliance.md) | Security: auth, secrets, compliance | High | kafka-platform, agentflow-ui | – | open |
+| [WP02](WP02-security-auth-secrets-compliance.md) | Security: auth, secrets, compliance | High | kafka-platform, agentflow-ui | – | done |
 | [WP03](WP03-kafka-publish-ack-worker-config.md) | Kafka: publish/ack & worker config | Critical | kafka-platform | – | done |
 | [WP04](WP04-kafka-intake-event-contract.md) | Kafka: intake/event contract | Critical | kafka-platform | – | done |
 | [WP05](WP05-quad-core-guardrails-pii-observability.md) | quad-core: guardrails, PII, observability | Medium | quad-core | – | open |
@@ -117,5 +117,5 @@ Per WP, at the end of the file:
 
 ## Deliberately NOT included in this backlog (low severity, §5.4 in Review.md)
 
-Redis key typo `email:initator:` (noted as a comment in WP04), `JournalService` default, `Clock` ignorance,
+Redis key typo `email:initator:` was fixed in WP04, `JournalService` default, `Clock` ignorance,
 `AutoScalingService` unused bits, `GuardrailFactory` regex. These can be pulled separately as "good first issues".

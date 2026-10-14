@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Status** | open |
+| **Status** | done |
 | **Severity** | High |
-| **Modules** | `kafka-platform/agent-orchestrator`, `kafka-platform/quad-workflow-worker`, `agentflow/agentflow-ui` |
+| **Modules** | `kafka-platform/agent-orchestrator`, `agentflow/agentflow-ui` |
 | **Review reference** | B7, B8, B10, B13, B14, C3 (§5.2, §5.1, §8.6) |
 | **Depends on** | – |
 | **Estimated effort** | 2–3 days |
@@ -18,83 +18,125 @@ and the UI API key is not stored in `localStorage` where it can be read by XSS.
 ## Findings (as-is)
 
 - **B7 – `SecretResolver.isConnected()` inverted:** `initialized && sealed` (`SecretResolver.java:191-192`).
-- **B8 – `@Value` in the constructor:** `SecretResolver` builds the `WebClient` from still-null fields
-  (`:58-78`); `SchemaRegistryClient` likewise (`:33`), whose `registerAll()` is additionally only a
-  log no-op (`:36-38`).
-- **B10 – JWT filter masks 500s as 401:** `chain.doFilter` inside the `try` whose `catch (Exception)`
-  writes a 401 (`JwtAuthenticationFilter.java:91-97`); the filter is not tied to
+  A healthy (unsealed) Vault reported "not connected"; a sealed one reported "connected".
+- **B8 – `@Value` fields read before injection:** `SecretResolver` built the `WebClient` in the
+  constructor from still-`null` `vaultUrl`/`authToken` fields (`:58-78`); `SchemaRegistryClient`
+  did the same (`:33`), and its `registerAll()` was only a log no-op (`:36-38`).
+- **B8+ (found while testing) – the Vault client could not have worked even with correct fields:**
+  1. **Jackson 3 codec vs Jackson 2 `JsonNode`.** The code did `bodyToMono(com.fasterxml.jackson
+     .databind.JsonNode.class)`. On Spring Boot 4 the WebFlux codecs are Jackson 3
+     (`tools.jackson`), which cannot construct the Jackson 2 `JsonNode` → every call failed with
+     `Type definition error: [simple type, class com.fasterxml.jackson.databind.JsonNode]`.
+  2. **`%2F` in the Vault path.** `.uri("/{path}", pathPrefix + "/" + secretPath)` encoded the
+     slashes of the URI *variable*, so Vault was asked for
+     `/secret%2Fdata%2Fagent-platform%2Fdb` instead of `/secret/data/agent-platform/db`.
+- **B10 – JWT filter masks 500s as 401:** `chain.doFilter` sat inside the `try` whose `catch
+  (Exception)` wrote a 401 (`JwtAuthenticationFilter.java:91-97`), so any downstream exception was
+  rewritten as "unauthorized". The filter also ran (and rejected bad tokens) regardless of
   `app.security.enabled`.
-- **B13 – GDPR dummies:** `deletePersonalData`/`anonymizePersonalData` report success but delete
-  nothing (`GdprController.java:87-113,121-136`; `// TODO` `:105`).
-- **B14 – Slack HITL unauthenticated:** `HitlPortalController.slackCallback` (`:240-282`) checks no
-  signing secret.
-- **C3 – UI secret in `localStorage`:** `tenant.interceptor.ts:8-9`, `pages/settings.ts:64-65`.
+- **B13 – GDPR dummies:** `deletePersonalData`/`anonymizePersonalData` returned `200` with a success
+  message but deleted/anonymised nothing (`GdprController.java`).
+- **B14 – Slack HITL unauthenticated:** `HitlPortalController.slackCallback` verified no Slack
+  signing secret, so anyone could approve/reject HITL tickets.
+- **C3 – UI secret in `localStorage`:** `tenant.interceptor.ts:8-9`, `pages/settings.ts:64-65` stored
+  the API key in `localStorage`, readable by any XSS.
 
 ## 1. Tests first (Red)
 
-| # | Test (new/extended) | Expectation |
-|---|---------------------|-------------|
-| 1 | `SecretResolverTest#isConnected_falseWhenSealed` | sealed → `false` |
-| 2 | `SecretResolverTest#isConnected_trueWhenInitializedAndUnsealed` | initialized, unsealed → `true` |
-| 3 | `SecretResolverTest#webClientUsesConfiguredUrlAndToken` | constructed with correct baseUrl + header |
-| 4 | `SchemaRegistryClientTest#registerAll_actuallyRegisters_orRemoved` | either real registration or class removed |
-| 5 | `JwtAuthenticationFilterTest#downstreamException_isNotConvertedTo401` | controller throws → 500, not 401 |
-| 6 | `JwtAuthenticationFilterTest#disabledSecurity_allowsRequest` | `app.security.enabled=false` → no 401 |
-| 7 | `HitlPortalControllerTest#slackCallback_rejectsMissingSignature` | missing/invalid signature → 401/403 |
-| 8 | `HitlPortalControllerTest#slackCallback_acceptsValidSignature` | valid → processed |
-| 9 | `GdprControllerTest#delete_actuallyRemoves_orReturns501` | real deletion **or** honest stub |
-| 10 | Frontend: `tenant.interceptor.spec.ts#doesNotPersistApiKeyToLocalStorage` | key not in `localStorage` |
+| # | Test | Expectation |
+|---|------|-------------|
+| 1 | `SecretResolverTest#isConnectedFalseWhenSealed` | sealed → `false` (was `true`) |
+| 2 | `SecretResolverTest#isConnectedTrueWhenInitializedAndUnsealed` | initialized + unsealed → `true` (was `false`) |
+| 3 | `SecretResolverTest#webClientUsesConfiguredUrlAndToken` | request URL = configured base URL, `X-Vault-Token` header set (was `null` base URL) |
+| 4 | `SchemaRegistryClientTest#listSubjectsUsesConfiguredBaseUrl` | `registerAll()` removed; the real `listSubjects()` uses the configured base URL |
+| 5 | `JwtAuthenticationFilterTest#downstreamExceptionIsNotConvertedTo401` | controller throws → exception propagates, **not** 401 |
+| 6 | `JwtAuthenticationFilterTest#disabledSecurityAllowsRequestWithBadToken` | `app.security.enabled=false` + bad token → no 401 |
+| 7 | `HitlPortalControllerTest#missingSignatureRejected` / `#invalidSignatureRejected` | missing/invalid signature → 401, no side effect |
+| 8 | `HitlPortalControllerTest#validSignatureProcessesAction` | valid signature → ticket resolved, HITL event published |
+| 9 | `GdprControllerTest#deleteSessionIsNotImplemented` / `#deleteWorkflowIsNotImplemented` | `501 Not Implemented`, no false `200` |
+| 10 | `tenant.interceptor.spec.ts#doesNotPersistApiKeyToLocalStorage` | key absent from `localStorage`, present in request header from memory |
+
+Additional coverage added along the way:
+
+- `SecretResolverTest`: `missingKeyReturnsNull`, `resolveAllParsesKeys`,
+  `isConnectedFalseWhenNotInitialized`, `isConnectedFalseOnError`, `refreshAllClearsTheCache`.
+- `SchemaRegistryClientTest#listSubjectsHandlesError`.
+- `JwtAuthenticationFilterTest`: `enabledSecurityRejectsBadToken`, `validTokenPopulatesContext`,
+  `publicPathSkipsValidation`.
+- `SlackSignatureVerifierTest` (5): valid, wrong signature, tampered body, replay window, missing parts.
+- `GdprControllerTest`: reject paths for delete/anonymize/export.
+- `tenant.interceptor.spec.ts`: headers-from-store, no-headers-when-empty.
 
 Test locations:
-- `kafka-platform/agent-orchestrator/src/test/java/de/augmentia/agentplatform/…` (MockMvc for controllers).
-- `agentflow/agentflow-ui/src/app/core/tenant.interceptor.spec.ts` (Karma/Jest).
-
-**Acceptance (Red):** tests 1–3, 5–9 fail as described.
+- `kafka-platform/agent-orchestrator/src/test/java/de/augmentia/agentplatform/…`
+- `agentflow/agentflow-ui/src/app/core/tenant.interceptor.spec.ts` (Karma/Jasmine, ChromeHeadless).
 
 ## 2. Changes (Green)
 
-1. **`SecretResolver`:** `isConnected()` → `initialized && !sealed`; replace `@Value` fields with
-   constructor parameters (build the `WebClient` only after injection, e.g. lazily in `@PostConstruct`).
-2. **`SchemaRegistryClient`:** either implement real registration **or** remove the class + doc claims
-   (see WP13). Do not keep a "log-only" version.
-3. **`JwtAuthenticationFilter`:** authenticate inside the `try`, but keep `chain.doFilter` **outside**;
-   let downstream exceptions propagate. Only active when `app.security.enabled=true`
-   (`@ConditionalOnProperty` or an early return).
-4. **`HitlPortalController.slackCallback`:** verify the Slack signing secret
-   (`X-Slack-Signature`/`X-Slack-Request-Timestamp`, HMAC, replay window).
-5. **`GdprController`:** implement real deletion/anonymisation **or** mark the endpoints with
-   `501 Not Implemented` + a doc note. No fake 200.
-6. **`agentflow-ui`:** keep the API key/tenant only in memory (service); remove `localStorage` access
-   for secrets. If persistence is desired, document it as a deliberate dev limitation.
+1. **`SecretResolver`:** `isConnected()` → `initialized && !sealed`; all `@Value` fields replaced by
+   constructor parameters so the `WebClient` (base URL + `X-Vault-Token`) is built **after**
+   injection. The token now defaults to empty (`${app.vault.token:${VAULT_TOKEN:}}`) so a missing
+   token no longer aborts startup. Additionally: the Vault path is now passed **literally** (URI
+   variables encoded the slashes to `%2F`), and the response is read as text and parsed with an
+   explicit Jackson 2 `ObjectMapper` (the WebFlux codecs are Jackson 3 and cannot build a Jackson 2
+   `JsonNode`).
+2. **`SchemaRegistryClient`:** constructor injection; the log-only `registerAll()` and its dead
+   `compatibility-mode`/`auto-register` knobs were removed. Only the real `listSubjects()` remains
+   (full class removal deferred to WP13).
+3. **`JwtAuthenticationFilter`:** `chain.doFilter` moved **outside** the `try`, so downstream
+   exceptions propagate. Added `app.security.enabled` (default `false`): when disabled, an invalid
+   token is ignored (no 401) and the request continues; when enabled, an invalid token is a 401.
+   The secret property gained an empty default. `TenantContext.clear()` on ignored tokens.
+4. **`SlackSignatureVerifier` (new):** HMAC-SHA256 over `v0:{timestamp}:{body}`, constant-time
+   compare, 5-minute replay window, fail-closed on any missing part. `HitlPortalController
+   .slackCallback` now takes the **raw** body plus `X-Slack-Signature`/`X-Slack-Request-Timestamp`
+   and rejects with 401 before any side effect. The Slack path is `permitAll()` in `SecurityConfig`
+   (it authenticates via signature, and cannot present a JWT).
+5. **`GdprController`:** delete/anonymise now return `501 Not Implemented` with a clear body; the
+   fake `200` paths are gone. `workflowId` was added as an optional delete identifier to match the
+   documented API.
+6. **`agentflow-ui`:** new in-memory `ClientHeaderStore` (signals) replacing `localStorage` in
+   `tenant.interceptor.ts` and `pages/settings.ts`. Values live only for the session; the UI text
+   now says so.
 
 ## 3. Verification
 
 ```bash
-cd kafka-platform && mvn -pl agent-orchestrator test
-cd agentflow && (cd agentflow-ui && npm test)
+mvn -pl kafka-platform/agent-orchestrator -am test        # backend
+cd agentflow/agentflow-ui && npx ng test --watch=false --browsers=ChromeHeadless   # frontend
 ```
-- Manual: start the Vault mock, test `isConnected` against sealed/unsealed.
-- Manual: request with a valid JWT, controller throws → status 500.
+
+- Backend: **BUILD SUCCESS** — `agent-common` + `agent-orchestrator`; module total **249 tests,
+  0 failures, 4 skipped**. New suites: `SecretResolverTest` 8, `JwtAuthenticationFilterTest` 5,
+  `SlackSignatureVerifierTest` 5, `HitlPortalControllerTest` 4, `GdprControllerTest` 8,
+  `SchemaRegistryClientTest` 2.
+- Frontend: **3 specs SUCCESS** (`tenant.interceptor.spec.ts`); `npx ng build` green (full app
+  type-check).
 
 ## 4. Risks / notes
 
-- Slack signature verification needs the signing secret → add config/docs.
-- GDPR deletion touches several stores (run/audit/session) → a transactional strategy is needed.
+- **Slack signature is fail-closed:** with no `app.hitl.slack.signing-secret` configured, all Slack
+  callbacks are rejected. Operators must set the secret (add to config/docs).
+- **GDPR deletion** touches several stores (execution, checkpoints, HITL tickets, DLQ) and needs a
+  transactional strategy + FK handling; the honest `501` is deliberate. The export path is unchanged
+  (real for `workflowId`).
+- **Vault token** no longer fails startup when absent; a bad/absent token now fails at first use with
+  a clear log line instead of a null-base-URL request.
 
 ## Definition of Done
 
-- [ ] Tests 1–10 green.
-- [ ] No inverted health/status logic remains.
-- [ ] JWT filter does not mask 500s; the security toggle takes effect.
-- [ ] Slack callback signature-verified.
-- [ ] GDPR endpoints real **or** explicitly 501/documented.
-- [ ] No API key in `localStorage`.
-- [ ] Progress log maintained.
+- [x] Tests 1–10 green.
+- [x] No inverted health/status logic remains.
+- [x] JWT filter does not mask 500s; the security toggle takes effect.
+- [x] Slack callback signature-verified.
+- [x] GDPR endpoints real **or** explicitly 501/documented.
+- [x] No API key in `localStorage`.
+- [x] Progress log maintained.
 
 ## Progress log
 
 | Date | Author | Step | Result |
 |------|--------|------|--------|
-| | | 1. Tests red | |
-| | | 2. Implementation | |
-| | | 3. Verification | |
+| 2026-10-14 | @opencode | 1. Tests red | 6 new backend test classes (19 + 20 assertions), 1 frontend spec; the failing `SecretResolverTest` exposed two extra latent bugs (Jackson 3 codec vs Jackson 2 `JsonNode`, `%2F` path encoding) |
+| 2026-10-14 | @opencode | 2. Implementation | `SecretResolver`, `SchemaRegistryClient`, `JwtAuthenticationFilter`, `SlackSignatureVerifier`+`HitlPortalController`, `SecurityConfig`, `GdprController`, `application.yml`, `ClientHeaderStore`+interceptor+settings |
+| 2026-10-14 | @opencode | 3. Verification | backend `mvn -pl kafka-platform/agent-orchestrator -am test` → BUILD SUCCESS (249 tests, 0 failures); frontend `ng test` 3 SUCCESS + `ng build` green |
