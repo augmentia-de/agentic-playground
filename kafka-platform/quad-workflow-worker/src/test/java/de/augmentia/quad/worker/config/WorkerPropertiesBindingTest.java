@@ -8,6 +8,8 @@ import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.core.env.MutablePropertySources;
 import org.springframework.core.io.ClassPathResource;
 
+import java.lang.reflect.RecordComponent;
+import java.util.Arrays;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -29,7 +31,7 @@ class WorkerPropertiesBindingTest {
                 .bind("worker.quad", WorkerProperties.class)
                 .orElseGet(() -> new WorkerProperties(false, "quad-workflow-worker",
                         "agent\\.tasks\\..*", "agent.execution.results", "agent.execution.dlq",
-                        1, 1, 0L, "/tmp", Map.of(), null));
+                        1, 0L, "/tmp", Map.of(), null));
         return bound;
     }
 
@@ -70,5 +72,16 @@ class WorkerPropertiesBindingTest {
         // are asymmetric - a replayed task is served from the result cache, a skipped one fails
         // the workflow.
         assertThat(new WorkerProperties.KafkaConfig().autoOffsetReset()).isEqualTo("earliest");
+    }
+
+    @Test
+    @DisplayName("worker.quad.concurrency (unbenutzt) ist entfernt — B40")
+    void unusedConcurrencyPropertyIsGone() {
+        // The listener controls parallelism through partitions/instances, not through a container
+        // concurrency setting; the bound-but-unused property was removed. A stray
+        // `worker.quad.concurrency` in a deployment is simply ignored by the binder.
+        assertThat(Arrays.stream(WorkerProperties.class.getRecordComponents())
+                .map(RecordComponent::getName))
+                .doesNotContain("concurrency");
     }
 }

@@ -17,7 +17,7 @@ spring:
       - org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration
   
   main:
-    allow-bean-definition-overriding: true
+    allow-bean-definition-overriding: false
   
   # load the .env file (spring-dotenv)
   config:
@@ -48,7 +48,6 @@ worker:
     task-topic-pattern: ${WORKER_TASK_TOPIC_PATTERN:agent\.tasks\..*}
     result-topic: agent.execution.results
     dlq-topic: agent.execution.dlq
-    concurrency: 3
     max-concurrent-tasks: 24
     default-timeout-ms: 120000
     workspace-base: /tmp/quad-worker/workspace

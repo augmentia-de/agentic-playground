@@ -17,7 +17,13 @@ public record WorkerProperties(
     String taskTopicPattern,
     String resultTopic,
     String dlqTopic,
-    int concurrency,
+    /**
+     * Upper bound of concurrently running LLM calls (permit semaphore in
+     * {@code TaskExecutor}). Listener parallelism itself comes from partitions and
+     * instances, deliberately <em>not</em> from a container {@code concurrency} setting:
+     * a second consumer thread would fight with the batch's manual-ack success-prefix
+     * logic. The former unused {@code worker.quad.concurrency} property was removed.
+     */
     int maxConcurrentTasks,
     long defaultTimeoutMs,
     String workspaceBase,

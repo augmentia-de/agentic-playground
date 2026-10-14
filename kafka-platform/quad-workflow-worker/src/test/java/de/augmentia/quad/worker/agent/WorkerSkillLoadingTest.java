@@ -82,7 +82,7 @@ class WorkerSkillLoadingTest {
         var props = new WorkerProperties(
             true, "quad-workflow-worker", "agent\\.tasks\\..*",
             "agent.execution.results", "agent.execution.dlq",
-            10, 10, 120000, "/tmp/quad-workspace",
+            10, 120000, "/tmp/quad-workspace",
             Map.of("researcher", new WorkerProperties.AgentConfig(
                 "researcher", "simple", 0.7, 10, 4096,
                 Set.of("readFile", "writeFile"),

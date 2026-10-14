@@ -24,7 +24,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
-import jakarta.annotation.PostConstruct;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
 
@@ -45,17 +44,6 @@ import java.util.Set;
 @Configuration
 @EnableConfigurationProperties(WorkerProperties.class)
 public class QuadWorkerConfig {
-
-    // Kafka connection config loaded from Environment
-    private String bootstrapServers;
-
-    @PostConstruct
-    public void init() {
-        this.bootstrapServers = System.getenv("KAFKA_BOOTSTRAP_SERVERS");
-        if (this.bootstrapServers == null || this.bootstrapServers.isEmpty()) {
-            this.bootstrapServers = "localhost:9092";
-        }
-    }
 
     @Value("${worker.quad.group-id:quad-workflow-worker}")
     private String groupId;
@@ -370,9 +358,11 @@ public class QuadWorkerConfig {
 
     // Kafka producer for results
     @Bean
-    public Map<String, Object> producerConfig() {
+    public Map<String, Object> producerConfig(org.springframework.core.env.Environment env) {
         Map<String, Object> config = new HashMap<>();
-        config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        // Same bootstrap source as the consumer -> a worker never consumes from one cluster
+        // and produces to another. See KafkaConfig.resolveBootstrapServers.
+        config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, KafkaConfig.resolveBootstrapServers(env));
         config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         config.put(ProducerConfig.ACKS_CONFIG, "all");
@@ -398,14 +388,18 @@ public class QuadWorkerConfig {
 
     @Bean
     public WorkflowResultPublisher workflowResultProducer(Producer<String, String> producer,
-                                                          WorkerProperties props) {
-        return new WorkflowResultPublisher(producer, props.resultTopic());
+                                                          WorkerProperties props,
+                                                          org.springframework.core.env.Environment env) {
+        return new WorkflowResultPublisher(producer, props.resultTopic(),
+            env.getProperty("worker.quad.kafka.send-timeout-ms", Long.class, 30_000L));
     }
 
     @Bean
     public WorkflowDlqPublisher workflowDlqPublisher(Producer<String, String> producer,
-                                                      WorkerProperties props) {
-        return new WorkflowDlqPublisher(producer, props.dlqTopic());
+                                                      WorkerProperties props,
+                                                      org.springframework.core.env.Environment env) {
+        return new WorkflowDlqPublisher(producer, props.dlqTopic(),
+            env.getProperty("worker.quad.kafka.send-timeout-ms", Long.class, 30_000L));
     }
 
     @Bean
@@ -423,14 +417,6 @@ public class QuadWorkerConfig {
     }
 
     /**
-     * WorkerMetrics for observability (Prometheus).
-     */
-    @Bean
-    public WorkerMetrics workerMetrics(io.micrometer.core.instrument.MeterRegistry registry) {
-        return new WorkerMetrics(registry);
-    }
-
-    /**
      * Starts a validation of the LLM API settings at application start.
      * If API keys are missing -> publish an error event to the Kafka DLQ.
      */
@@ -445,12 +431,7 @@ public class QuadWorkerConfig {
         return validator;
     }
 
-    /**
-     * Graceful shutdown hook for clean shutdown.
-     */
-    @Bean
-    public de.augmentia.quad.worker.lifecycle.GracefulShutdown gracefulShutdown(
-            WorkerMetrics metrics) {
-        return new de.augmentia.quad.worker.lifecycle.GracefulShutdown(metrics);
-    }
+    // NOTE: WorkerMetrics and GracefulShutdown are @Component-scanned, so they must NOT also
+    // be declared as @Bean here — the duplicate definitions only worked because of
+    // spring.main.allow-bean-definition-overriding, which is now disabled (see application.yml).
 }

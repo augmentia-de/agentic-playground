@@ -93,7 +93,6 @@ public final class WorkerTestFixtures {
             "agent\\.tasks\\..*",
             "agent.execution.results",
             "agent.execution.dlq",
-            3,
             8,
             120_000L,
             "/tmp/quad-worker/workspace-e2e",

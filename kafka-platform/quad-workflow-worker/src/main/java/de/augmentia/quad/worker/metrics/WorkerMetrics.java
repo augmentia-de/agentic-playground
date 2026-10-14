@@ -8,6 +8,13 @@ import org.springframework.stereotype.Component;
 /**
  * Worker metrics for observability and monitoring.
  *
+ * <p>Task outcomes are reported on a <em>single</em> counter name,
+ * {@code quad_worker_tasks_completed_total}, distinguished by the {@code status} tag
+ * ({@code completed}, {@code failed}, …). There is deliberately no separate
+ * {@code quad_worker_tasks_failed_total}: the class used to pre-register the failure series on
+ * {@code …completed_total{status="failed"}} while the failure path incremented a differently named
+ * counter, so dashboards watching the registered series saw a constant zero.
+ *
  * Metrics:
  * - quad_worker_tasks_received_total
  * - quad_worker_tasks_completed_total{agentType,status}
@@ -18,12 +25,13 @@ import org.springframework.stereotype.Component;
 @Component
 public class WorkerMetrics {
 
+    /** Single outcome counter; failures and successes differ only by the {@code status} tag. */
+    static final String TASKS_COMPLETED = "quad_worker_tasks_completed_total";
+
     private final MeterRegistry registry;
 
-    // Counters
+    // Counters (outcome counters are created per tag set on demand)
     public final Counter tasksReceived;
-    public final Counter tasksCompleted;
-    public final Counter tasksFailed;
     public final Counter dlqSent;
     public final Counter toolErrors;
 
@@ -33,19 +41,9 @@ public class WorkerMetrics {
 
     public WorkerMetrics(MeterRegistry registry) {
         this.registry = registry;
-        
+
         this.tasksReceived = Counter.builder("quad_worker_tasks_received_total")
             .description("Total tasks received from Kafka")
-            .register(registry);
-
-        this.tasksCompleted = Counter.builder("quad_worker_tasks_completed_total")
-            .description("Total tasks completed successfully")
-            .tag("status", "completed")
-            .register(registry);
-
-        this.tasksFailed = Counter.builder("quad_worker_tasks_completed_total")
-            .description("Total tasks that failed")
-            .tag("status", "failed")
             .register(registry);
 
         this.dlqSent = Counter.builder("quad_worker_dlq_total")
@@ -73,22 +71,29 @@ public class WorkerMetrics {
     }
 
     /**
-     * Increments the counter for successful tasks.
+     * Increments the outcome counter for a successfully processed task.
+     *
+     * @param agentType the agent type (tag {@code agentType})
+     * @param status    the outcome status (tag {@code status}), e.g. {@code completed}
      */
     public void recordTaskCompleted(String agentType, String status) {
-        Counter.builder("quad_worker_tasks_completed_total")
-            .tag("agentType", agentType != null ? agentType : "unknown")
-            .tag("status", status != null ? status : "completed")
+        outcomeCounter(agentType, status != null ? status : "completed")
             .register(registry)
             .increment();
     }
 
     /**
-     * Increments the counter for failed tasks.
+     * Increments the outcome counter for a task that produced a failure result.
+     *
+     * <p>Uses the same series as {@link #recordTaskCompleted} with {@code status="failed"} so that
+     * a single query over {@code quad_worker_tasks_completed_total} shows both outcomes. The
+     * original failure reason is kept as the {@code errorClass} tag.
+     *
+     * @param agentType the agent type (tag {@code agentType})
+     * @param errorClass the failure reason/status (tag {@code errorClass})
      */
     public void recordTaskFailed(String agentType, String errorClass) {
-        Counter.builder("quad_worker_tasks_failed_total")
-            .tag("agentType", agentType != null ? agentType : "unknown")
+        outcomeCounter(agentType, "failed")
             .tag("errorClass", errorClass != null ? errorClass : "unknown")
             .register(registry)
             .increment();
@@ -112,16 +117,23 @@ public class WorkerMetrics {
     }
 
     /**
-     * Missed Task Duration mit Timer.
+     * Records a task duration with the Timer.
      */
     public void recordTaskDuration(long durationMs, String agentType, String status) {
         taskDuration.record(durationMs, java.util.concurrent.TimeUnit.MILLISECONDS);
     }
 
     /**
-     * Missed LLM Call Duration mit Timer.
+     * Records an LLM call duration with the Timer.
      */
     public void recordLlmCallDuration(long durationMs, String modelKey) {
         llmCallDuration.record(durationMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+    }
+
+    private Counter.Builder outcomeCounter(String agentType, String status) {
+        return Counter.builder(TASKS_COMPLETED)
+            .description("Total tasks by outcome")
+            .tag("agentType", agentType != null ? agentType : "unknown")
+            .tag("status", status);
     }
 }
