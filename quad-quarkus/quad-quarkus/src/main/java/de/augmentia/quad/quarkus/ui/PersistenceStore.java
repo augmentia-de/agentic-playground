@@ -61,10 +61,10 @@ public class PersistenceStore {
             ps.setDouble(6, agent.temperature);
             ps.setInt(7, agent.maxTokens);
             ps.setDouble(8, agent.topP);
-            ps.setString(9, agent.tools != null ? String.join(",", agent.tools) : "");
-            ps.setString(10, agent.guardrailsInput != null ? String.join(",", agent.guardrailsInput) : "");
-            ps.setString(11, agent.guardrailsOutput != null ? String.join(",", agent.guardrailsOutput) : "");
-            ps.setString(12, agent.hooks != null ? String.join(",", agent.hooks) : "");
+            ps.setString(9, toJsonArray(agent.tools));
+            ps.setString(10, toJsonArray(agent.guardrailsInput));
+            ps.setString(11, toJsonArray(agent.guardrailsOutput));
+            ps.setString(12, toJsonArray(agent.hooks));
             ps.setString(13, agent.agentType != null && !agent.agentType.isBlank() ? agent.agentType : "ua");
             ps.setString(14, agent.systemPrompt);
             ps.setString(15, agent.userMessageTemplate);
@@ -100,29 +100,33 @@ public class PersistenceStore {
              Statement s = c.createStatement();
              ResultSet rs = s.executeQuery(sql)) {
             while (rs.next()) {
-                ApiDtos.AgentDefinition agent = new ApiDtos.AgentDefinition(
-                    rs.getString("id"),
-                    rs.getString("name"),
-                    rs.getString("description"),
-                    rs.getString("category"),
-                    rs.getString("model"),
-                    rs.getDouble("temperature"),
-                    rs.getInt("max_tokens"),
-                    rs.getDouble("top_p"),
-                    splitArr(rs.getString("tools")),
-                    splitArr(rs.getString("guardrails_input")),
-                    splitArr(rs.getString("guardrails_output")),
-                    rs.getString("agent_type") != null ? rs.getString("agent_type") : "ua",
-                    rs.getString("system_prompt"),
-                    rs.getString("user_message_template"),
-                    rs.getBoolean("json_output"),
-                    rs.getString("chat_parameters"),
-                    rs.getBoolean("active"),
-                    splitArr(rs.getString("hooks"))
-                );
-                agent.jsonOutputSchema = rs.getString("json_output_schema");
-                agent.timeoutSeconds = rs.getObject("timeout_seconds") != null ? rs.getInt("timeout_seconds") : null;
-                result.put(agent.id, agent);
+                try {
+                    ApiDtos.AgentDefinition agent = new ApiDtos.AgentDefinition(
+                        rs.getString("id"),
+                        rs.getString("name"),
+                        rs.getString("description"),
+                        rs.getString("category"),
+                        rs.getString("model"),
+                        rs.getDouble("temperature"),
+                        rs.getInt("max_tokens"),
+                        rs.getDouble("top_p"),
+                        splitArr(rs.getString("tools")),
+                        splitArr(rs.getString("guardrails_input")),
+                        splitArr(rs.getString("guardrails_output")),
+                        rs.getString("agent_type") != null ? rs.getString("agent_type") : "ua",
+                        rs.getString("system_prompt"),
+                        rs.getString("user_message_template"),
+                        rs.getBoolean("json_output"),
+                        rs.getString("chat_parameters"),
+                        rs.getBoolean("active"),
+                        splitArr(rs.getString("hooks"))
+                    );
+                    agent.jsonOutputSchema = rs.getString("json_output_schema");
+                    agent.timeoutSeconds = rs.getObject("timeout_seconds") != null ? rs.getInt("timeout_seconds") : null;
+                    result.put(agent.id, agent);
+                } catch (Exception rowErr) {
+                    log.warnf(rowErr, "loadAllAgents: eine Zeile uebersprungen");
+                }
             }
         } catch (SQLException e) {
             log.warnf(e, "loadAllAgents fehlgeschlagen");
@@ -172,18 +176,22 @@ public class PersistenceStore {
              Statement s = c.createStatement();
              ResultSet rs = s.executeQuery(sql)) {
             while (rs.next()) {
-                List<Map<String, Object>> nodes = MAPPER.readValue(rs.getString("nodes"),
-                    new TypeReference<List<Map<String, Object>>>() {});
-                List<Map<String, Object>> edges = MAPPER.readValue(rs.getString("edges"),
-                    new TypeReference<List<Map<String, Object>>>() {});
-                String cachePrefix = rs.getString("cache_prefix");
-                boolean prefixCaching = rs.getBoolean("prefix_caching");
-                ApiDtos.WorkflowDef wf = new ApiDtos.WorkflowDef(
-                    rs.getString("id"), rs.getString("name"), nodes, edges,
-                    rs.getString("initial_task"),
-                    cachePrefix, prefixCaching ? Boolean.TRUE : Boolean.FALSE,
-                    rs.getString("created_at"), rs.getString("updated_at"));
-                result.put(wf.id, wf);
+                try {
+                    List<Map<String, Object>> nodes = MAPPER.readValue(rs.getString("nodes"),
+                        new TypeReference<List<Map<String, Object>>>() {});
+                    List<Map<String, Object>> edges = MAPPER.readValue(rs.getString("edges"),
+                        new TypeReference<List<Map<String, Object>>>() {});
+                    String cachePrefix = rs.getString("cache_prefix");
+                    boolean prefixCaching = rs.getBoolean("prefix_caching");
+                    ApiDtos.WorkflowDef wf = new ApiDtos.WorkflowDef(
+                        rs.getString("id"), rs.getString("name"), nodes, edges,
+                        rs.getString("initial_task"),
+                        cachePrefix, prefixCaching ? Boolean.TRUE : Boolean.FALSE,
+                        rs.getString("created_at"), rs.getString("updated_at"));
+                    result.put(wf.id, wf);
+                } catch (Exception rowErr) {
+                    log.warnf(rowErr, "loadAllWorkflows: eine Zeile uebersprungen");
+                }
             }
         } catch (Exception e) {
             log.warnf(e, "loadAllWorkflows fehlgeschlagen");
@@ -305,8 +313,29 @@ public class PersistenceStore {
 
     // ── Helpers ─────────────────────────────────────────────
 
-    private static String[] splitArr(String csv) {
-        if (csv == null || csv.isBlank()) return new String[0];
-        return Arrays.stream(csv.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toArray(String[]::new);
+    private static String[] splitArr(String stored) {
+        if (stored == null || stored.isBlank()) return new String[0];
+        String s = stored.trim();
+        if (s.startsWith("[")) {
+            try {
+                List<String> list = MAPPER.readValue(s, new TypeReference<List<String>>() {});
+                return list.toArray(new String[0]);
+            } catch (Exception ignored) {
+                // fall through to legacy CSV
+            }
+        }
+        return Arrays.stream(s.split(",")).map(String::trim).filter(x -> !x.isEmpty()).toArray(String[]::new);
+    }
+
+    private static String toJsonArray(Object arr) {
+        if (arr == null) return "";
+        java.util.List<String> list = new java.util.ArrayList<>();
+        if (arr instanceof String[] sa) for (String x : sa) list.add(x);
+        else if (arr instanceof java.util.Collection<?> c) for (Object x : c) list.add(String.valueOf(x));
+        try {
+            return MAPPER.writeValueAsString(list);
+        } catch (Exception e) {
+            return String.join(",", list);
+        }
     }
 }

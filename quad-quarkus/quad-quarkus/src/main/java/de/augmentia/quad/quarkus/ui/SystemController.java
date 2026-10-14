@@ -157,12 +157,12 @@ public class SystemController {
     @GET @Path("/metrics")
     public Response getMetrics() {
         long total = 2000L + (state.metricsValue() * 150);
-        return Response.ok(Map.of("prompt", total / 2, "completion", total / 3, "total", total)).build();
+        return Response.ok(Map.of("prompt", total / 2, "completion", total / 3, "total", total, "stub", true)).build();
     }
 
     @GET @Path("/metrics/errors")
     public Response getErrorMetrics() {
-        return Response.ok(Map.of("toolCalls", 5, "timeouts", 2, "guardrails", 1)).build();
+        return Response.ok(Map.of("toolCalls", 5, "timeouts", 2, "guardrails", 1, "stub", true)).build();
     }
 
     // ─── Runs (unified filter view, same data as the UI) ──────
@@ -274,21 +274,39 @@ public class SystemController {
         return new ApiDtos.StepView(stepId, kind, status, durMs, eventType, ts);
     }
 
-    private static String extract(String payload, String key) {
+    static String extract(String payload, String key) {
         return extract(payload, key, null);
     }
 
-    private static String extract(String payload, String key, String def) {
-        String marker = "\"" + key + "\":";
-        int idx = payload.indexOf(marker);
-        if (idx < 0) return def;
-        int start = idx + marker.length();
-        int end = payload.indexOf(',', start);
-        if (end < 0) end = payload.indexOf('}', start);
-        if (end < 0) end = payload.length();
-        String val = payload.substring(start, end).trim();
-        val = val.replaceAll("^\"|\"$", "");
-        return val.isEmpty() ? def : val;
+    static String extract(String payload, String key, String def) {
+        if (payload == null || key == null || key.isBlank()) return def;
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper m = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode root = m.readTree(payload);
+            com.fasterxml.jackson.databind.JsonNode node = root;
+            // support dotted path
+            node = root;
+            for (String part : key.split("\\.")) {
+                if (node == null || node.isMissingNode()) { node = null; break; }
+                node = node.get(part);
+            }
+            if (node == null || node.isMissingNode() || node.isNull()) return def;
+            String val = node.isTextual() ? node.asText() : node.toString();
+            if (val == null || val.trim().isEmpty() || "null".equals(val)) return def;
+            return val;
+        } catch (Exception ignored) {
+            // Fallback for non-JSON/plain text payloads
+            String marker = "\"" + key + "\":";
+            int idx = payload.indexOf(marker);
+            if (idx < 0) return def;
+            int start = idx + marker.length();
+            int end = payload.indexOf(',', start);
+            if (end < 0) end = payload.indexOf('}', start);
+            if (end < 0) end = payload.length();
+            String val = payload.substring(start, end).trim();
+            val = val.replaceAll("^\"|\"$", "");
+            return val.isEmpty() ? def : val;
+        }
     }
 
     private static boolean matchesKind(String runKind, String kind) {

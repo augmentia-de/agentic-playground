@@ -23,8 +23,8 @@ public class JournalService {
 
     private static final Logger log = Logger.getLogger(JournalService.class);
 
-    @ConfigProperty(name = "quad.journal.path", defaultValue = "${QUAD_JOURNAL_PATH:logs/journal.jsonl}")
-    String journalPath;
+    @ConfigProperty(name = "quad.journal.path", defaultValue = "logs/journal.jsonl")
+    String journalPathConfigured;
 
     private final ObjectMapper mapper = new ObjectMapper();
     private volatile JournalExporter exporter;
@@ -37,7 +37,7 @@ public class JournalService {
             log.infof("Journal enabled: %s", path().toAbsolutePath());
         } catch (Exception e) {
             exporter = null;
-            log.warnf(e, "Journal could not be opened (path %s) — export disabled", journalPath);
+            log.warnf(e, "Journal could not be opened (path %s) — export disabled", path());
         }
     }
 
@@ -49,7 +49,13 @@ public class JournalService {
     }
 
     public Path path() {
-        return Path.of(journalPath);
+        String jp = journalPathConfigured;
+        String env = System.getenv("QUAD_JOURNAL_PATH");
+        if (env != null && !env.isBlank()) jp = env;
+        String prop = System.getProperty("quad.journal.path");
+        if (prop != null && !prop.isBlank()) jp = prop;
+        if (jp == null || jp.isBlank() || jp.contains("${")) jp = "logs/journal.jsonl";
+        return Path.of(jp);
     }
 
     /** Returns the exporter for plugging into agent event publishers */

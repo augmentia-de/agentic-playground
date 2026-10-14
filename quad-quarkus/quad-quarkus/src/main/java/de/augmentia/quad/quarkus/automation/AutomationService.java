@@ -171,7 +171,7 @@ public class AutomationService {
         return null;
     }
 
-    private String lastAssistantText(String sessionId) { return "[session-" + sessionId + " transcript]"; }
+    private String lastAssistantText(String sessionId) { return ""; }
 
     private String scheduledPrompt(ScheduledTask task) {
         return "Scheduled run — " + task.getTitle() + "\n\nThis automation is due now: carry out the task below immediately.\n\n"
