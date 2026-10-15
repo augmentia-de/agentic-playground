@@ -7,7 +7,7 @@ worker itself runs in mock mode, because without an LLM key nothing would run de
 ## Quickstart
 
 ```bash
-# alles: Stack hochfahren, 58 Tests, Stack wieder runter
+# alles: Stack hochfahren, alle Tests, Stack wieder runter
 ./scripts/run-integration-tests.sh e2e
 
 # nur L0+L1+L2 (Broker + Orchestrator genügen)
@@ -20,7 +20,8 @@ mvn -o test -Pe2e
 ```
 
 The runner sets the bridge's `--quarkus.base-url` to the quad port. Without that, the
-proxy path of the Unified API fails with 502 — see [Finding 3](#finding-3).
+proxy path of the Unified API fails with 502 — see
+[configuration pitfalls](#configuration-pitfalls).
 
 ### Prerequisites
 
@@ -50,9 +51,10 @@ Four layers. Each builds on the previous one and checks a different class of err
 | **L2** | `l2kafka/KafkaContractTest` | + Broker | Topics against specification, intake/task/result events, message flow |
 | **L3** | `l3e2e/PlatformEndToEndTest` | + Worker | real runs: end, HITL gate, approval, cancellation, task and result events |
 | **L3** | `l3e2e/CrossPlatformWorkflowTest` | + quad | quad definition → bridge → kafka execution, both backend paths |
+| **Sys** | `syscapability/*Systemtest` | + Worker | capability questions: concurrency, failures, load, security, expressiveness |
 
-If a dependency is missing, the layer skips via `assumeTrue` — the build stays green and
-says what was missing. L0 always runs.
+If a dependency is missing, the layer skips via AssertJ's `assumeThat` (centralised in
+`support/Stack`) — the build stays green and says what was missing. L0 always runs.
 
 ## Profiles
 
@@ -80,23 +82,35 @@ therefore starts it itself instead of relying on that.
 
 ## Current Status
 
-```
-L0  PlatformContractTest        18 Tests   green
-L1  OrchestratorApiTest         14 Tests   green
-L2  KafkaContractTest           11 Tests   green, 1 @Disabled (Finding 1)
-L3  PlatformEndToEndTest         8 Tests   green
-L3  CrossPlatformWorkflowTest    7 Tests   green, 1 @Disabled (Finding 2)
-──────────────────────────────────────────────────────────
-    58 Tests, 0 failures, 2 documented findings
-```
+<!-- test-counts:start -->
+| Layer | Test class | @Test | @Disabled |
+|-------|------------|------:|----------:|
+| L0 Contract | `de/augmentia/it/l0contract/PlatformContractTest.java` | 18 | 0 |
+| L1 API | `de/augmentia/it/l1api/OrchestratorApiTest.java` | 14 | 0 |
+| L2 Kafka | `de/augmentia/it/l2kafka/KafkaContractTest.java` | 11 | 1 |
+| L3 E2E | `de/augmentia/it/l3e2e/CrossPlatformWorkflowTest.java` | 7 | 1 |
+| L3 E2E | `de/augmentia/it/l3e2e/PlatformEndToEndTest.java` | 8 | 0 |
+| Syscapability | `de/augmentia/it/syscapability/AusdrucksfaehigkeitSystemtest.java` | 9 | 0 |
+| Syscapability | `de/augmentia/it/syscapability/FaehigkeitenSystemtest.java` | 8 | 0 |
+| Syscapability | `de/augmentia/it/syscapability/LastSystemtest.java` | 4 | 0 |
+| Syscapability | `de/augmentia/it/syscapability/NebenlaeufigkeitSystemtest.java` | 9 | 1 |
+| Syscapability | `de/augmentia/it/syscapability/SicherheitSystemtest.java` | 8 | 0 |
+| Syscapability | `de/augmentia/it/syscapability/StoerfaelleSystemtest.java` | 8 | 0 |
+| **Total** |  | **104** | **3** |
+<!-- test-counts:end -->
+
+**104 tests, 3 `@Disabled` findings.** The table is generated from the sources by
+`./scripts/count-tests.sh`; `./scripts/count-tests.sh --check` fails when README and code
+drift apart. It used to be maintained by hand and named 58 tests / 2 findings.
+L1–L3 and Syscapability each skip when the environment is not up (see Profiles).
 
 ---
 
 # Findings
 
-Two real bugs in the production code. Both are formulated as a `@Disabled` test — the assertion
-is the correct expectation and becomes active as soon as the bug is fixed. For each, there is also
-a green test that records the current state: the finding is thus not only noted,
+Three real bugs in the production code. All three are formulated as a `@Disabled` test — the
+assertion is the correct expectation and becomes active as soon as the bug is fixed. For each,
+there is also a green test that records the current state: the finding is thus not only noted,
 but measurable. As soon as the behavior changes, the green as-is test fails **first** and
 shows the change.
 
@@ -163,6 +177,24 @@ rejected on creation, or at the latest on start. Anyone who checks for `complete
 success gets a false yes here.
 
 Tests: `quadRejectsEmptyWorkflow` (`@Disabled`), `emptyWorkflowRunsAndReportsCompleted`.
+
+## Finding 3 — idempotency under contention returns HTTP 500
+
+`WorkflowStartService.start` is `@Transactional` and catches the `DuplicateKeyException` from
+`executions.create` in order to resolve the existing run in the same `catch`. In PostgreSQL a
+constraint violation aborts the transaction (SQLSTATE `25P02`, *current transaction is
+aborted*), so every further statement fails — the resolution in the `catch` can never succeed,
+and the caller gets HTTP 500 instead of the existing run's id.
+
+The path is reachable as soon as two starts with the same key arrive at the same time.
+`StartIdempotencyGuard.reserve` already handles that race before the insert, which makes the
+`catch` legacy from before the guard — and unreachable in the intended flow.
+
+**Fix direction:** a separate transaction (`REQUIRES_NEW`) for the lookup, or drop the legacy
+`catch` entirely.
+
+Tests: `idempotenzUnterLastGibtKeinenDbFehler` (`@Disabled`), `idempotenzBeiNacheinander`,
+`nachGleichstandGehtEsWeiter` (green — record that the ordered path keeps working).
 
 ---
 

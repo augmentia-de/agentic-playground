@@ -34,7 +34,7 @@ Every WP follows the same flow:
 | [WP12](WP12-frontend-quad-ui-agentflow-ui.md) | Frontend: quad-ui & agentflow-ui | Medium | quad-ui, agentflow-ui | – | done |
 | [WP13](WP13-remove-dead-code.md) | Remove dead code | Medium | all | after WP05–WP11 | done |
 | [WP14](WP14-docs-consolidation-ci.md) | Consolidate docs & CI | Medium | kafka-platform, root | – | done |
-| [WP15](WP15-integration-tests-hardening.md) | Harden integration tests | Medium | integration-tests | – | open |
+| [WP15](WP15-integration-tests-hardening.md) | Harden integration tests | Medium | integration-tests | – | done |
 
 **Status legend:** `open` · `in progress` · `blocked` · `test red` · `done`
 
