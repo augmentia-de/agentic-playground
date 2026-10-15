@@ -1,0 +1,166 @@
+name: CI
+
+# Monorepo-wide CI for the Agentic Platform.
+#
+# The root reactor aggregates three independent Maven reactors
+# (quad-quarkus, kafka-platform, agentflow); integration-tests is a separate
+# reactor and the two front-ends (quad-ui, agentflow-ui) build with npm.
+#
+# Cross-reactor dependencies (agentflow and kafka-platform/quad-workflow-worker
+# depend on quad-core) are resolved from the reactor via `-am`, so no manual
+# `mvn install` ordering is required.
+#
+# The kafka-platform suite starts real Postgres/Kafka via Testcontainers, hence
+# it needs the Docker socket (preinstalled on ubuntu-latest).
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quad-quarkus:
+    name: quad-quarkus (Quarkus, Java 21)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Build & test reactor
+        run: mvn -B -ntp -f quad-quarkus/pom.xml test
+      - name: Summarise test results
+        if: always()
+        run: .github/scripts/summarise-tests.sh
+
+  kafka-platform:
+    name: kafka-platform (Spring Boot, Java 21)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      # Kafka tests start real Postgres/Kafka via Testcontainers.
+      - name: Docker available
+        run: docker info > /dev/null && docker --version
+      - name: Build & test reactor
+        run: >
+          mvn -B -ntp verify
+          -pl kafka-platform/agent-common,kafka-platform/agent-orchestrator,kafka-platform/agent-worker,kafka-platform/quad-workflow-worker
+          -am
+      - name: Summarise test results
+        if: always()
+        run: .github/scripts/summarise-tests.sh
+
+  agentflow:
+    name: agentflow (Spring AI + Temporal, Java 21)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Build & test reactor
+        run: >
+          mvn -B -ntp test
+          -pl agentflow/agentflow-core,agentflow/agentflow-examples,agentflow/agentflow-app
+          -am
+      - name: Summarise test results
+        if: always()
+        run: .github/scripts/summarise-tests.sh
+
+  quad-ui:
+    name: quad-ui (React)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: quad-quarkus/quad-ui/package-lock.json
+      - name: Install
+        working-directory: quad-quarkus/quad-ui
+        run: npm ci
+      - name: Lint
+        working-directory: quad-quarkus/quad-ui
+        run: npm run lint
+      - name: Type-check
+        working-directory: quad-quarkus/quad-ui
+        run: npm run typecheck
+      - name: Test
+        working-directory: quad-quarkus/quad-ui
+        run: npm test
+      - name: Build
+        working-directory: quad-quarkus/quad-ui
+        run: npm run build
+
+  agentflow-ui:
+    name: agentflow-ui (Angular)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: agentflow/agentflow-ui/package-lock.json
+      - name: Install
+        working-directory: agentflow/agentflow-ui
+        run: npm ci
+      - name: Test
+        working-directory: agentflow/agentflow-ui
+        run: npx ng test --watch=false --browsers=ChromeHeadless
+      - name: Build
+        working-directory: agentflow/agentflow-ui
+        run: npm run build
+
+  # The standalone integration-tests reactor builds on cross-reactor artifacts,
+  # so its dependencies are installed first. By default it runs only the L0
+  # contract tests; environment-dependent groups are excluded unless a profile
+  # (integration / e2e) is requested.
+  integration-tests:
+    name: integration-tests (L0 contract)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Install cross-reactor dependencies
+        run: >
+          mvn -B -ntp install -DskipTests
+          -pl quad-quarkus/quad-core,quad-quarkus/quad-contract,kafka-platform/agent-common
+          -am
+      - name: Test
+        run: mvn -B -ntp -f integration-tests/pom.xml test
+      - name: Summarise test results
+        if: always()
+        run: .github/scripts/summarise-tests.sh
