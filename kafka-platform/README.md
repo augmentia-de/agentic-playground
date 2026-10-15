@@ -28,8 +28,9 @@ Important: this repository pulls in **no LLM/Spring AI library**. `agent-common`
 mvn verify
 ```
 
-That runs the default reactor: 359 tests across the four modules, 5 of which are
-key-gated and skipped unless `OPENAI_API_KEY` is set.
+That runs the default reactor across the four modules. The exact test counts are
+reported by CI (`.github/workflows/ci.yml` job summary), not hard-coded here; 5 tests
+are key-gated and skipped unless `OPENAI_API_KEY` is set.
 
 End-to-end tests live in `../integration-tests`, a separate project — they drive the
 two Boot applications from the outside and need their fat jars, which are unusable as
@@ -236,7 +237,7 @@ Fixed along the way — the platform **did not start before**:
 
 | Finding | Effect |
 |---|---|
-| `@SpringBootApplication` scans only `com.agentplatform.orchestrator` | Startup abort: `EmailInitiatorStore` (package `com.agentplatform.bridge`) was never registered as a bean |
+| `@SpringBootApplication` scans only `de.augmentia.agentplatform.orchestrator` | Startup abort: `EmailInitiatorStore` (package `de.augmentia.agentplatform.bridge`) was never registered as a bean |
 | `KafkaProducer` required a Jackson 2 `ObjectMapper` | Startup abort (the project uses Jackson 3) |
 | `ProducerInterceptor` hard-required a `Tracer` | Startup abort; tracing is now optional |
 | `interceptor.classes` pointed to a non-existent class | **every** Kafka publish failed |
@@ -270,7 +271,7 @@ of the respective modules.
 
 ## Not yet production-complete
 
-- Confluent Schema Registry serialization (so far only JSON schema registration runs)
+- Confluent Schema Registry serialization (no production schema-registry client is wired up)
 - JWT/OIDC API security
 - Vault secrets and Kafka TLS/SASL
 - ~~multi-instance orchestrator lease~~ — the lease is wired up (`SweepReaperService`), covered by `SweepReaperLeaseTest`

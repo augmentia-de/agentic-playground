@@ -1,11 +1,15 @@
 # Implementation Plan: Bridge Layer, Observability & Email Input for kafka-platform
 
 **Created:** 2026-09-17  
-**Last modified:** 2026-09-18  
+**Last modified:** 2026-10-15  
 **Status:** Phases 1–4 implemented + frontend integration  
 **Sources:** NEW.md §3–§5, UI.md §2–§5  
 
----
+> **Historical implementation log.** The phases below record what was built at the time.
+> WP13 (dead-code removal) later deleted the unreachable opt-in components
+> `PrefixCache`, `SlackNotifier`, `PagerDutyAlertSender` and `VaultConfig`, and moved
+> `SchemaRegistryClient` to test scope; those entries are marked accordingly.
+> Test counts are no longer stated here — CI (`.github/workflows/ci.yml`) reports them.
 
 ## 1. Overview
 
@@ -15,17 +19,17 @@ This document documents the implementation of the integration bridge between the
 
 | Phase | Module | Package | File(s) | Status |
 |-------|-------|---------|-----------|--------|
-| P0 | Workflow Bridge | `com.agentplatform.bridge` | `WorkflowDefinitionBridge.java`, `QuarkusWorkflow.java`, `QuarkusNode.java`, `QuarkusEdge.java` | ✅ |
-| P0 | Agent Bridge | `com.agentplatform.bridge` | `AgentDefinitionBridge.java` (incl. WorkerAgentConfig, QuarkusAgent) | ✅ |
-| P1 | Prometheus Metrics | `com.agentplatform.orchestrator.metrics` | `OrchestratorMetrics.java` | ✅ |
+| P0 | Workflow Bridge | `de.augmentia.agentplatform.bridge` | `WorkflowDefinitionBridge.java`, `QuarkusWorkflow.java`, `QuarkusNode.java`, `QuarkusEdge.java` | ✅ |
+| P0 | Agent Bridge | `de.augmentia.agentplatform.bridge` | `AgentDefinitionBridge.java` (incl. WorkerAgentConfig, QuarkusAgent) | ✅ |
+| P1 | Prometheus Metrics | `de.augmentia.agentplatform.orchestrator.metrics` | `OrchestratorMetrics.java` | ✅ |
 | P1 | Grafana Dashboards | `grafana/dashboards/` | `agent-orchestrator-overview.json`, `worker-performance.json`, `queue-health.json` | ✅ |
-| P2 | Unified API Gateway | `com.agentplatform.bridge.web` | `UnifiedApiGateway.java` | ✅ |
-| P3 | Email Transformer | `com.agentplatform.bridge.email` | `EmailInputTransformer.java`, `KafkaProducer.java`, `MailResponseHandler.java` | ✅ |
-| P3 | Control Events | `com.agentplatform.common.event` | `ControlEvents.java` (extended with `EmailIntakeEvent`) | ✅ |
-| P4 | Redis Initiator Store | `com.agentplatform.bridge.redis` | `EmailInitiatorStore.java` | ✅ |
-| P4 | GDPR API | `com.agentplatform.orchestrator.web` | `GdprController.java` | ✅ |
-| P4 | Prefix Cache | `com.agentplatform.worker.cache` | `PrefixCache.java` | ✅ |
-| P4 | Intake Listener | `com.agentplatform.orchestrator.kafka` | `IntakeListener.java` | ✅ |
+| P2 | Unified API Gateway | `de.augmentia.agentplatform.bridge.web` | `UnifiedApiGateway.java` | ✅ |
+| P3 | Email Transformer | `de.augmentia.agentplatform.bridge.email` | `EmailInputTransformer.java`, `KafkaProducer.java`, `MailResponseHandler.java` | ✅ |
+| P3 | Control Events | `de.augmentia.agentplatform.common.event` | `ControlEvents.java` (extended with `EmailIntakeEvent`) | ✅ |
+| P4 | Redis Initiator Store | `de.augmentia.agentplatform.bridge.redis` | `EmailInitiatorStore.java` | ✅ |
+| P4 | GDPR API | `de.augmentia.agentplatform.orchestrator.web` | `GdprController.java` | ✅ |
+| P4 | Prefix Cache | `de.augmentia.agentplatform.worker.cache` | ~~`PrefixCache.java`~~ | ❌ removed in WP13 (no reachable call path) |
+| P4 | Intake Listener | `de.augmentia.agentplatform.orchestrator.kafka` | `IntakeListener.java` | ✅ |
 | P4 | OTel/Jaeger Config | `docker/` | `compose-extensions.yml`, `otel-config.yaml` | ✅ |
 | P4 | Frontend — Kafka API | `quad-quarkus/quad-ui/src/services/` | `kafkaApi.ts` | ✅ |
 | P4 | Frontend — Backend Selector | `quad-quarkus/quad-ui/src/components/` | `WorkflowComposer.tsx` (modified) | ✅ |
@@ -423,7 +427,9 @@ Key-Patterns:
 | DELETE | `/api/v1/gdpr/delete?session={id}&confirm=true` | Irreversible deletion |
 | POST | `/api/v1/gdpr/anonymize?session={id}` | Replace PII with a hash |
 
-### 6.3 Prefix Cache in the Worker (`PrefixCache.java`)
+### 6.3 Prefix Cache in the Worker (`PrefixCache.java`) — removed in WP13
+
+> Removed in WP13: the class had no reachable call path. Kept here for the record.
 
 Redis-based prompt caching to save tokens.
 
@@ -500,7 +506,7 @@ Two Kafka listeners on the same topic with different groups:
 | Vault Secrets Management | P2 | Medium | HashiCorp Vault integration |
 | ~~OTel/Jaeger container config~~ | ~~P2~~ | ~~Small~~ | ✅ compose-extensions.yml + otel-config.yaml |
 | ~~GDPR export/delete APIs~~ | ~~P3~~ | ~~Small~~ | ✅ GdprController.java |
-| ~~Advanced context prefix caching~~ | ~~P3~~ | ~~Small~~ | ✅ PrefixCache.java |
+| ~~Advanced context prefix caching~~ | ~~P3~~ | ~~Small~~ | ❌ removed in WP13 — `PrefixCache.java` (dead code) |
 | Multi-Tenant Support | P3 | Large | Tenant isolation via Redis keyspace |
 | Auto-scaling Worker | P3 | Large | Based on Kafka partition offset delta |
 
@@ -577,7 +583,9 @@ Keys:
 - `email:initator:{workflowId}` → email address (TTL 7d)
 - `email:intake:{messageId}` → workflowId (TTL 7d)
 
-### 8.4 kafka-platform/agent-worker/.../cache/PrefixCache.java
+### 8.4 kafka-platform/agent-worker/.../cache/PrefixCache.java — removed in WP13
+
+> Removed: no reachable call path (WP13). Kept here for the record.
 
 Redis prompt caching with a SHA-256 hash as the key.
 
@@ -666,7 +674,10 @@ Intended paths:
 - `secret/data/agent-platform/slack` → Slack Webhook URL
 - `secret/data/agent-platform/pagerduty` → PD Integration Key
 
-### 9.3 Alerting Module
+### 9.3 Alerting Module — removed in WP13
+
+> Removed: `SlackNotifier` and `PagerDutyAlertSender` had no reachable call path (WP13).
+> The classes below are kept here for the record.
 
 **SlackNotifier:**
 - HITL escalation with interactive buttons (Approve/Reject/Retry)
@@ -678,7 +689,10 @@ Intended paths:
 - Resolve function after HITL completion
 - Enabled via `app.pagerduty.enabled=true`
 
-### 9.4 Schema Registry Client (`SchemaRegistryClient.java`)
+### 9.4 Schema Registry Client (`SchemaRegistryClient.java`) — moved to test scope in WP13
+
+> Moved to `src/test/java`: only its own test referenced it, so it is no longer a
+> production component. Kept here for the record.
 
 JSON schema registration with BACKWARD compatibility enforcement:
 - `registerAll()` — all schemas at startup

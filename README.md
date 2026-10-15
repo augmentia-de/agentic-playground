@@ -204,13 +204,17 @@ The root aggregator resolves `quad-core` from the **reactor**, so that
 mvn -T1C clean install
 
 # individual reactors
-cd quad-quarkus    && mvn clean install          # quad-core + Quarkus + UI   (~500 + ~200 tests)
-cd kafka-platform  && mvn verify                 # orchestrator/worker/quad-workflow-worker (~360 tests)
+cd quad-quarkus    && mvn clean install          # quad-core + Quarkus + UI
+cd kafka-platform  && mvn verify                 # orchestrator/worker/quad-workflow-worker
 cd agentflow       && mvn clean package          # app + UI (quad-core from ~/.m2)
 
 # integration project (separate reactor, separate ports)
-cd integration-tests && ./scripts/run-integration-tests.sh e2e   # L0–L3, 58 tests
+cd integration-tests && ./scripts/run-integration-tests.sh e2e   # L0–L3
 ```
+
+> **Test counts are not hard-coded in the docs.** CI
+> (`.github/workflows/ci.yml`) builds every reactor and publishes the exact
+> per-module Surefire counts in the run's job summary.
 
 > **Stale-jar trap:** after changes to `quad-core`, always run `mvn … clean package` or
 > `mvn install` in the consumers — without `clean`, the old `quad-core` is bundled into the
@@ -222,6 +226,25 @@ cd integration-tests && ./scripts/run-integration-tests.sh e2e   # L0–L3, 58 t
 cd quad-quarkus/quad-ui    && npm install && npm run build
 cd agentflow/agentflow-ui  && npm install && npm run build
 ```
+
+---
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push/PR against `main`/`master` and covers the
+whole monorepo: the three Java reactors (`quad-quarkus`, `kafka-platform`, `agentflow`),
+the standalone `integration-tests` reactor (L0 contract by default) and both front-ends
+(`quad-ui`, `agentflow-ui`). `kafka-platform` runs its Testcontainers-based suite under
+the Docker socket. Each job appends the per-module test counts to the run summary via
+`.github/scripts/summarise-tests.sh` — test numbers are reported, never hard-coded.
+
+## Aggregator vs. parent (A3)
+
+The root `pom.xml` intentionally aggregates without being a parent: `quad-quarkus` and
+`kafka-platform`/`agentflow` use different parent POMs and group IDs. A common parent
+would force one of those chains to be abandoned. This is recorded here as a **proposal
+for a later consolidation**, not a task: the current setup builds correctly, and CI
+enforces it.
 
 ---
 

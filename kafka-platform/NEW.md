@@ -1,4 +1,4 @@
-# UI.md – Complete System Architecture & UI Blueprint
+# NEW — Complete System Architecture & UI Blueprint
 
 ## 0. Purpose of the Document
 This document serves as the **single source of truth** for the target system "Agentic Platform". It summarizes the architecture of all layers: frontend (React), legacy backend (Quarkus), modern event-driven backend (Kafka) and the central bridge layers. Every developer should get a complete picture of the data flows, formats, APIs and migration steps from it.

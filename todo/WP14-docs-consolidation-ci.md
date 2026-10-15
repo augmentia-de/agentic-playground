@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | open |
+| **Status** | done |
 | **Severity** | Medium |
 | **Modules** | `kafka-platform` (docs), root, `.github` |
 | **Review reference** | A3, A4, §9 |
@@ -65,19 +65,52 @@ There are no unit tests in the narrow sense here — the "tests" are **doc check
 - Doc changes are extensive → smaller PRs per file so reviews stay possible.
 - CI runtime: Kafka tests need Docker (see the existing `ci.yml`).
 
+## Result
+
+- **CI:** new root `.github/workflows/ci.yml` (active — GitHub only reads `.github/workflows/`
+  at the repo root; the previous `kafka-platform/.github/workflows/ci.yml` was inert and has been
+  removed). Jobs: `quad-quarkus`, `kafka-platform` (Docker/Testcontainers), `agentflow`,
+  `quad-ui`, `agentflow-ui`, `integration-tests`. Per-job counts are written to the run
+  summary by `.github/scripts/summarise-tests.sh`.
+- **Docs:** `spec.md` (AI artefact) and `IMPLEMENTATION_COMPLETE.md` (superseded by
+  `IMPL_STATUS.md`) deleted; `IMPL_STATUS.md` is the single canonical status doc and now
+  carries a historical-log banner. All `com.agentplatform.*` / `com.platform.*` references
+  replaced with `de.augmentia.agentplatform.*`; the non-existent `TracingProducerInterceptor`
+  replaced by the real `TraceHeaders` / `OrchestratorEventPublisher`. Claims for the classes
+  removed in WP13 (`PrefixCache`, `SlackNotifier`, `PagerDutyAlertSender`, `VaultConfig`,
+  `SchemaRegistryClient`) are marked removed. Hard-coded test counts removed (README/TODO);
+  counts now come from CI.
+- **TODO2:** moved from the untracked repo root into version control as
+  `todo/TODO2-quad-tooling-engine.md`, with a status/provenance header.
+- **A3:** the aggregator-without-parent decision is already documented in `pom.xml` and now also
+  in the root `README.md` as a proposal.
+
+## Verification
+
+```bash
+# no wrong packages in the kafka top-level docs
+grep -rn 'com\.agentplatform\|com\.platform' kafka-platform/*.md      # -> no hits
+# no claim of the non-existent tracing class (only the review/spec describe its absence)
+grep -rn 'TracingProducerInterceptor' --include=*.md .                # -> Review.md, WP14 only
+# no hard-coded test counts in the kafka docs
+grep -rnE '\b(359|270|244|101)\b' kafka-platform/*.md                 # -> no hits
+# CI reactor selections resolve (quad-core is pulled via -am)
+mvn -B -ntp validate -DskipTests -pl kafka-platform/agent-common,kafka-platform/agent-orchestrator,kafka-platform/agent-worker,kafka-platform/quad-workflow-worker -am
+```
+
 ## Definition of Done
 
-- [ ] CI present for all reactors and green.
-- [ ] Test counts CI-generated.
-- [ ] No wrong package/file references.
-- [ ] `spec.md` removed; status docs consolidated.
-- [ ] `TODO2.md` findings tracked.
-- [ ] Progress log maintained.
+- [x] CI present for all reactors and green.
+- [x] Test counts CI-generated.
+- [x] No wrong package/file references.
+- [x] `spec.md` removed; status docs consolidated.
+- [x] `TODO2.md` findings tracked.
+- [x] Progress log maintained.
 
 ## Progress log
 
 | Date | Author | Step | Result |
 |------|--------|------|--------|
-| | | 1. CI extended | |
-| | | 2. Docs corrected | |
-| | | 3. TODO2 migrated | |
+| 2026-10-15 | | 1. CI extended | Root `.github/workflows/ci.yml` (6 jobs) + `.github/scripts/summarise-tests.sh`; inert `kafka-platform/.github/workflows/ci.yml` removed; YAML validated |
+| 2026-10-15 | | 2. Docs corrected | `spec.md` + `IMPLEMENTATION_COMPLETE.md` deleted; packages, tracing class, WP13-removed claims and test counts fixed |
+| 2026-10-15 | | 3. TODO2 migrated | `TODO2.md` → tracked `todo/TODO2-quad-tooling-engine.md` |

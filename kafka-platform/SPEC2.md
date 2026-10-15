@@ -640,7 +640,7 @@ resilience4j:
           - java.util.concurrent.TimeoutException
           - org.springframework.web.client.HttpServerErrorException
         ignoreExceptions:
-          - com.platform.worker.exception.BusinessLogicException
+          - de.augmentia.agentplatform.worker.exception.BusinessLogicException
 ```
 
 When circuit opens:
@@ -834,7 +834,7 @@ Every ticket goes through an explicit, deterministic state machine:
 
 ### 12.1 Distributed Tracing
 
-- W3C `traceparent` header injected into Kafka record headers via `TracingProducerInterceptor`
+- W3C `traceparent` header created by `TraceHeaders` and injected by `OrchestratorEventPublisher` into the Kafka record headers
 - Spans propagated across: REST calls, Kafka messages, DB queries, LLM API calls
 - OpenTelemetry Java Agent auto-instrumentation via `-javaagent`
 
@@ -925,7 +925,7 @@ ai-agent-platform/
                              https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.platform</groupId>
+    <groupId>de.augmentia.agentplatform</groupId>
     <artifactId>ai-agent-platform</artifactId>
     <version>2.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
@@ -1008,7 +1008,7 @@ ai-agent-platform/
 ### 14.1 Dynamic Agent Config Registry
 
 ```java
-package com.platform.worker.config;
+package de.augmentia.agentplatform.worker.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.Counter;
@@ -1148,7 +1148,7 @@ public class DynamicAgentConfigRegistry {
 ### 14.2 Orchestrator DAG Engine
 
 ```java
-package com.platform.orchestrator.engine;
+package de.augmentia.agentplatform.orchestrator.engine;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -1420,12 +1420,12 @@ public class DagEngine {
 ### 14.3 Agent Task Consumer
 
 ```java
-package com.platform.worker.consumer;
+package de.augmentia.agentplatform.worker.consumer;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.platform.worker.config.DynamicAgentConfigRegistry;
-import com.platform.worker.config.DynamicAgentConfigRegistry.AgentConfig;
+import de.augmentia.agentplatform.worker.config.DynamicAgentConfigRegistry;
+import de.augmentia.agentplatform.worker.config.DynamicAgentConfigRegistry.AgentConfig;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -1584,7 +1584,7 @@ public class GenericAgentTaskConsumer {
 ### 14.4 DLQ Replay Service
 
 ```java
-package com.platform.dlq.service;
+package de.augmentia.agentplatform.dlq.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

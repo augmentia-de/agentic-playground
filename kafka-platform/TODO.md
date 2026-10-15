@@ -1,7 +1,7 @@
 # TODO — Deterministic Kafka Workflow Platform (per SPEC2.md)
 
 **Last modified:** 2026-09-19  
-**Build Status:** ✅ `mvn clean verify` — 270 tests, of which 5 are key-gated (skipped without LLM key)  
+**Build Status:** ✅ `mvn clean verify` — test counts are reported by CI (`.github/workflows/ci.yml` job summary); 5 of them are key-gated (skipped without an LLM key)  
 
 Stack: **Spring Boot 4.0.8**, Java 21, Spring Kafka, PostgreSQL 16, Redis 7.2.  
 Important: **no Spring AI / LLM in this project**. Real agents live in a separate service; this project stays deterministic and only provides the Kafka worker contract as well as mock agents.
@@ -53,15 +53,15 @@ Important: **no Spring AI / LLM in this project**. Real agents live in a separat
 - [x] **Prometheus config** — prometheus.yml with scrape target
 - [x] **OTel/Jaeger config** — docker-compose extensions + otel-config.yaml
 - [x] **OpenTelemetry Java Agent wiring** — micrometer-tracing-bridge-brave dependency
-- [x] **W3C Trace Context Propagation** — TracingProducerInterceptor
-- [x] **SchemaRegistryClient** — JSON schema registration (BACKWARD compatible)
+- [x] **W3C Trace Context Propagation** — `TraceHeaders` + `OrchestratorEventPublisher`
+- [x] ~~**SchemaRegistryClient**~~ — moved to test scope in WP13 (no production caller)
 - [x] **Confluent Schema Registry JSON Schemas** — 3 JSON schema files + startup registration
 
 ### Security & Alerting
-- [x] **SecretResolver** — HashiCorp Vault KV v2 client with cache
-- [x] **VaultConfig** — Vault integration wiring
-- [x] **SlackNotifier** — interactive HITL alerts with buttons
-- [x] **PagerDutyAlertSender** — Critical/Major/Minor Events API v2
+- [x] **SecretResolver** — HashiCorp Vault KV v2 client with cache (conditional bridge, `app.vault.enabled`)
+- [x] ~~**VaultConfig**~~ — removed in WP13 (redundant with SecretResolver)
+- [x] ~~**SlackNotifier**~~ — removed in WP13 (no reachable call path)
+- [x] ~~**PagerDutyAlertSender**~~ — removed in WP13 (no reachable call path)
 - [x] **Resilience4j Circuit Breaker** — llm-provider + worker-dispatch breaker
 
 ### Frontend Integration
@@ -84,7 +84,7 @@ Important: **no Spring AI / LLM in this project**. Real agents live in a separat
 ### Multi-Tenant
 - [x] **Multi-Tenant Support** — TenantContext + Interceptor + TenantAwareJdbcTemplate
 - [x] **Tenant migration** — R__add_tenant_columns.sql with tenant_id columns
-- [x] **Redis Keyspace Prefixing** — EmailInitiatorStore + PrefixCache
+- [x] **Redis Keyspace Prefixing** — EmailInitiatorStore (PrefixCache removed in WP13)
 
 ### Infrastructure & Deployment
 - [x] **Helm Charts** — Full k8s deployment templates (Chart.yaml, values.yaml, 5 Templates)
@@ -101,7 +101,7 @@ Important: **no Spring AI / LLM in this project**. Real agents live in a separat
 | Item | Priority | Effort | Note |
 |------|-----------|---------|-----------|
 | ~~Orchestrator Lease~~ | ~~High~~ | ~~Medium~~ | ✅ `OrchestratorLeaseService.java` with JDBC ShedLock pattern |
-| ~~Production Vault Setup~~ | ~~High~~ | ~~Small~~ | ✅ `VaultConfig.java` with token/AppRole/K8s auth + pre-fill script |
+| ~~Production Vault Setup~~ | ~~High~~ | ~~Small~~ | ✅ `SecretResolver.java` with token/AppRole/K8s auth (`VaultConfig` removed in WP13) |
 | **Kafka SASL_SSL Production** | High | Medium | sasl-ssl-init.sh generates self-signed certs; production CA + mTLS required |
 | ~~JWT/OIDC API Security~~ | ~~Low~~ | ~~Medium~~ | ✅ `JwtAuthenticationFilter.java` + `SecurityConfig.java` with bearer token + tenant propagation |
 | **Real LLM Workers** | Medium | Large | make ai-agent-service production-ready (agent def mapping, real LLM E2E run) |
@@ -167,7 +167,7 @@ Important: **no Spring AI / LLM in this project**. Real agents live in a separat
 
 **Decided & implemented (2026-09-19):** Orchestrator and QUAD worker share
 **one canonical event contract** `TaskEvent`/`ResultEvent` (in `agent-common`,
-package `com.agentplatform.common.event`, Jackson 3 serializer `EventJson`; field names
+package `de.augmentia.agentplatform.common.event`, Jackson 3 serializer `EventJson`; field names
 compatible with Jackson 2 readers via `com.fasterxml.jackson.annotation.JsonProperty` —
 `timeout_ms`, `result_data`).
 
@@ -207,12 +207,12 @@ helm install agentic ./helm/ --set autoscaling.enabled=true
 
 ---
 
-*As of: 2026-10-02 — build green, 270 tests, 5 of them key-gated (no LLM key needed). The line from 2026-09-19 named 101 tests, the one from 2026-09-29 244; the characterization, listener and configuration tests were added. In addition, eleven blockers that prevented operation or startup have been fixed — see README, section "Verified State".*  
+*As of: 2026-10-15 — build green. Test counts are no longer hard-coded here; CI (`.github/workflows/ci.yml`) reports them in its job summary. 5 tests are key-gated (no LLM key needed). In addition, eleven blockers that prevented operation or startup have been fixed — see README, section "Verified status".*  
 *Item 1 (worker AgentConfig from shared DB `agent_definitions` with YAML fallback, property-gated) + Item 3 (worker E2E test: real LLM key `OPENAI_API_KEY`, otherwise deterministic mock fallback) are implemented.*  
 *Level 3 (DB E2E) ✅: `JdbcAgentConfigSourceE2ETest` (4 tests) runs a real PostgreSQL 16 (test container, image `postgres:16-alpine`) with the real `V1__init.sql` schema — verifies RowMapper/JSONB/defaults and DB-first precedence over YAML in the factory.*  
 *Level 4 (Kafka topic end-to-end) ✅: `KafkaTopicE2ETest` (2 tests) starts a real Kafka broker in-JVM (spring-kafka-test `EmbeddedKafkaKraftBroker`, offline, no Docker) — verifies the complete topic chain orchestrator producer → `agent.tasks.researcher` → `WorkflowTaskListener` (real batch container + MANUAL ack) → TaskExecutor → `agent.execution.results`, plus the DLQ path malformed JSON → `agent.execution.dlq`.*  
 *Item 2 (O1) ✅ (2026-09-19): wildcard listener `worker.quad.task-topic-pattern` (default `agent\\.tasks\\..*`), unified canonical contract `TaskEvent`/`ResultEvent` in `agent-common` for orchestrator + QUAD worker (Jackson 3/Jackson 2 wire format compatible), legacy `agent-worker` banished to `legacy\.agent\.tasks\..*` and removed from docker-compose.*  
-*Next step: production Vault setup + real LLM worker integration.*
+*Next step: real LLM worker integration.*
 
 ## 🔧 Audit Fixes (2026-09-18)
 
@@ -285,7 +285,7 @@ helm install agentic ./helm/ --set autoscaling.enabled=true
 
 ### Build Statistics
 - **Total Modules:** 5 (parent, agent-common, agent-orchestrator, agent-worker, quad-workflow-worker); the end-to-end tests live in their own project `../integration-tests` (`mvn -o test -Pe2e` from there)
-- **Total Tests:** 270 (5 key-gated, skipped without `OPENAI_API_KEY`)
+- **Total Tests:** reported by CI (`.github/workflows/ci.yml` job summary); 5 key-gated, skipped without `OPENAI_API_KEY`
 - **Java Files:** 100+ across all modules
 - **Lines of Code:** ~10k+ (estimated)
 - **Maven Build Time:** ~8s average
