@@ -40,7 +40,7 @@ import static org.assertj.core.api.Assumptions.assumeThat;
 @Tag("requires-e2e")
 @Tag("requires-orchestrator")
 @Tag("requires-kafka")
-class SicherheitSystemtest {
+class SicherheitSystemTest {
 
     /**
      * Der Wert, den die Testläufe als unverfängliche Kennung verwenden. Alles, was mit

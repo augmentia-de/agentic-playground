@@ -37,7 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @Tag("requires-e2e")
 @Tag("requires-orchestrator")
-class AusdrucksfaehigkeitSystemtest {
+class AusdrucksfaehigkeitSystemTest {
 
     @BeforeAll
     static void stackMussLaufen() {

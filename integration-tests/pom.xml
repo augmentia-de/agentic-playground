@@ -46,7 +46,7 @@
         <it.quad.url>http://localhost:18086</it.quad.url>
         <it.worker.url>http://localhost:18081</it.worker.url>
         <it.kafka.bootstrap>localhost:9092</it.kafka.bootstrap>
-        <!-- Logdatei des Orchestrators (SicherheitSystemtest liest darin). -->
+        <!-- Logdatei des Orchestrators (SicherheitSystemTest liest darin). -->
         <it.orchestrator.log>/tmp/opencode/run/it/orch.log</it.orchestrator.log>
 
         <junit.version>5.11.4</junit.version>

@@ -36,7 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Tag("requires-e2e")
 @Tag("requires-orchestrator")
 @Tag("requires-kafka")
-class FaehigkeitenSystemtest {
+class FaehigkeitenSystemTest {
 
     private static final Duration ENDZUSTAND = Duration.ofSeconds(90);
 

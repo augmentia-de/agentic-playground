@@ -51,7 +51,7 @@ Four layers. Each builds on the previous one and checks a different class of err
 | **L2** | `l2kafka/KafkaContractTest` | + Broker | Topics against specification, intake/task/result events, message flow |
 | **L3** | `l3e2e/PlatformEndToEndTest` | + Worker | real runs: end, HITL gate, approval, cancellation, task and result events |
 | **L3** | `l3e2e/CrossPlatformWorkflowTest` | + quad | quad definition → bridge → kafka execution, both backend paths |
-| **Sys** | `syscapability/*Systemtest` | + Worker | capability questions: concurrency, failures, load, security, expressiveness |
+| **Sys** | `syscapability/*SystemTest` | + Worker | capability questions: concurrency, failures, load, security, expressiveness |
 
 If a dependency is missing, the layer skips via AssertJ's `assumeThat` (centralised in
 `support/Stack`) — the build stays green and says what was missing. L0 always runs.
@@ -90,12 +90,12 @@ therefore starts it itself instead of relying on that.
 | L2 Kafka | `de/augmentia/it/l2kafka/KafkaContractTest.java` | 11 | 1 |
 | L3 E2E | `de/augmentia/it/l3e2e/CrossPlatformWorkflowTest.java` | 7 | 1 |
 | L3 E2E | `de/augmentia/it/l3e2e/PlatformEndToEndTest.java` | 8 | 0 |
-| Syscapability | `de/augmentia/it/syscapability/AusdrucksfaehigkeitSystemtest.java` | 9 | 0 |
-| Syscapability | `de/augmentia/it/syscapability/FaehigkeitenSystemtest.java` | 8 | 0 |
-| Syscapability | `de/augmentia/it/syscapability/LastSystemtest.java` | 4 | 0 |
-| Syscapability | `de/augmentia/it/syscapability/NebenlaeufigkeitSystemtest.java` | 9 | 1 |
-| Syscapability | `de/augmentia/it/syscapability/SicherheitSystemtest.java` | 8 | 0 |
-| Syscapability | `de/augmentia/it/syscapability/StoerfaelleSystemtest.java` | 8 | 0 |
+| Syscapability | `de/augmentia/it/syscapability/AusdrucksfaehigkeitSystemTest.java` | 9 | 0 |
+| Syscapability | `de/augmentia/it/syscapability/FaehigkeitenSystemTest.java` | 8 | 0 |
+| Syscapability | `de/augmentia/it/syscapability/LastSystemTest.java` | 4 | 0 |
+| Syscapability | `de/augmentia/it/syscapability/NebenlaeufigkeitSystemTest.java` | 9 | 1 |
+| Syscapability | `de/augmentia/it/syscapability/SicherheitSystemTest.java` | 8 | 0 |
+| Syscapability | `de/augmentia/it/syscapability/StoerfaelleSystemTest.java` | 8 | 0 |
 | **Total** |  | **104** | **3** |
 <!-- test-counts:end -->
 
@@ -103,6 +103,13 @@ therefore starts it itself instead of relying on that.
 `./scripts/count-tests.sh`; `./scripts/count-tests.sh --check` fails when README and code
 drift apart. It used to be maintained by hand and named 58 tests / 2 findings.
 L1–L3 and Syscapability each skip when the environment is not up (see Profiles).
+
+The same `--check` also verifies that every `@Test` class name matches Surefire's default
+includes (`Test*.java`, `*Test.java`, `*Tests.java`, `*TestCase.java`). A class named
+otherwise is never picked up — it counts in the table but stays silent in `mvn -Pe2e`.
+That is exactly how the six `syscapability` classes (`…Systemtest`, lowercase `t`) were
+missing from the "everything" profile until WP16; they are now `…SystemTest` and run in
+`mvn -o test -Pe2e`.
 
 ---
 

@@ -37,6 +37,34 @@ count_of() {
     grep -cE "^[[:space:]]*$1\\b" "$2" 2>/dev/null || true
 }
 
+# Surefire fuehrt standardmaessig nur Klassen aus, deren Dateiname einem dieser
+# Muster entspricht: Test*.java, *Test.java, *Tests.java, *TestCase.java.
+matches_surefire_include() {
+    case "$1" in
+        Test*.java|*Test.java|*Tests.java|*TestCase.java) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Eine Klasse, die @Test enthaelt, aber keines der Muster trifft, wird von
+# Surefire nie eingesammelt: sie fehlt still im Lauf, obwohl `generate` sie
+# mitzaehlt. Genau so verschwanden 46 syscapability-Tests aus `mvn -Pe2e`,
+# weil ihre Namen auf "Systemtest" (kleines t) endeten.
+check_surefire_includes() {
+    local rc=0 file base
+    while IFS= read -r file; do
+        [ "$(count_of '@Test' "$file")" -gt 0 ] || continue
+        base="$(basename "$file")"
+        if ! matches_surefire_include "$base"; then
+            printf 'count-tests: %s enthaelt @Test, matcht aber kein Surefire-Default-Include\n' "$base" >&2
+            printf '             (Test*.java, *Test.java, *Tests.java, *TestCase.java) - die Klasse\n' >&2
+            printf '             laeuft damit nie, zaehlt aber in der README-Tabelle mit.\n' >&2
+            rc=1
+        fi
+    done < <(find "$SRC" -name '*.java' | sort)
+    return $rc
+}
+
 generate() {
     printf '| Layer | Test class | @Test | @Disabled |\n'
     printf '|-------|------------|------:|----------:|\n'
@@ -70,8 +98,15 @@ if [ "${1:-}" = "--check" ]; then
         diff <(printf '%s\n' "$documented") <(printf '%s\n' "$actual") || true
         exit 1
     fi
-    echo "README-Testzahlen stimmen mit dem Quelltext ueberein."
+    if ! check_surefire_includes; then
+        echo "FEHLER: mindestens eine @Test-Klasse wird von Surefire nie eingesammelt." >&2
+        exit 1
+    fi
+    echo "README-Testzahlen stimmen mit dem Quelltext ueberein; alle @Test-Klassen sind Surefire-erfassbar."
     exit 0
 fi
 
+# Der Tabellengenerator zaehlt nur - er prueft nicht, ob Surefire die Klasse je
+# startet. Deshalb hier zusaetzlich die Include-Pruefung (Exit != 0 bei Verstoss).
 generate
+check_surefire_includes

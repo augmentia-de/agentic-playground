@@ -42,7 +42,7 @@ public final class TestEnv {
             setting("it.worker.url", "WORKER_URL", "http://localhost:18081");
 
     /**
-     * Logdatei des Orchestrators. Der Runner schreibt sie, {@code SicherheitSystemtest} liest
+     * Logdatei des Orchestrators. Der Runner schreibt sie, {@code SicherheitSystemTest} liest
      * darin. Der Pfad folgt {@code RUN_DIR} (Default {@code /tmp/opencode/run/it}), damit er
      * zum Runner passt, ohne dass beide dieselbe Konstante wiederholen.
      */
