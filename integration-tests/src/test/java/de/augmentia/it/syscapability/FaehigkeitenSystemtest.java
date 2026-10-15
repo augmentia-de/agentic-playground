@@ -8,13 +8,13 @@ import de.augmentia.it.support.Scenario;
 import de.augmentia.it.support.Scenario.Branch;
 import de.augmentia.it.support.TestEnv;
 import de.augmentia.it.support.WorkflowRun;
+import de.augmentia.it.support.Stack;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assumptions.assumeThat;
 
 /**
  * Was kann das System? — Die Fähigkeiten, einzeln und in der Domäne formuliert, in der
@@ -42,12 +42,7 @@ class FaehigkeitenSystemtest {
 
     @BeforeAll
     static void stackMussLaufen() {
-        assumeThat(TestEnv.kafkaUp()).as("Broker fehlt unter %s", TestEnv.BOOTSTRAP).isTrue();
-        assumeThat(TestEnv.orchestratorUp())
-                .as("Orchestrator fehlt unter %s", TestEnv.ORCHESTRATOR).isTrue();
-        assumeThat(TestEnv.workerUp())
-                .as("kein Worker unter %s — ohne ihn bleiben Läufe im Status RUNNING stehen",
-                        TestEnv.WORKER).isTrue();
+        Stack.assumeUp();
     }
 
     // ── Fähigkeit: geordnete Abfolge mehrerer Schritte ───────────────────────

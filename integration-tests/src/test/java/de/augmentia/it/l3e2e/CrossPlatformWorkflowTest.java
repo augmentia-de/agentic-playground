@@ -4,9 +4,12 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import de.augmentia.it.support.TestEnv;
 import de.augmentia.it.support.WorkflowRun;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
@@ -118,13 +121,7 @@ class CrossPlatformWorkflowTest {
         var runId = TestEnv.field(run.json(), "runId").orElseThrow();
 
         // Der Lauf ist direkt nach dem Start noch 'running'; der Endzustand kommt asynchron.
-        String status = "running";
-        var deadline = java.time.Instant.now().plus(Duration.ofSeconds(30));
-        while (java.time.Instant.now().isBefore(deadline)
-                && ("running".equals(status) || "queued".equals(status))) {
-            Thread.sleep(400);
-            status = TestEnv.get(QUAD + "/api/ui/runs/" + runId).json().path("status").asText();
-        }
+        var status = awaitRunStatus(runId);
 
         assertThat(status)
                 .as("BEFUND: Lauf %s der leeren Definition '%s' gilt als '%s'. Erwartet waere "
@@ -132,6 +129,27 @@ class CrossPlatformWorkflowTest {
                 .isEqualTo("completed");
 
         TestEnv.delete(QUAD + "/api/ui/workflows/" + id);
+    }
+
+    /**
+     * Wartet auf den Endzustand eines quad-Laufs. Liefert den zuletzt gesehenen Zustand,
+     * wenn der Deckel ablaeuft (Awaitility statt festem {@code Thread.sleep}).
+     */
+    private static String awaitRunStatus(String runId) {
+        var last = new AtomicReference<>("running");
+        try {
+            return Awaitility.await()
+                    .atMost(Duration.ofSeconds(30))
+                    .pollInterval(Duration.ofMillis(400))
+                    .until(() -> {
+                        String s = TestEnv.get(QUAD + "/api/ui/runs/" + runId)
+                                .json().path("status").asText();
+                        last.set(s);
+                        return ("running".equals(s) || "queued".equals(s)) ? null : s;
+                    }, java.util.Objects::nonNull);
+        } catch (ConditionTimeoutException e) {
+            return last.get();
+        }
     }
 
     // ── die Bridge ──────────────────────────────────────────────────────────

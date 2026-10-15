@@ -116,7 +116,8 @@ run_tests() { # profile
       -Dit.orchestrator.url="http://localhost:$ORCH_PORT" \
       -Dit.quad.url="http://localhost:$QUAD_PORT" \
       -Dit.kafka.bootstrap="$KAFKA" \
-      -Dit.worker.url="http://localhost:$WORKER_PORT" )
+      -Dit.worker.url="http://localhost:$WORKER_PORT" \
+      -Dit.orchestrator.log="$RUN_DIR/orch.log" )
 }
 
 # ── Ablauf ───────────────────────────────────────────────────────────────────

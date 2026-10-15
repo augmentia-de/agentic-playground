@@ -1,12 +1,14 @@
 package de.augmentia.it.support;
 
 import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 import de.augmentia.agentplatform.common.kafka.TopicNames;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionTimeoutException;
 
 /**
  * Ein laufender Workflow auf dem kafka-Orchestrator, und die Hilfen, um seinen Fortschritt zu
@@ -19,6 +21,9 @@ import de.augmentia.agentplatform.common.kafka.TopicNames;
 public final class WorkflowRun {
 
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(45);
+
+    /** Poll-Intervall beim Warten auf einen Endzustand. */
+    private static final Duration POLL_INTERVAL = Duration.ofMillis(400);
 
     private final String executionId;
     private final String workflowName;
@@ -154,29 +159,45 @@ public final class WorkflowRun {
     }
 
     /**
-     * Wartet, bis der Lauf einen der gewünschten Endzustände erreicht.
+     * Wartet, bis der Lauf einen der gewuenschten Endzustaende erreicht.
      *
-     * @param wanted Endzustände, z.B. {@code "COMPLETED"}, {@code "PAUSED_HITL"}, {@code "FAILED"}
-     * @return der zuletzt gesehene Zustand
+     * <p>Awaitility statt festem {@code Thread.sleep}: es wird gepollt, bis die Bedingung
+     * erfuellt ist, aber nie laenger als {@code timeout}. {@code last} merkt sich den
+     * zuletzt gesehenen Zustand, damit ein Deckel-Ablauf denselben aussagekraeftigen
+     * Rueckgabewert liefert wie zuvor.
+     *
+     * @param wanted Endzustaende, z.B. {@code "COMPLETED"}, {@code "PAUSED_HITL"}, {@code "FAILED"}
+     * @return der erreichte Zustand oder der zuletzt gesehene nach Ablauf des Deckels
      */
-    public String awaitStatus(Duration timeout, String... wanted) throws InterruptedException {
-        var deadline = Instant.now().plus(timeout);
-        String last = "UNKNOWN";
-        while (Instant.now().isBefore(deadline)) {
-            var res = status();
-            if (res.ok()) {
-                last = TestEnv.field(res.json(), "status").orElse("UNKNOWN");
-                for (String w : wanted) {
-                    if (w.equalsIgnoreCase(last)) return last;
-                }
-                if ("FAILED".equalsIgnoreCase(last) || "CANCELLED".equalsIgnoreCase(last)) return last;
-            }
-            Thread.sleep(400);
+    public String awaitStatus(Duration timeout, String... wanted) {
+        var last = new AtomicReference<>("UNKNOWN");
+        try {
+            return Awaitility.await()
+                    .atMost(timeout)
+                    .pollInterval(POLL_INTERVAL)
+                    .until(() -> {
+                        var res = status();
+                        if (!res.ok()) {
+                            return null;
+                        }
+                        String current = TestEnv.field(res.json(), "status").orElse("UNKNOWN");
+                        last.set(current);
+                        for (String w : wanted) {
+                            if (w.equalsIgnoreCase(current)) {
+                                return current;
+                            }
+                        }
+                        // Ein Fehlschlag ist ein gueltiges Ende; sonst wuerde der Test
+                        // immer den ganzen Deckel abwarten.
+                        return ("FAILED".equalsIgnoreCase(current)
+                                || "CANCELLED".equalsIgnoreCase(current)) ? current : null;
+                    }, java.util.Objects::nonNull);
+        } catch (ConditionTimeoutException e) {
+            return last.get();
         }
-        return last;
     }
 
-    public String awaitStatus(String... wanted) throws InterruptedException {
+    public String awaitStatus(String... wanted) {
         return awaitStatus(DEFAULT_TIMEOUT, wanted);
     }
 

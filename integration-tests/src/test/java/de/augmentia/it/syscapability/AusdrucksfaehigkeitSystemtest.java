@@ -6,6 +6,7 @@ import java.util.Map;
 import de.augmentia.it.support.Scenario;
 import de.augmentia.it.support.Scenario.Branch;
 import de.augmentia.it.support.TestEnv;
+import de.augmentia.it.support.Stack;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -13,7 +14,6 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assumptions.assumeThat;
 
 /**
  * Kann die Plattform alles ausdrücken, was sie ausdrücken soll — und lässt sie weg, was
@@ -40,9 +40,8 @@ import static org.assertj.core.api.Assumptions.assumeThat;
 class AusdrucksfaehigkeitSystemtest {
 
     @BeforeAll
-    static void orchestratorMussLaufen() {
-        assumeThat(TestEnv.orchestratorUp())
-                .as("Orchestrator fehlt unter %s", TestEnv.ORCHESTRATOR).isTrue();
+    static void stackMussLaufen() {
+        Stack.assumeOrchestratorUp();
     }
 
     private static Scenario installiert(String name, String domain, String description,

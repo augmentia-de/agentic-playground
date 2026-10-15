@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import de.augmentia.agentplatform.common.kafka.TopicNames;
 import de.augmentia.it.support.TestEnv;
 import de.augmentia.it.support.WorkflowRun;
+import de.augmentia.it.support.Stack;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -34,16 +35,8 @@ class PlatformEndToEndTest {
     private static final Duration COMPLETION = Duration.ofSeconds(60);
 
     @BeforeAll
-    static void beidePlattformenMussenLaufen() {
-        assumeThat(TestEnv.kafkaUp()).as("Broker fehlt unter %s", TestEnv.BOOTSTRAP).isTrue();
-        assumeThat(TestEnv.orchestratorUp())
-                .as("Orchestrator fehlt unter %s", TestEnv.ORCHESTRATOR).isTrue();
-        assumeThat(TestEnv.workerUp())
-                .as("kein Worker unter %s erreichbar — er konsumiert agent.tasks.* und liefert "
-                        + "die Ergebnisse. Ohne Worker bleibenlaeufe in PAUSED_HITL oder RUNNING "
-                        + "haengen und die Tests wuerden zufaellig gruen oder rot sein.",
-                        TestEnv.WORKER)
-                .isTrue();
+    static void stackMussLaufen() {
+        Stack.assumeUp();
     }
 
     // ── Der Standardfall ─────────────────────────────────────────────────────

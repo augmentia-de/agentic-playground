@@ -11,6 +11,7 @@ import java.util.Map;
 import de.augmentia.it.support.Scenario;
 import de.augmentia.it.support.TestEnv;
 import de.augmentia.it.support.WorkflowRun;
+import de.augmentia.it.support.Stack;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -47,16 +48,17 @@ class SicherheitSystemtest {
      */
     private static final String KENNUNG = "e2e-marker-4711";
 
-    private static final Path ORCHESTRATOR_LOG = Path.of(
-            System.getProperty("it.orchestrator.log", "/tmp/opencode/run/sys/orch.log"));
+    /**
+     * Logdatei des Orchestrators, wie der Runner sie schreibt. Der Pfad kommt aus
+     * {@link TestEnv#ORCHESTRATOR_LOG} (per {@code -Dit.orchestrator.log} oder
+     * {@code $ORCH_LOG} ueberschreibbar), damit Runner und Test nicht zwei Defaults
+     * pflegen, die auseinanderlaufen.
+     */
+    private static final Path ORCHESTRATOR_LOG = TestEnv.ORCHESTRATOR_LOG;
 
     @BeforeAll
     static void stackMussLaufen() {
-        assumeThat(TestEnv.kafkaUp()).as("Broker fehlt unter %s", TestEnv.BOOTSTRAP).isTrue();
-        assumeThat(TestEnv.orchestratorUp())
-                .as("Orchestrator fehlt unter %s", TestEnv.ORCHESTRATOR).isTrue();
-        assumeThat(TestEnv.workerUp())
-                .as("kein Worker unter %s", TestEnv.WORKER).isTrue();
+        Stack.assumeUp();
     }
 
     private static Scenario importWorkflow() {

@@ -8,13 +8,13 @@ import java.util.Map;
 import de.augmentia.it.support.Scenario;
 import de.augmentia.it.support.TestEnv;
 import de.augmentia.it.support.WorkflowRun;
+import de.augmentia.it.support.Stack;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assumptions.assumeThat;
 
 /**
  * Wie viel schafft das System, und womit merkt man, dass es zu viel war?
@@ -45,11 +45,7 @@ class LastSystemtest {
 
     @BeforeAll
     static void stackMussLaufen() {
-        assumeThat(TestEnv.kafkaUp()).as("Broker fehlt unter %s", TestEnv.BOOTSTRAP).isTrue();
-        assumeThat(TestEnv.orchestratorUp())
-                .as("Orchestrator fehlt unter %s", TestEnv.ORCHESTRATOR).isTrue();
-        assumeThat(TestEnv.workerUp())
-                .as("kein Worker unter %s", TestEnv.WORKER).isTrue();
+        Stack.assumeUp();
     }
 
     private static Scenario importWorkflow() {
@@ -114,12 +110,18 @@ class LastSystemtest {
     }
 
     @Test
-    @DisplayName("der Topic-Rueckstand ist nach der Last ablesbar")
+    @DisplayName("der Topic-Rueckstand waechst mit jedem Lauf sichtbar mit")
     void rueckstandIstSichtbar() throws Exception {
         // Ohne diese Aussage waere ein Puffern von Tasks unsichtbar: die Starts antworten,
         // die Arbeit wartet, und niemand merkt es. Der Rueckstand ist das einzige Mass,
         // das die Arbeit sichtbar macht, die noch nicht erledigt ist.
+        //
+        // Frueher pruefte der Test nur "endOffsets >= 0" — das gilt immer und sagte
+        // nichts ueber die Arbeit. Jetzt wird die Differenz gemessen: jeder gestartete
+        // Lauf muss mindestens eine Nachricht auf dem Task-Topic hinterlassen.
         var szenario = importWorkflow();
+        var vorher = Math.max(0, endOffsets(szenario.taskTopic()));
+
         var laeufe = new ArrayList<WorkflowRun>();
         for (int i = 0; i < 8; i++) {
             laeufe.add(szenario.start(Map.of("datei", "rueckstand-" + i)));
@@ -128,12 +130,13 @@ class LastSystemtest {
             lauf.awaitStatus(ENDZUSTAND, "COMPLETED");
         }
 
-        var rueckstand = endOffsets(szenario.taskTopic());
+        var rueckstand = Math.max(0, endOffsets(szenario.taskTopic())) - vorher;
 
         assertThat(rueckstand)
-                .as("Auf %s liegen %d Nachrichten — das ist die angesammelte Arbeit",
-                        szenario.taskTopic(), rueckstand)
-                .isNotNegative();
+                .as("Auf %s liegen nach %d Laeufen %d neue Nachrichten; mindestens eine "
+                        + "je Lauf war erwartet.",
+                        szenario.taskTopic(), laeufe.size(), rueckstand)
+                .isGreaterThanOrEqualTo(laeufe.size());
 
         // Und die Kette ist laufbereit: ein frischer Lauf findet ein funktionierendes
         // System vor.

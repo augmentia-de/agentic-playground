@@ -6,7 +6,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -34,13 +33,35 @@ import org.apache.kafka.common.serialization.StringSerializer;
 public final class TestEnv {
 
     public static final String ORCHESTRATOR =
-            System.getProperty("it.orchestrator.url", "http://localhost:18080");
+            setting("it.orchestrator.url", "ORCH_URL", "http://localhost:18080");
     public static final String QUAD =
-            System.getProperty("it.quad.url", "http://localhost:18086");
+            setting("it.quad.url", "QUAD_URL", "http://localhost:18086");
     public static final String BOOTSTRAP =
-            System.getProperty("it.kafka.bootstrap", "localhost:9092");
+            setting("it.kafka.bootstrap", "KAFKA_BOOTSTRAP_SERVERS", "localhost:9092");
     public static final String WORKER =
-            System.getProperty("it.worker.url", "http://localhost:18081");
+            setting("it.worker.url", "WORKER_URL", "http://localhost:18081");
+
+    /**
+     * Logdatei des Orchestrators. Der Runner schreibt sie, {@code SicherheitSystemtest} liest
+     * darin. Der Pfad folgt {@code RUN_DIR} (Default {@code /tmp/opencode/run/it}), damit er
+     * zum Runner passt, ohne dass beide dieselbe Konstante wiederholen.
+     */
+    public static final java.nio.file.Path ORCHESTRATOR_LOG =
+            java.nio.file.Path.of(setting("it.orchestrator.log", "ORCH_LOG",
+                    setting("RUN_DIR", "RUN_DIR", "/tmp/opencode/run/it") + "/orch.log"));
+
+    /**
+     * Systemeigenschaft, sonst Umgebungsvariable, sonst Default. So laufen die Tests
+     * sowohl ueber Maven ({@code -Dit.x=…}, landet als Systemeigenschaft) als auch
+     * direkt (z.B. in der IDE) ueber Umgebungsvariablen.
+     */
+    private static String setting(String property, String env, String fallback) {
+        var value = System.getProperty(property);
+        if (value == null || value.isBlank()) {
+            value = System.getenv(env);
+        }
+        return (value == null || value.isBlank()) ? fallback : value;
+    }
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final HttpClient HTTP = HttpClient.newBuilder()
@@ -240,13 +261,9 @@ public final class TestEnv {
         }
     }
 
-    private static final Map<String, String> IDEMPOTENCY = new LinkedHashMap<>();
-
     /** Schlüssel, der innerhalb eines JVM-Laufs einmal vergeben wird. */
-    public static synchronized String uniqueKey(String prefix) {
-        var key = prefix + "-" + java.util.UUID.randomUUID();
-        IDEMPOTENCY.put(key, key);
-        return key;
+    public static String uniqueKey(String prefix) {
+        return prefix + "-" + java.util.UUID.randomUUID();
     }
 
     /** Liest ein Feld aus einem JSON-Objekt, sonst {@code null}. */
