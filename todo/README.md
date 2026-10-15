@@ -28,7 +28,7 @@ Every WP follows the same flow:
 | [WP06](WP06-quad-core-session-token-state.md) | quad-core: session, token, state | Medium | quad-core | – | done |
 | [WP07](WP07-workflow-engine-execution-lifecycle.md) | Workflow engine: execution & lifecycle | Medium | quad-quarkus | – | done |
 | [WP08](WP08-persistence-config-robustness.md) | Persistence & config robustness | Medium | quad-quarkus | – | done |
-| [WP09](WP09-tool-hardening.md) | Tool hardening | Medium | quad-quarkus | WP01 (containment helper) | open |
+| [WP09](WP09-tool-hardening.md) | Tool hardening | Medium | quad-quarkus | WP01 (containment helper) | done |
 | [WP10](WP10-agentflow-generator-join.md) | agentflow: consolidate generator & join | High | agentflow, quad-quarkus | WP01 (test locations only) | done |
 | [WP11](WP11-agentflow-determinism-request-context.md) | agentflow: determinism & request context | High | agentflow | – | done |
 | [WP12](WP12-frontend-quad-ui-agentflow-ui.md) | Frontend: quad-ui & agentflow-ui | Medium | quad-ui, agentflow-ui | – | open |

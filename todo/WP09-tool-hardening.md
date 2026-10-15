@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | open |
+| **Status** | done |
 | **Severity** | Medium |
 | **Modules** | `quad-quarkus/quad-tool-builtin`, `quad-quarkus/quad-workflow-*` (tool classes) |
 | **Review reference** | B31, B32, B33, B34 (§5.3) |
@@ -68,16 +68,17 @@ cd quad-quarkus && mvn -pl quad-quarkus test -Dtest='*Tool*'
 
 ## Definition of Done
 
-- [ ] Tests 1–8 green.
-- [ ] No ReDoS/no hang in Grep.
-- [ ] Errors no longer swallowed.
-- [ ] Tool guarantees match the implementation.
-- [ ] Progress log maintained.
+- [x] Tests 1–8 green.
+- [x] No ReDoS/no hang in Grep.
+- [x] Errors no longer swallowed.
+- [x] Tool guarantees match the implementation.
+- [x] Progress log maintained.
 
 ## Progress log
 
 | Date | Author | Step | Result |
 |------|--------|------|--------|
-| | | 1. Tests red | |
-| | | 2. Implementation | |
-| | | 3. Verification | |
+| 2026-10-15 | agent | 1. Tests red | `GrepToolTest`, `FindToolTest#unreadableDir_logsAndContinues`, `MultiEditToolTest#failure_leavesNoPartialEdits`, `ApplyPatchToolTest` (3) — 7 failing |
+| 2026-10-15 | agent | 2. Implementation | Grep: deadline-based ReDoS guard (`quad.grep.timeoutMs`, 5 s default), binary detection (extension + NUL), safe include-glob→regex, size cap. Find: `walkFileTree` + `visitFileFailed` logs & continues, `limit` instead of full tree. MultiEdit: two-phase validate-all-then-write with rollback. ApplyPatch: context-based removal, ADD refuses existing, UPDATE requires existing, I/O errors propagated. |
+| 2026-10-15 | agent | 3. Verification | `mvn -pl quad-tool-builtin test` → 27 green; `mvn -pl quad-quarkus -am test` → BUILD SUCCESS (532/201/75/27/20/10 tests green) |
+
