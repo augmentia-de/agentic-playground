@@ -1,0 +1,158 @@
+    <div class="graph-wrap">
+      <div class="graph-canvas" (pointermove)="onMove($event)" (pointerup)="endDrag()" (pointerleave)="endDrag()">
+        <div class="graph-content" [style.width.px]="content().w" [style.height.px]="content().h">
+          <svg class="edges" [attr.width]="content().w" [attr.height]="content().h">
+            @for (e of edges(); track e.id) {
+              <line [attr.x1]="e.x1" [attr.y1]="e.y1" [attr.x2]="e.x2" [attr.y2]="e.y2" />
+            }
+          </svg>
+          @for (n of nodes(); track n.id) {
+            <div
+              class="gnode"
+              [class.selected]="selectedId() === n.id"
+              [class.link-source]="linkSource() === n.id"
+              [style.left.px]="point(n.id).x"
+              [style.top.px]="point(n.id).y"
+              (pointerdown)="startDrag(n.id, $event)"
+              (click)="onNodeClick(n.id)"
+            >
+              <span class="chip">{{ n.type }}</span>
+              <strong>{{ n.title || n.id }}</strong>
+              <span class="mono small">{{ n.id }}</span>
+              @if (n.requiresHumanApproval) {
+                <span class="badge warn">HITL</span>
+              }
+            </div>
+          }
+        </div>
+      </div>
+
+      <div class="graph-side">
+        <div class="toolbar">
+          <select [(ngModel)]="newType" [ngModelOptions]="{ standalone: true }">
+            @for (t of nodeTypes; track t) {
+              <option [ngValue]="t">{{ t }}</option>
+            }
+          </select>
+          <button class="small" (click)="addNode()">+ Node</button>
+          <button class="small" (click)="addConnected()" [disabled]="!selectedId()">+ verbunden</button>
+          <button class="small" [class.primary]="linking()" (click)="linking.set(!linking())">
+            🔗 {{ linking() ? 'Klick: Quelle→Ziel' : 'Verbinden' }}
+          </button>
+          <button class="small danger" (click)="deleteSelected()" [disabled]="!selected()">Löschen</button>
+          <button class="small ghost" (click)="resetLayout()" title="Gespeicherte Positionen verwerfen und Auto-Layout verwenden">Layout zurücksetzen</button>
+        </div>
+
+        @if (selected(); as s) {
+          <div class="card">
+            <div class="field"><label>ID</label><input [(ngModel)]="s.id" [ngModelOptions]="{ standalone: true }" (change)="rename()" /></div>
+            <div class="field"><label>Titel</label><input [(ngModel)]="s.title" [ngModelOptions]="{ standalone: true }" (change)="update()" /></div>
+            <div class="field">
+              <label>Typ</label>
+              <select [(ngModel)]="s.type" [ngModelOptions]="{ standalone: true }" (change)="update()">
+                @for (t of nodeTypes; track t) {
+                  <option [ngValue]="t">{{ t }}</option>
+                }
+              </select>
+            </div>
+
+            <div class="field">
+              <label>Dependencies (ankommend)</label>
+              <div class="deps">
+                @for (id of nodeIds(); track id) {
+                  @if (id !== s.id) {
+                    <label class="dep">
+                      <input type="checkbox" [checked]="s.dependsOn.includes(id)" (change)="toggleDep(id, $event)" />
+                      <span class="mono">{{ id }}</span>
+                    </label>
+                  }
+                } @empty {
+                  <span class="small dim">keine anderen Knoten</span>
+                }
+              </div>
+            </div>
+
+            @if (s.type === 'agent') {
+              <div class="field">
+                <label>Agent-Ref</label>
+                <select [(ngModel)]="s.agentRef" [ngModelOptions]="{ standalone: true }" (change)="update()">
+                  <option value="">— Agent wählen —</option>
+                  @if (s.agentRef && !hasAgent(s.agentRef)) {
+                    <option [ngValue]="s.agentRef">{{ s.agentRef }} (nicht im Dokument)</option>
+                  }
+                  @for (a of agents(); track a.id) {
+                    <option [ngValue]="a.id">{{ a.name ? a.name + ' (' + a.id + ')' : a.id }}</option>
+                  }
+                </select>
+                @if (!agents().length) {
+                  <p class="small dim">Keine Agents im Dokument — unter „Agents" anlegen.</p>
+                }
+              </div>
+              <label><input type="checkbox" [(ngModel)]="s.requiresHumanApproval" [ngModelOptions]="{ standalone: true }" style="width: auto" (change)="update()" /> requiresHumanApproval</label>
+            }
+            @if (s.type === 'hitl') {
+              <div class="field"><label>Assignee</label><input [(ngModel)]="s.assignee" [ngModelOptions]="{ standalone: true }" (change)="update()" /></div>
+            }
+            @if (s.type === 'loop') {
+              <div class="field"><label>maxIterations</label><input type="number" [(ngModel)]="s.maxIterations" [ngModelOptions]="{ standalone: true }" (change)="update()" /></div>
+              <div class="field"><label>exitCondition</label><input [(ngModel)]="s.exitCondition" [ngModelOptions]="{ standalone: true }" (change)="update()" /></div>
+              <div class="field">
+                <label>bodySteps (Region)</label>
+                <div class="deps">
+                  @for (id of nodeIds(); track id) {
+                    @if (id !== s.id) {
+                      <label class="dep">
+                        <input type="checkbox" [checked]="s.bodySteps.includes(id)" (change)="toggleBody(id, $event)" />
+                        <span class="mono">{{ id }}</span>
+                      </label>
+                    }
+                  }
+                </div>
+              </div>
+            }
+            @if (s.type === 'join') {
+              <div class="field"><label>joinType</label>
+                <select [(ngModel)]="s.joinType" [ngModelOptions]="{ standalone: true }" (change)="update()">
+                  <option value="all">all</option><option value="any">any</option><option value="n_of_m">n_of_m</option>
+                </select>
+              </div>
+              @if (s.joinType === 'n_of_m') {
+                <div class="field"><label>joinN</label><input type="number" [(ngModel)]="s.joinN" [ngModelOptions]="{ standalone: true }" (change)="update()" /></div>
+              }
+            }
+            @if (s.type === 'decision' || s.type === 'fork') {
+              <div class="field">
+                <label>Branches</label>
+                @for (b of s.branches; track $index) {
+                  <div class="branch-row">
+                    @if (s.type === 'decision') {
+                      <input [(ngModel)]="b.condition" [ngModelOptions]="{ standalone: true }" placeholder="contains:..." (change)="update()" />
+                    }
+                    <select [(ngModel)]="b.target" [ngModelOptions]="{ standalone: true }" (change)="update()">
+                      <option value="">— Ziel —</option>
+                      @for (id of nodeIds(); track id) {
+                        <option [ngValue]="id">{{ id }}</option>
+                      }
+                    </select>
+                    <button class="small ghost" (click)="removeBranch($index)">✕</button>
+                  </div>
+                }
+                <button class="small" (click)="addBranch()">+ Branch</button>
+              </div>
+              @if (s.type === 'decision') {
+                <div class="field"><label>defaultTarget</label>
+                  <select [(ngModel)]="s.defaultTarget" [ngModelOptions]="{ standalone: true }" (change)="update()">
+                    <option value="">— kein —</option>
+                    @for (id of nodeIds(); track id) {
+                      <option [ngValue]="id">{{ id }}</option>
+                    }
+                  </select>
+                </div>
+              }
+            }
+          </div>
+        } @else {
+          <div class="empty">Node auswählen oder hinzufügen.</div>
+        }
+      </div>
+    </div>

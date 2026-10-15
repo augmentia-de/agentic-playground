@@ -151,8 +151,9 @@ export function fetchAgent(id: string): Promise<AgentDefinition> {
   return request<AgentDefinition>(`/agents/${encodeURIComponent(id)}`)
 }
 
-export async function createAgent(agent: AgentCreateRequest): Promise<string> {
-  const flat = {
+/** The flat agent payload the backend expects for create and update (defaults applied). */
+export function toFlatAgentRequest(agent: AgentCreateRequest) {
+  return {
     name: agent.name,
     description: agent.description,
     category: agent.category,
@@ -172,32 +173,15 @@ export async function createAgent(agent: AgentCreateRequest): Promise<string> {
     chatParameters: agent.chatParameters,
     skills: agent.skills ?? [],
   }
-  const data = await request<{ id: string }>('/agents', json('POST', flat))
+}
+
+export async function createAgent(agent: AgentCreateRequest): Promise<string> {
+  const data = await request<{ id: string }>('/agents', json('POST', toFlatAgentRequest(agent)))
   return data.id
 }
 
 export function updateAgent(id: string, agent: AgentCreateRequest): Promise<AgentDefinition> {
-  const flat = {
-    name: agent.name,
-    description: agent.description,
-    category: agent.category,
-    model: agent.model,
-    temperature: agent.temperature,
-    maxTokens: agent.maxTokens,
-    topP: agent.topP,
-    tools: agent.tools ?? [],
-    guardrailsInput: agent.guardrailsInput ?? [],
-    guardrailsOutput: agent.guardrailsOutput ?? [],
-    hooks: agent.hooks ?? [],
-    agentType: agent.agentType ?? 'ua',
-    systemPrompt: agent.systemPrompt,
-    userMessageTemplate: agent.userMessageTemplate,
-    jsonOutput: agent.jsonOutput ?? false,
-    jsonOutputSchema: agent.jsonOutputSchema ?? '',
-    chatParameters: agent.chatParameters,
-    skills: agent.skills ?? [],
-  }
-  return request<AgentDefinition>(`/agents/${encodeURIComponent(id)}`, json('PUT', flat))
+  return request<AgentDefinition>(`/agents/${encodeURIComponent(id)}`, json('PUT', toFlatAgentRequest(agent)))
 }
 
 export async function duplicateAgent(id: string): Promise<string> {
@@ -500,10 +484,7 @@ export function fetchMessagingChannels(): Promise<MessagingChannel[]> {
 
 // ─── Skills (Port 06 – extended CRUD) ──────────────────────────────────────
 
-/** Full skill management including upsert and delete */
-export function fetchSkillList(): Promise<SkillSpec[]> {
-  return request<SkillSpec[]>('/skills')
-}
+// Note: fetching the skill list is served by `fetchSkills()` in the Skills section above.
 
 export function upsertSkill(name: string, payload: SkillUpsertRequest): Promise<void> {
   return request<void>(`/skills/${encodeURIComponent(name)}`, json('PUT', payload))

@@ -1,0 +1,13 @@
+      .graph-wrap { display: grid; grid-template-columns: 1fr 360px; gap: 12px; }
+      .graph-canvas { position: relative; min-height: 460px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); overflow: auto; }
+      .graph-content { position: relative; }
+      .edges { position: absolute; left: 0; top: 0; pointer-events: none; }
+      .edges line { stroke: var(--text-dim); stroke-width: 1.5; opacity: 0.6; }
+      .gnode { position: absolute; display: flex; flex-direction: column; gap: 2px; width: 200px; padding: 8px 10px; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; cursor: grab; }
+      .gnode.selected { border-color: var(--primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 40%, transparent); }
+      .gnode.link-source { border-color: var(--warn); }
+      .graph-side { display: flex; flex-direction: column; gap: 10px; }
+      .deps { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; max-height: 160px; overflow: auto; }
+      .dep { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+      .dep input { width: auto; }
+      .branch-row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }

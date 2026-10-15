@@ -166,4 +166,49 @@ describe('WorkflowComposer', () => {
     expect(pairs).toContainEqual({ from: 'Fork Node', to: 'Async Node' })
     expect(pairs).not.toContainEqual({ from: 'Nested Workflow Node', to: 'Async Node' })
   })
+
+  it('rendersAndEditsBaseline (characterisation)', () => {
+    render(
+      <WorkflowProvider>
+        <WorkflowComposer />
+      </WorkflowProvider>
+    )
+    expect(screen.getByText('Workflow Composer')).toBeInTheDocument()
+    expect(screen.getByRole('toolbar')).toBeInTheDocument()
+    expect(screen.getByText(/Add agents using the toolbar/)).toBeInTheDocument()
+
+    const start = screen.getByLabelText('Start / Initial Task') as HTMLTextAreaElement
+    fireEvent.change(start, { target: { value: 'Baseline task' } })
+    expect(start.value).toBe('Baseline task')
+  })
+
+  it('forkMergeRoundTrip (characterisation)', () => {
+    render(
+      <WorkflowProvider>
+        <WorkflowComposer />
+      </WorkflowProvider>
+    )
+    const canvas = () => screen.getByRole('region', { name: 'Workflow Editor' })
+    const more = () => screen.getByLabelText('Add more nodes')
+
+    // nested-workflow -> fork -> join
+    fireEvent.change(more(), { target: { value: 'nested-workflow' } })
+    fireEvent.change(more(), { target: { value: 'fork' } })
+    fireEvent.change(more(), { target: { value: 'join' } })
+
+    expect(within(canvas()).getByText('Fork Node')).toBeInTheDocument()
+    expect(within(canvas()).getByText('Join Node')).toBeInTheDocument()
+
+    const section = screen.getByText('Data Flow Between Steps').closest('section') as HTMLElement
+    const pairs = within(section)
+      .getAllByRole('row')
+      .slice(1)
+      .map(r => {
+        const cells = within(r).getAllByRole('cell')
+        return { from: cells[0].textContent, to: cells[1].textContent }
+      })
+
+    expect(pairs).toContainEqual({ from: 'Nested Workflow Node', to: 'Fork Node' })
+    expect(pairs).toContainEqual({ from: 'Fork Node', to: 'Join Node' })
+  })
 })

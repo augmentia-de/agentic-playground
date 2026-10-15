@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fetchSkillList, upsertSkill, deleteSkill, activateSkill } from '../services/api'
+import { fetchSkills, upsertSkill, deleteSkill, activateSkill } from '../services/api'
 import type { SkillSpec } from '../services/types'
 
 const renderTags = (tags: string[], color: string) => tags.length ? (
@@ -21,7 +21,7 @@ export function SkillStoreManager() {
 
   const load = async () => {
     setLoading(true)
-    try { setSkills(await fetchSkillList()) } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)) }
+    try { setSkills(await fetchSkills()) } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)) }
     finally { setLoading(false) }
   }
 
