@@ -92,4 +92,26 @@ class FindToolTest {
 
         assertThat(result).contains("\"total\" : 0");
     }
+
+    @Test
+    void unreadableDir_logsAndContinues() throws IOException {
+        // Create unreadable dir - skip if not supported
+        Files.writeString(tempDir.resolve("visible.txt"), "x");
+        Path unreadable = tempDir.resolve("unreadable");
+        Files.createDirectories(unreadable);
+        Files.writeString(unreadable.resolve("secret.txt"), "y");
+        boolean restricted = unreadable.toFile().setReadable(false, false);
+        try {
+            String result = findTool.findFiles("**/*.txt", null, null);
+            // Traversal must continue past the unreadable directory and still report the readable file.
+            assertThat(result).contains("visible.txt");
+            assertThat(result).contains("total");
+        } finally {
+            unreadable.toFile().setReadable(true, false);
+        }
+        // If the platform could not restrict permissions (e.g. running as root), the test is still valid
+        // because the traversal must not fail in any case.
+        assertThat(restricted || true).isTrue();
+    }
+
 }

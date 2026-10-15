@@ -9,15 +9,17 @@ import de.augmentia.quad.core.session.CurrentSession;
 import de.augmentia.quad.core.session.WorkspaceResolver;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.jboss.logging.Logger;
 
 import java.io.IOException;
 import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
-import java.util.stream.Stream;
 
 @ApplicationScoped
 public class FindTool {
 
+    private static final Logger log = Logger.getLogger(FindTool.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final int DEFAULT_MAX_RESULTS = 100;
 
@@ -75,27 +77,39 @@ public class FindTool {
 
         List<String> matchedFiles = new ArrayList<>();
 
-        try (Stream<Path> walk = Files.walk(searchRoot)) {
-            List<Path> allPaths = walk.toList();
-
-            for (Path filePath : allPaths) {
-                if (matchedFiles.size() >= max) break;
-
-                Path relativePath = searchRoot.relativize(filePath);
-                String relativeStr = relativePath.toString().replace("\\", "/");
-
-                if (matcher.matches(relativePath) || (topLevelMatcher != null && topLevelMatcher.matches(relativePath))) {
+        try {
+            Files.walkFileTree(searchRoot, new SimpleFileVisitor<Path>() {
+                @Override
+                public FileVisitResult visitFile(Path filePath, BasicFileAttributes attrs) {
+                    if (matchedFiles.size() >= max) {
+                        return FileVisitResult.TERMINATE;
+                    }
                     try {
-                        if (Files.isRegularFile(filePath)) {
-                            matchedFiles.add(relativeStr);
+                        Path relativePath = searchRoot.relativize(filePath);
+                        boolean matches = matcher.matches(relativePath)
+                                || (topLevelMatcher != null && topLevelMatcher.matches(relativePath));
+                        if (matches) {
+                            matchedFiles.add(relativePath.toString().replace("\\", "/"));
                         }
                     } catch (Exception e) {
+                        log.warnf(e, "findFiles: skipping %s", filePath);
                     }
+                    return FileVisitResult.CONTINUE;
                 }
-            }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    // Report and continue instead of aborting the whole traversal.
+                    log.warnf(exc, "findFiles: cannot access %s", file);
+                    return FileVisitResult.CONTINUE;
+                }
+            });
         } catch (IOException e) {
+            log.warnf(e, "findFiles: traversal error under %s", searchRoot);
             return "Error during file system traversal: " + e.getMessage();
         }
+
+        boolean truncated = matchedFiles.size() >= max;
 
         ObjectNode json = MAPPER.createObjectNode();
         json.put("pattern", cleanPattern);
@@ -105,7 +119,7 @@ public class FindTool {
         for (String f : matchedFiles) {
             filesArray.add(f);
         }
-        json.put("truncated", matchedFiles.size() >= max);
+        json.put("truncated", truncated);
 
         return json.toPrettyString();
     }
