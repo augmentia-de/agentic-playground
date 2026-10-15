@@ -95,9 +95,4 @@ public class AgentStepExporter implements AgentEventListener {
         return sessionCounters.computeIfAbsent(sessionId, k -> new AtomicLong()).incrementAndGet();
     }
 
-    /** Unused run counter (reserved for later step-resume in phase B). */
-    void reset() {
-        inFlight.clear();
-        sessionCounters.clear();
-    }
 }

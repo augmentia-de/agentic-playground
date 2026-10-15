@@ -173,11 +173,6 @@ public class AutomationService {
 
     private String lastAssistantText(String sessionId) { return ""; }
 
-    private String scheduledPrompt(ScheduledTask task) {
-        return "Scheduled run — " + task.getTitle() + "\n\nThis automation is due now: carry out the task below immediately.\n\n"
-            + task.getInstructions();
-    }
-
     private String manualPrompt(ScheduledTask task) {
         return "Running automation '" + task.getTitle() + "' now. Carry out these instructions\n\n"
             + task.getInstructions();

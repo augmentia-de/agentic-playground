@@ -45,7 +45,6 @@ public class SandboxPoolClient {
 
     private final SandboxConfig config;
     private final int poolSize;
-    private final java.util.concurrent.ExecutorService executor;
 
     private volatile boolean imageReady = false;
 
@@ -66,7 +65,6 @@ public class SandboxPoolClient {
     public SandboxPoolClient(SandboxConfig config, int poolSize) {
         this.config = config;
         this.poolSize = poolSize;
-        this.executor = java.util.concurrent.Executors.newFixedThreadPool(poolSize);
     }
 
     public int getPoolSize() {

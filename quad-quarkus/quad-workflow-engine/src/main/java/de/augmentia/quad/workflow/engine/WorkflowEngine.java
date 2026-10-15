@@ -221,10 +221,6 @@ public class WorkflowEngine {
         return support.enqueueMessage(tenantId + ":" + topic, payload);
     }
 
-    public boolean hasPendingHandler(String tenantId, String topic) {
-        return support.hasPendingHandlerFor(tenantId + ":" + topic);
-    }
-
     // ── Restore-Helfer ─────────────────────────────────────────
 
     private Map<String, String> restoredOutputs(WorkflowRunState run) {

@@ -219,7 +219,4 @@ public class WorkflowSupport {
         return false;
     }
 
-    public boolean hasPendingHandlerFor(String key) {
-        return pendingMessages.containsKey(key);
-    }
 }

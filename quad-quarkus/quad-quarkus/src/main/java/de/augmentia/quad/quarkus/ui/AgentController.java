@@ -29,7 +29,6 @@ import org.jboss.logging.Logger;
 
 
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -731,41 +730,6 @@ public class AgentController {
             }
         }
         return defaultExecuteTimeoutMs;
-    }
-
-    private boolean matchesPeriod(WorkflowRunState run, String period) {
-        if (period == null || period.isBlank() || "all".equals(period)) return true;
-        String startedAt = run.startedAt;
-        LocalDateTime st;
-        try {
-            st = LocalDateTime.parse(startedAt);
-        } catch (Exception e) {
-            return true;
-        }
-        LocalDateTime now = LocalDateTime.now();
-        return switch (period) {
-            case "today" -> st.toLocalDate().equals(now.toLocalDate());
-            case "week" -> st.isAfter(now.minusDays(7));
-            case "month" -> st.isAfter(now.minusDays(30));
-            default -> true;
-        };
-    }
-
-    private boolean matchesKind(WorkflowRunState run, String kind) {
-        if (kind == null || kind.isBlank() || "all".equals(kind)) return true;
-        String k = String.valueOf(run.kind).toLowerCase(java.util.Locale.ROOT);
-        return k.equals(kind.toLowerCase(java.util.Locale.ROOT));
-    }
-
-    private boolean matchesStatus(WorkflowRunState run, String status) {
-        if (status == null || status.isBlank() || "all".equals(status)) return true;
-        return status.equalsIgnoreCase(String.valueOf(run.status));
-    }
-
-    private boolean matchesRunId(WorkflowRunState run, String runId) {
-        if (runId == null || runId.isBlank() || "all".equals(runId)) return true;
-        return String.valueOf(run.runId).contains(runId)
-                || String.valueOf(run.workflowId).contains(runId);
     }
 
 }

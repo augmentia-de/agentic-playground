@@ -233,18 +233,4 @@ public class McpManagerService {
         return ConfigProvider.getConfig().getOptionalValue(key, String.class);
     }
 
-    /**
-     * The core module reads MCP configuration from system properties
-     * (McpToolClient.fromSystemProperties). For consistency we mirror
-     * the config there — both remain a shared source.
-     */
-    private void bridgeToSystemProperties() {
-        configString("quad.mcp.enabled").ifPresent(v -> System.setProperty("quad.mcp.enabled", v));
-        configString("quad.mcp.servers").ifPresent(v -> System.setProperty("quad.mcp.servers", v));
-        for (String name : serverNames()) {
-            String prefix = "quad.mcp.servers." + name;
-            configString(prefix + ".command").ifPresent(v -> System.setProperty(prefix + ".command", v));
-            configString(prefix + ".url").ifPresent(v -> System.setProperty(prefix + ".url", v));
-        }
-    }
 }
