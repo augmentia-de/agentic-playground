@@ -35,6 +35,7 @@ Every WP follows the same flow:
 | [WP13](WP13-remove-dead-code.md) | Remove dead code | Medium | all | after WP05–WP11 | done |
 | [WP14](WP14-docs-consolidation-ci.md) | Consolidate docs & CI | Medium | kafka-platform, root | – | done |
 | [WP15](WP15-integration-tests-hardening.md) | Harden integration tests | Medium | integration-tests | – | done |
+| [WP16](WP16-surefire-includes.md) | All tests must match Surefire includes | Medium | integration-tests | WP15 | done |
 
 **Status legend:** `open` · `in progress` · `blocked` · `test red` · `done`
 
@@ -54,6 +55,7 @@ flowchart TD
   WP12[WP12 frontend]
   WP14[WP14 docs/CI]
   WP15[WP15 integration tests]
+  WP15 --> WP16[WP16 surefire includes]
 ```
 
 **Waves:**

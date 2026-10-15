@@ -22,7 +22,7 @@ findings are visibly documented.
 - **Flakiness:** `support/WorkflowRun.java` polls with `Thread.sleep(400)`; `support/TestEnv.java`
   has hard-coded ports; a possibly unused `uniqueKey` map.
 - **Duplication:** the `stackMussLaufen` helper is copied 5–6× in `syscapability/*`.
-- **Weak assertion:** `LastSystemtest.rueckstandIstSichtbar` only checks `isNotNegative()`.
+- **Weak assertion:** `LastSystemTest.rueckstandIstSichtbar` only checks `isNotNegative()`.
 
 ## 1. Tests first
 
@@ -78,10 +78,10 @@ cd integration-tests && ./scripts/run-integration-tests.sh e2e
 - **Deduplicated:** the five `syscapability` copies of `stackMussLaufen` (plus
   `PlatformEndToEndTest`) now call `support/Stack.assumeUp()`; the orchestrator-only class calls
   `Stack.assumeOrchestratorUp()`.
-- **Sharpened:** `LastSystemtest.rueckstandIstSichtbar` no longer asserts `endOffsets >= 0`
+- **Sharpened:** `LastSystemTest.rueckstandIstSichtbar` no longer asserts `endOffsets >= 0`
   (always true). It measures the topic growth and requires at least one new message per started run.
 - **README:** regenerated from the script; the `syscapability` suite (46 tests) is now listed and
-  the third finding (duplicate-key race, `NebenlaeufigkeitSystemtest`) is documented.
+  the third finding (duplicate-key race, `NebenlaeufigkeitSystemTest`) is documented.
 
 ## Verification
 
@@ -105,7 +105,7 @@ mvn -o test -Pe2e -Dtest='!KafkaContractTest' \
 Result: **green** — L0 18, L1 14, L3 `PlatformEndToEndTest` 8, and the whole `syscapability`
 suite 46 (45 green + the 1 `@Disabled` finding). `CrossPlatformWorkflowTest` reports 0 tests
 (its `@BeforeAll` skips because `quad` was not running — the intended behaviour).
-`LastSystemtest.rueckstandIstSichtbar` passed with the new growth assertion, i.e. Awaitility
+`LastSystemTest.rueckstandIstSichtbar` passed with the new growth assertion, i.e. Awaitility
 polling and the sharpened check work against a live broker.
 
 `KafkaContractTest` (L2) was excluded here: it fails on this ad-hoc broker for **pre-existing**
