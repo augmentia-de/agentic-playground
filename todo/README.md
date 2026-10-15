@@ -31,7 +31,7 @@ Every WP follows the same flow:
 | [WP09](WP09-tool-hardening.md) | Tool hardening | Medium | quad-quarkus | WP01 (containment helper) | done |
 | [WP10](WP10-agentflow-generator-join.md) | agentflow: consolidate generator & join | High | agentflow, quad-quarkus | WP01 (test locations only) | done |
 | [WP11](WP11-agentflow-determinism-request-context.md) | agentflow: determinism & request context | High | agentflow | – | done |
-| [WP12](WP12-frontend-quad-ui-agentflow-ui.md) | Frontend: quad-ui & agentflow-ui | Medium | quad-ui, agentflow-ui | – | open |
+| [WP12](WP12-frontend-quad-ui-agentflow-ui.md) | Frontend: quad-ui & agentflow-ui | Medium | quad-ui, agentflow-ui | – | done |
 | [WP13](WP13-remove-dead-code.md) | Remove dead code | Medium | all | after WP05–WP11 | open |
 | [WP14](WP14-docs-consolidation-ci.md) | Consolidate docs & CI | Medium | kafka-platform, root | – | open |
 | [WP15](WP15-integration-tests-hardening.md) | Harden integration tests | Medium | integration-tests | – | open |
